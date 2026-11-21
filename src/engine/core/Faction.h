@@ -201,6 +201,9 @@ FactionId Traders();        // trades on every lane, beside the system's own and
 bool FromLegacyIndex(int i, FactionId& out);
 
 const std::string& Id(FactionId f);  // string id (as used in station data and saves)
+// The livery id (materials.json, #516) a faction builds and paints in: its culture, or its own id
+// for one that has none. An art palette, never an allegiance colour (#117).
+std::string        LiveryOf(FactionId f);
 bool               IsLawful(FactionId f);
 const std::string& Kind(FactionId f);
 // The ids of the factions of kind "Major", in registry order: who owns a civilisation

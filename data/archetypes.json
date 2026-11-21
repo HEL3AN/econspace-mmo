@@ -836,7 +836,7 @@
             "color": [205, 200, 190, 255],
             "layer": 4,
             "size": 240,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 6, "radius": 0.48, "role": "hull", "pitch": 0.18},
@@ -873,7 +873,7 @@
             "color": [205, 200, 185, 255],
             "layer": 4,
             "size": 320,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 8, "radius": 0.42, "role": "hull", "pitch": 0.18},
@@ -902,7 +902,7 @@
             "color": [150, 150, 140, 255],
             "layer": 4,
             "size": 30,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "parts": [
                     {"form": "ring", "radius": 0.85, "width": 0.07, "role": "panel", "alpha": 0.7},
@@ -921,7 +921,7 @@
             "color": [210, 215, 225, 255],
             "layer": 4,
             "size": 30,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "parts": [
                     {"form": "bar", "at": [-0.3, 0.62], "angle": 90, "length": 0.62, "width": 0.3, "role": "panel", "pitch": 0.12, "mirror": true, "minPixels": 24},
@@ -943,7 +943,7 @@
             "color": [200, 190, 160, 255],
             "layer": 4,
             "size": 18,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "parts": [
                     {"form": "disc", "radius": 0.5, "role": "hull", "pitch": 0.2},
@@ -963,7 +963,7 @@
             "color": [196, 198, 204, 255],
             "layer": 4,
             "size": 64,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 6, "radius": 0.46, "angle": 30, "role": "hull", "pitch": 0.16},
@@ -992,7 +992,7 @@
             "color": [195, 200, 210, 255],
             "layer": 4,
             "size": 160,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 6, "radius": 0.5, "role": "hull", "pitch": 0.18},
@@ -1023,7 +1023,7 @@
             "color": [200, 194, 182, 255],
             "layer": 4,
             "size": 160,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 8, "radius": 0.45, "angle": 22.5, "role": "hull", "pitch": 0.18},
@@ -1054,7 +1054,7 @@
             "color": [190, 200, 214, 255],
             "layer": 4,
             "size": 160,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 6, "radius": 0.38, "role": "hull", "pitch": 0.16},
@@ -1086,7 +1086,7 @@
             "color": [205, 205, 212, 255],
             "layer": 4,
             "size": 160,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "disc", "radius": 0.34, "role": "hull", "pitch": 0.14},
@@ -1114,7 +1114,7 @@
             "color": [196, 188, 170, 255],
             "layer": 4,
             "size": 160,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "bar", "length": 1.1, "width": 0.44, "role": "hull", "pitch": 0.16},
@@ -1146,7 +1146,7 @@
             "color": [120, 116, 112, 255],
             "layer": 4,
             "size": 160,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 6, "radius": 0.5, "angle": 30, "jagged": 0.14, "role": "hull", "pitch": 0.18},
