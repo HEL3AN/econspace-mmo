@@ -20,7 +20,7 @@
                     "stern": { "mount": "out", "turn": 180, "scale": 0.12, "z": -1 } } },
         { "id": "hull.rcs", "mass": 0.5, "provides": { "rcs": 4800 }, "cost": { "Iron": 1, "Ice": 1 },
           "look": { "edge": { "scale": 0.045, "turn": -90 } } },
-        { "id": "hull.cargo", "mass": 3, "provides": { "cargo": 30 }, "cost": { "Iron": 6 },
+        { "id": "hull.cargo", "mass": 3, "provides": { "cargo": 300 }, "cost": { "Iron": 6 },
           "look": { "spine": { "scale": 0.2 }, "side": { "mount": "out", "turn": 90, "scale": 0.2 } } },
         { "id": "hull.armour", "mass": 4, "provides": { "hull": 6 }, "cost": { "Iron": 10 },
           "look": { "edge": { "scale": 0.08, "turn": 90 }, "side": { "mount": "out", "turn": 90, "scale": 0.12 } } },
@@ -99,7 +99,7 @@
                   {"form": "chevron", "at": [0.08, 0.0], "length": 0.4, "width": 0.18, "role": "trim", "minPixels": 30}
               ]
           } },
-        { "id": "mid.belt", "position": "mid", "mass": 8, "provides": { "cargo": 10 }, "cost": { "Iron": 34 },
+        { "id": "mid.belt", "position": "mid", "mass": 8, "provides": { "cargo": 100 }, "cost": { "Iron": 34 },
           "sockets": { "top": 2, "edge": 4, "side": 2, "spine": 1 },
           "shape": {
               "sections": [
@@ -109,14 +109,14 @@
                   {"form": "bar", "at": [0.0, 0.36], "length": 0.5, "width": 0.05, "role": "panel", "mirror": true, "minPixels": 30}
               ]
           } },
-        { "id": "mid.spine", "position": "mid", "mass": 5, "provides": { "cargo": 20 }, "cost": { "Iron": 20 },
+        { "id": "mid.spine", "position": "mid", "mass": 5, "provides": { "cargo": 200 }, "cost": { "Iron": 20 },
           "sockets": { "top": 2, "edge": 4, "spine": 1 },
           "shape": {
               "sections": [
                   {"form": "bar", "length": 0.7, "width": 0.36, "role": "hull", "pitch": 0.13}
               ]
           } },
-        { "id": "mid.slim", "position": "mid", "mass": 3, "provides": { "cargo": 5 }, "cost": { "Iron": 12 },
+        { "id": "mid.slim", "position": "mid", "mass": 3, "provides": { "cargo": 50 }, "cost": { "Iron": 12 },
           "sockets": { "top": 1, "edge": 4, "side": 2, "spine": 1 },
           "shape": {
               "sections": [
@@ -126,14 +126,14 @@
                   {"of": "hull.wing", "on": "side", "count": 2, "variants": ["swept", "delta"], "mount": "centre", "scale": 0.36, "z": -1}
               ]
           } },
-        { "id": "mid.keel", "position": "mid", "mass": 11, "provides": { "cargo": 40 }, "cost": { "Iron": 40 },
+        { "id": "mid.keel", "position": "mid", "mass": 11, "provides": { "cargo": 400 }, "cost": { "Iron": 40 },
           "sockets": { "top": 1, "edge": 4, "side": 2, "spine": 1 },
           "shape": {
               "sections": [
                   {"form": "bar", "length": 0.8, "width": 0.18, "role": "panel", "pitch": 0.13}
               ]
           } },
-        { "id": "mid.hopper", "position": "mid", "mass": 13, "provides": { "cargo": 60 }, "cost": { "Iron": 45, "Ice": 5 },
+        { "id": "mid.hopper", "position": "mid", "mass": 13, "provides": { "cargo": 600 }, "cost": { "Iron": 45, "Ice": 5 },
           "sockets": { "top": 2, "edge": 4, "side": 2, "front": 1 },
           "shape": {
               "sections": [

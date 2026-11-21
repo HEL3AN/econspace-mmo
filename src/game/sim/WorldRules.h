@@ -381,8 +381,8 @@ struct Licences
 // (documents/holds_and_storage.md).
 struct Hangars
 {
-    int    freeUnits = 100;
-    double rentPerUnit = 2.0;
+    int    freeUnits = 1000;  // of volume (#472): the room a unit of Iron takes is 10
+    double rentPerUnit = 0.2;
     double periodDays = 30.0;
 };
 

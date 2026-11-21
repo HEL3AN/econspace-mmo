@@ -246,6 +246,7 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
     table.id = "goods_" + inventorySel_;
     table.columns = { { "good", Size::Grow(), Ui::Align::Start, false },
                       { "amount", Size::Fit(44.0f), Ui::Align::End, false },
+                      { "vol", Size::Fit(28.0f), Ui::Align::End, false },
                       { "price", Size::Fit(40.0f), Ui::Align::End, false },
                       { "value", Size::Fit(48.0f), Ui::Align::End, false } };
     table.rows = (int)rows.size();
@@ -257,7 +258,8 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
         {
             case 0: return Ui::Cell{ row.name, t.colors.text };
             case 1: return Ui::Cell{ std::to_string(row.amount), t.colors.text };
-            case 2:
+            case 2: return Ui::Cell{ std::to_string(row.volume), t.colors.dim };
+            case 3:
                 return Ui::Cell{ row.price > 0.0f ? TextFormat("%.1f", row.price) : "-",
                                  t.colors.dim };
             default:

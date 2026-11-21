@@ -16,7 +16,8 @@ class Inventory
 {
 public:
     int  Amount(ResourceType type) const;
-    int  Used() const;  // every unit of every good
+    int  Used() const;   // the room it takes: every unit times its good's volume (#472)
+    int  Units() const;  // every unit of every good, whatever room it takes
     bool Empty() const { return goods_.empty(); }
 
     void Add(ResourceType type, int amount);  // nothing for an amount of none

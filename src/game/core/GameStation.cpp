@@ -299,6 +299,9 @@ void Game::DrawMarketContent(const Ui::Frame& f)
         L.Text(TIERS[std::clamp(m.tier, 0, 2)], TextStyle::Label());
         L.Field("Pays you", TextFormat("%.1f cr a unit", m.perUnit), t.colors.money);
         L.Field("Costs you", TextFormat("%.1f cr a unit", m.buyUnit), t.colors.money);
+        const int volume = Goods::Volume(m.type);
+        L.Field("Room a unit takes", std::to_string(volume), t.colors.text);
+        L.Field("Costs you per room", TextFormat("%.1f cr", m.buyUnit / volume), t.colors.money);
         L.Field("In the hold", std::to_string(m.hold), t.colors.text);
         L.Field("The market holds", std::to_string(m.stock), t.colors.text);
 

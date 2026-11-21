@@ -169,8 +169,8 @@
         "evict": 1.0
     },
     "hangars": {
-        "freeUnits": 100,
-        "rentPerUnit": 2,
+        "freeUnits": 1000,
+        "rentPerUnit": 0.2,
         "periodDays": 30
     },
     "deliveries": {

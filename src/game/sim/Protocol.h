@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    69;  // 69: goods can be had out of a hangar at a station that refuses the pilot, by NPC
+    70;  // 70: capacities and what is held are in volume (#472 slice 7) -- a hold, a storage, a
+         // hangar and a can count the room goods take, not their units;
+         // 69: goods can be had out of a hangar at a station that refuses the pilot, by NPC
          // delivery (#472 slice 6) -- a Command's deliverFrom, a PlayerView's locked hangars and
          // shipments in transit;
          // 68: a corporation's storage has divisions and its members a hangar each (#472 slice 5)

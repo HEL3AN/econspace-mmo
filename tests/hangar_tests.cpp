@@ -123,10 +123,11 @@ TEST_CASE("Hangars: a purchase goes into the hangar, and a sale comes out of it"
     CHECK(d.View().goods[(size_t)ice.Index()] == 60);
     // More than the hold could take in one: the free units are the limit.
     const auto more = d.sim.StepPlayerBuy(*d.s, *d.st, ice.Index(), 1000, "hangar");
-    CHECK(more.bought == WorldRules::HangarRules().freeUnits - 60);
+    const int  V = Goods::Volume(ice);  // capacities are in volume (#472)
+    CHECK(more.bought == WorldRules::HangarRules().freeUnits / V - 60);
     const auto sold = d.sim.StepPlayerSell(*d.s, *d.st, ice.Index(), 30, "hangar");
     CHECK(sold.sold == 30);
-    CHECK(d.View().goods[(size_t)ice.Index()] == WorldRules::HangarRules().freeUnits - 30);
+    CHECK(d.View().goods[(size_t)ice.Index()] == WorldRules::HangarRules().freeUnits / V - 30);
 }
 
 TEST_CASE(
@@ -150,15 +151,16 @@ TEST_CASE(
 
     // Filled past the free units, it cannot be cut below what it holds above them.
     REQUIRE(d.s->ship->AddCargo(Good::Iron(), 40));
-    d.sim.StepPlayerBuy(*d.s, *d.st, Good::Ice().Index(), 200, "hangar");
+    d.sim.StepPlayerBuy(*d.s, *d.st, Good::Ice().Index(), 125, "hangar");
     const int held = d.View().goods[(size_t)Good::Ice().Index()];
-    REQUIRE(held > r.freeUnits);
+    const int V = Goods::Volume(Good::Ice());
+    REQUIRE(held * V > r.freeUnits);
     int seq = d.s->LastEventSeq();
     CHECK_FALSE(d.sim.RentHangar(*d.s, 0));
     CHECK(Told(*d.s, seq, "move them out first"));
     // Lowering returns nothing.
     const double now = d.s->account.GetMoney();
-    CHECK(d.sim.RentHangar(*d.s, held - r.freeUnits));
+    CHECK(d.sim.RentHangar(*d.s, held * V - r.freeUnits));
     CHECK(d.s->account.GetMoney() == doctest::Approx(now));
 
     // Beyond what the station lets one pilot keep, refused.
@@ -174,8 +176,8 @@ TEST_CASE(
     const WorldRules::Hangars& r = WorldRules::HangarRules();
     const double               period = r.periodDays * DAY;
     REQUIRE(d.sim.RentHangar(*d.s, 100));
-    d.sim.StepPlayerBuy(*d.s, *d.st, Good::Ice().Index(), 150, "hangar");
-    REQUIRE(d.View().goods[(size_t)Good::Ice().Index()] == 150);
+    d.sim.StepPlayerBuy(*d.s, *d.st, Good::Ice().Index(), 105, "hangar");  // 1050 of room
+    REQUIRE(d.View().goods[(size_t)Good::Ice().Index()] == 105);
 
     // Due, and paid.
     double money = d.s->account.GetMoney();
@@ -192,7 +194,7 @@ TEST_CASE(
     Proto::HangarView v = d.View();
     CHECK(v.rented == 50);
     CHECK(v.owed == doctest::Approx(50 * r.rentPerUnit));
-    CHECK(v.goods[(size_t)Good::Ice().Index()] == 150);  // nothing lost
+    CHECK(v.goods[(size_t)Good::Ice().Index()] == 105);  // nothing lost
     int seq = d.s->LastEventSeq();
     CHECK(d.sim.MoveGoods(*d.s, "hangar", "hold", Good::Ice().Index(), 1) == 0);
     CHECK(Told(*d.s, seq, "closed"));

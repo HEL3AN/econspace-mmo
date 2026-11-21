@@ -770,12 +770,12 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
                 const auto  goods = dr->Contents().All();  // a copy: taking changes it
                 for (const auto& kv : goods)
                 {
-                    const int n = std::min(room, kv.second);
+                    const int n = std::min(room / Goods::Volume(kv.first), kv.second);
                     if (n <= 0)
                         break;
                     dr->Contents().Remove(kv.first, n);
                     s.ship->AddCargo(kv.first, n);
-                    room -= n;
+                    room -= n * Goods::Volume(kv.first);
                     took += (took.empty() ? "" : ", ") + std::to_string(n) + " " +
                             ResourceName(kv.first);
                 }
@@ -907,7 +907,7 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
     // every unit bought raises the price of the next.
     const int room = dst.capacity - dst.goods->Used();
     const int stock = (int)st.market.Stock(type);
-    int       n = std::min({ amount, room, stock });
+    int       n = std::min({ amount, room / Goods::Volume(type), stock });
     while (n > 0 && st.market.QuoteBuy(type, n) * markup * (1.0 + fee) > s.account.GetMoney())
         n--;
     if (n <= 0)

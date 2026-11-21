@@ -44,6 +44,9 @@ struct GoodDef
     double      stock = 200.0;  // what one market keeps of it, the target its price is set by
     Supply      supply = Supply::Local;
     bool        mined = false;  // an asteroid belt can hold it
+    // How much room one unit takes in a hold, a hangar or a can (#472): whole numbers, so the
+    // wire and the saves stay exact. A container's capacity is in these.
+    int volume = 1;
 };
 
 // A station turning goods into goods: `rate` cycles an hour, each taking `in` and giving
@@ -105,6 +108,7 @@ void               ResetToBuiltin();  // back to the three ores, for a test that
 int                       Count();
 bool                      Find(const std::string& idOrName, ResourceType& out);  // false if none
 const GoodDef&            Def(ResourceType g);
+int                       Volume(ResourceType g);  // the room one unit takes, at least 1
 const std::string&        Id(ResourceType g);
 std::vector<ResourceType> Mined();  // what a belt can hold, in registry order
 

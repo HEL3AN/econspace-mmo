@@ -25,17 +25,18 @@ struct Registry
 Registry Builtin()
 {
     Registry r;
-    auto     add = [&](const char* id, double price)
+    auto     add = [&](const char* id, double price, int volume)
     {
         GoodDef d;
         d.id = d.name = id;
         d.price = price;
         d.mined = true;
+        d.volume = volume;
         r.goods.push_back(d);
     };
-    add("Iron", 10.0);
-    add("Ice", 15.0);
-    add("Crystal", 40.0);
+    add("Iron", 10.0, 10);
+    add("Ice", 15.0, 10);
+    add("Crystal", 40.0, 5);
     return r;
 }
 
@@ -96,7 +97,8 @@ bool Amounts(const Registry& r, const json& j, std::vector<std::pair<ResourceTyp
 bool ParseGood(const json& j, GoodDef& d, std::string& why)
 {
     if (!j.is_object() ||
-        !OnlyKnownKeys(j, { "id", "name", "tier", "price", "stock", "supply", "mined" }, why))
+        !OnlyKnownKeys(j, { "id", "name", "tier", "price", "stock", "supply", "mined", "volume" },
+                       why))
     {
         if (why.empty())
             why = "a good is an object";
@@ -111,6 +113,13 @@ bool ParseGood(const json& j, GoodDef& d, std::string& why)
     d.name = j.value("name", d.id);
     d.tier = j.value("tier", 0);
     d.mined = j.value("mined", false);
+    if (j.contains("volume") && (!j["volume"].is_number_integer() || j["volume"].get<int>() < 1 ||
+                                 j["volume"].get<int>() > 1000))
+    {
+        why = "good '" + d.id + "': volume is a whole number from 1 to 1000";
+        return false;
+    }
+    d.volume = j.value("volume", 1);
     const std::string supply = j.value("supply", std::string("local"));
     if (supply != "local" && supply != "imported")
     {
@@ -306,6 +315,11 @@ const std::string& Error()
 void ResetToBuiltin()
 {
     g_registry = Builtin();
+}
+
+int Volume(ResourceType g)
+{
+    return std::max(1, Def(g).volume);
 }
 
 int Count()
