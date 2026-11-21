@@ -763,6 +763,7 @@ TEST_CASE("a ship has to be bought before it can be flown")
 
     SUBCASE("buying one records it and flies it")
     {
+        f.s.dockedStationId = 1;
         f.s.account.SetMoney(GetShipCatalog()[better].price * 2.0);
         REQUIRE(f.sim.BuyShip(f.s, better));
         CHECK(f.s.Owns(better));
@@ -776,6 +777,7 @@ TEST_CASE("a ship has to be bought before it can be flown")
 
     SUBCASE("a ship already owned is not sold a second time (#109)")
     {
+        f.s.dockedStationId = 1;
         f.s.account.SetMoney(GetShipCatalog()[better].price * 3.0);
         REQUIRE(f.sim.BuyShip(f.s, better));
         REQUIRE(f.sim.SwitchShip(f.s, 0));
@@ -791,6 +793,7 @@ TEST_CASE("a ship has to be bought before it can be flown")
 
     SUBCASE("a hangar survives a reconnect")
     {
+        f.s.dockedStationId = 1;
         f.s.account.SetMoney(GetShipCatalog()[better].price * 2.0);
         REQUIRE(f.sim.BuyShip(f.s, better));
 
@@ -846,7 +849,7 @@ int CatalogIndex(const char* name)
 }
 }  // namespace
 
-TEST_CASE("a hull too small for the cargo is refused, not overloaded (#219)")
+TEST_CASE("each ship has a hold of its own, so what one carries never overloads another (#472)")
 {
     Fixture   f;
     const int hauler = CatalogIndex("Hauler");
@@ -855,43 +858,29 @@ TEST_CASE("a hull too small for the cargo is refused, not overloaded (#219)")
     REQUIRE(courier >= 0);
     const ShipType&    scout = GetShipCatalog()[0];
     const ResourceType ore = AllResourceTypes()[0];
+    f.s.dockedStationId = 1;  // ships are bought and switched at a dock
 
     f.s.account.SetMoney(GetShipCatalog()[hauler].price + GetShipCatalog()[courier].price);
+    REQUIRE(f.s.ship->AddCargo(ore, 2));
     REQUIRE(f.sim.BuyShip(f.s, hauler));
+    CHECK(f.s.ship->GetCargoAmount(ore) == 0);  // the new hold is empty
     const int load = scout.stats.cargoCapacity * 3 / Goods::Volume(ore);
     REQUIRE(f.s.ship->AddCargo(ore, load));
 
-    SUBCASE("switching to a smaller hold says why and changes nothing")
+    SUBCASE("switching to a smaller hull leaves the load aboard the big one")
     {
-        const int seq = f.s.LastEventSeq();
-        CHECK_FALSE(f.sim.SwitchShip(f.s, 0));
-        CHECK(f.s.currentShip == hauler);
-        CHECK(f.s.ship->GetCargoCapacity() == GetShipCatalog()[hauler].stats.cargoCapacity);
-        CHECK(f.s.ship->GetCargoAmount(ore) == load);
-        const std::string why = NoticeSince(f.s, seq);
-        CHECK(why.find("refused") != std::string::npos);
-        CHECK(why.find(std::to_string(load * Goods::Volume(ore))) != std::string::npos);
-    }
-
-    SUBCASE("buying a smaller hold is refused before anything is charged")
-    {
-        const double money = f.s.account.GetMoney();
-        const int    seq = f.s.LastEventSeq();
-        CHECK_FALSE(f.sim.BuyShip(f.s, courier));
-        CHECK(f.s.account.GetMoney() == doctest::Approx(money));
-        CHECK_FALSE(f.s.Owns(courier));
-        CHECK(f.s.currentShip == hauler);
-        CHECK(NoticeSince(f.s, seq).find("refused") != std::string::npos);
-    }
-
-    SUBCASE("once the cargo fits, the switch goes through")
-    {
-        f.s.ship->RemoveCargo(ore, load - scout.stats.cargoCapacity / Goods::Volume(ore));
-        const int seq = f.s.LastEventSeq();
         CHECK(f.sim.SwitchShip(f.s, 0));
         CHECK(f.s.currentShip == 0);
+        CHECK(f.s.ship->GetCargoAmount(ore) == 2);  // the starter's own
+        CHECK(f.s.berths.at(hauler).hold.Amount(ore) == load);
         CHECK(f.s.ship->GetCargoUsed() <= f.s.ship->GetCargoCapacity());
-        CHECK(NoticeSince(f.s, seq).find(scout.name) != std::string::npos);
+    }
+
+    SUBCASE("buying a smaller hull is not refused for what the current one carries")
+    {
+        REQUIRE(f.sim.BuyShip(f.s, courier));
+        CHECK(f.s.currentShip == courier);
+        CHECK(f.s.berths.at(hauler).hold.Amount(ore) == load);
     }
 }
 

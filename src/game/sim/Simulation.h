@@ -1346,7 +1346,15 @@ public:
     // The station the ship is docked at when it keeps hangars, or null with why.
     const Entity* DockedHangarStation(const ClientSession& s, std::string* why = nullptr) const;
     // A station's key in the hangars: its system, name and which of that name it is.
-    std::string   HangarKey(const SystemState& st, const Entity& station) const;
+    std::string HangarKey(const SystemState& st, const Entity& station) const;
+    // Ships have places (#472 slice 8): the key of a station or structure -- its system, name
+    // and which of that kind and name it is -- stable across restarts; what the pilot is
+    // docked at; and what a player reads for a key, "Station, System" (empty for none).
+    std::string PlaceKeyOf(const SystemState& st, const Entity& e) const;
+    std::string PlaceKeyHere(const ClientSession& s) const;
+    std::string PlaceName(const std::string& key) const;
+    // Whether a parked ship is where the pilot is docked: its place is here, or unrecorded.
+    bool          ShipIsHere(const ClientSession& s, int hull) const;
     Hangar*       HangarOf(const std::string& key, const std::string& account, bool create);
     const Hangar* FindHangar(const std::string& key, const std::string& account) const;
     // The most one pilot may keep at a station: its archetype's storage, never below the free

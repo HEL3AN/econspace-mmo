@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    70;  // 70: capacities and what is held are in volume (#472 slice 7) -- a hold, a storage, a
+    71;  // 71: ships have places (#472 slice 8) -- a PlayerView says where each owned hull is and
+         // whether it can be switched to from here;
+         // 70: capacities and what is held are in volume (#472 slice 7) -- a hold, a storage, a
          // hangar and a can count the room goods take, not their units;
          // 69: goods can be had out of a hangar at a station that refuses the pilot, by NPC
          // delivery (#472 slice 6) -- a Command's deliverFrom, a PlayerView's locked hangars and
@@ -526,7 +528,12 @@ struct PlayerView
     // The hangar, as the server sees it (#5). The client used to keep this itself, which
     // meant it survived nothing and could be disagreed with.
     std::vector<int> ownedShips;
-    int              shipIndex = 0;
+    // Where each of those hulls is (#472 slice 8): "Station, System" for one parked, empty
+    // for the one flown or one wherever the pilot docks; and whether it is where the pilot is
+    // docked now, so it can be switched to.
+    std::vector<std::string> shipPlaces;
+    std::vector<int>         shipHere;
+    int                      shipIndex = 0;
     // The design each of those hulls flies, in the same order (#279 fitting): the hull's
     // stock design until it is refitted, then one the server filed. Every id here that is
     // not a stock one has had its DesignDef sent first.

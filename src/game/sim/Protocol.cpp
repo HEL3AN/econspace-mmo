@@ -1138,6 +1138,8 @@ json PlayerJson(const Proto::PlayerView& p)
                { "ordId", p.orderId },
                { "ordDetail", p.orderDetail },
                { "ships", p.ownedShips },
+               { "shipAt", p.shipPlaces },
+               { "shipHere", p.shipHere },
                { "shipDesigns", p.shipDesigns },
                { "ship", p.shipIndex } };
     if (p.warpViaSet)  // only during the first leg of a bent warp
@@ -1278,6 +1280,8 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     p.orderId = Val(pj, "ordId", 0);
     p.orderDetail = Val(pj, "ordDetail", std::string());
     p.ownedShips = Val(pj, "ships", std::vector<int>{});
+    p.shipPlaces = Val(pj, "shipAt", std::vector<std::string>{});
+    p.shipHere = Val(pj, "shipHere", std::vector<int>{});
     p.shipDesigns = Val(pj, "shipDesigns", std::vector<std::string>{});
     p.shipIndex = Val(pj, "ship", 0);
     p.insured = Val(pj, "insured", std::vector<double>{});

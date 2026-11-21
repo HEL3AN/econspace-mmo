@@ -206,8 +206,10 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
         s.ownedShips.erase(std::remove(s.ownedShips.begin(), s.ownedShips.end(), hull),
                            s.ownedShips.end());
     s.shipDesigns.erase(hull);
+    s.berths.erase(hull);
     if (!s.Owns(0))
         s.ownedShips.insert(s.ownedShips.begin(), 0);
+    s.berths.erase(0);  // the starter is issued at home: it is the one flown now
     s.currentShip = 0;
     if (!catalog.empty())
     {
@@ -961,12 +963,35 @@ bool Simulation::SwitchShip(ClientSession& s, int catalogIndex)
     }
     if (catalogIndex == s.currentShip)
         return true;
-    // The ship in that berth, as it was last fitted (#279 fitting).
+    // A ship is where it was left (#472): switch to it from there, docked.
+    if (!s.IsDocked())
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Switch to " + t.name + " refused: dock first");
+        return false;
+    }
+    if (!ShipIsHere(s, catalogIndex))
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Switch to " + t.name + " refused: it is at " +
+                                            PlaceName(s.berths.at(catalogIndex).place) +
+                                            ", not here");
+        return false;
+    }
+    // The ship in that berth, as it was last fitted (#279 fitting), with its own hold; what
+    // this one carries stays aboard it, where it is parked.
     ShipStats stats = t.stats;
     ShipStatsFor(s.DesignOf(catalogIndex), stats);
-    if (!HoldFits(s, t.name, stats, "Switch to " + t.name))
-        return false;
+    ClientSession::Berth leaving;
+    leaving.place = PlaceKeyHere(s);
+    leaving.hold = s.ship->Hold();
+    Inventory arriving;
+    if (const auto it = s.berths.find(catalogIndex); it != s.berths.end())
+    {
+        arriving = it->second.hold;
+        s.berths.erase(it);
+    }
+    s.berths[s.currentShip] = std::move(leaving);
     s.ship->Refit(stats);
+    s.ship->Hold() = std::move(arriving);
     s.currentShip = catalogIndex;
     s.RecordEvent(Ev::Kind::Notice, "Now flying the " + t.name);
     return true;
@@ -1076,9 +1101,11 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
                       "Purchase refused: you already own a " + t.name + "; switch to it instead");
         return false;
     }
-    // Checked before charging: a purchase that cannot be flown away is not a purchase.
-    if (!HoldFits(s, t.name, t.stats, "Purchase of a " + t.name))
+    if (!s.IsDocked())
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Purchase refused: dock at a shipyard first");
         return false;
+    }
 
     // Price multiplier by the docked station's faction reputation.
     FactionId sf = Factions::Unaffiliated();
@@ -1103,7 +1130,13 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
     s.account.AddMoney(-price);
     s.ownedShips.push_back(catalogIndex);
     s.shipDesigns[catalogIndex] = t.stats.design;  // a new ship is the stock one
+    // The ship flown so far stays here with what it carries; the new one has an empty hold.
+    ClientSession::Berth left;
+    left.place = PlaceKeyHere(s);
+    left.hold = s.ship->Hold();
+    s.berths[s.currentShip] = std::move(left);
     s.ship->Refit(t.stats);
+    s.ship->ClearCargo();
     s.currentShip = catalogIndex;
     s.RecordEvent(Ev::Kind::Notice,
                   "Bought a " + t.name + " for " + Credits(price) + "; now flying it");
@@ -1914,7 +1947,18 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     for (int hull : s.ownedShips)
     {
         const std::string design = s.DesignOf(hull);
-        ships.push_back({ { "hull", hull }, { "design", design } });
+        json              entry = { { "hull", hull }, { "design", design } };
+        // A parked ship's place and what it holds (#472 slice 8).
+        if (const auto b = s.berths.find(hull); b != s.berths.end())
+        {
+            entry["at"] = b->second.place;
+            json goods = json::object();
+            for (const auto& g : b->second.hold.All())
+                goods[Goods::Id(g.first)] = g.second;
+            if (!goods.empty())
+                entry["hold"] = goods;
+        }
+        ships.push_back(std::move(entry));
         named.insert(design);
     }
     j["ships"] = ships;
@@ -2244,6 +2288,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     {
         s.ownedShips.clear();
         s.shipDesigns.clear();
+        s.berths.clear();
         const int hulls = (int)GetShipCatalog().size();
         for (const auto& v : j["ships"])
         {
@@ -2259,6 +2304,19 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             if (idx < 0 || idx >= hulls || s.Owns(idx))
                 continue;
             s.ownedShips.push_back(idx);
+            if (version >= 10 && v.is_object() && v.contains("at") && !foreign)
+            {
+                ClientSession::Berth b;
+                b.place = v.value("at", std::string());
+                if (v.contains("hold") && v["hold"].is_object())
+                    for (auto g = v["hold"].begin(); g != v["hold"].end(); ++g)
+                    {
+                        ResourceType good;
+                        if (g.value().is_number_integer() && Goods::Find(g.key(), good))
+                            b.hold.Add(good, g.value().get<int>());
+                    }
+                s.berths[idx] = std::move(b);
+            }
             const std::string stock = GetShipCatalog()[idx].stats.design;
             // A design the server no longer has -- or one that is not this hull's -- is
             // not flown as something else: the ship is its hull's stock design again, and
@@ -2320,6 +2378,12 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
 
     const int wanted = j.value("ship", 0);
     s.currentShip = s.Owns(wanted) ? wanted : s.ownedShips.front();
+    // Every owned hull but the flown one is parked (#472 slice 8): one with no berth is from
+    // an account written before ships had places, and is wherever the pilot docks.
+    s.berths.erase(s.currentShip);
+    for (int hull : s.ownedShips)
+        if (hull != s.currentShip && s.berths.count(hull) == 0)
+            s.berths[hull] = ClientSession::Berth();
     if (s.ship)
     {
         ShipStats stats = GetShipCatalog()[s.currentShip].stats;

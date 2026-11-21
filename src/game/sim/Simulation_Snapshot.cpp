@@ -134,7 +134,14 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.ownedShips = s.ownedShips;
         p.shipIndex = s.currentShip;
         for (int hull : s.ownedShips)
+        {
             p.shipDesigns.push_back(s.DesignOf(hull));
+            const auto b = s.berths.find(hull);
+            p.shipPlaces.push_back(b == s.berths.end() ? std::string()
+                                                       : PlaceName(b->second.place));
+            p.shipHere.push_back(
+                hull == s.currentShip || (s.IsDocked() && ShipIsHere(s, hull)) ? 1 : 0);
+        }
         for (const auto& [name, design] : s.designLibrary)
             p.library.push_back({ name, design });
         for (int hull : s.ownedShips)

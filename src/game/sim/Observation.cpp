@@ -879,7 +879,15 @@ std::string DescribeHangar(const View& view)
         if ((int)i == p.shipIndex)
             status = "FLYING";
         else if (owns((int)i))
+        {
             status = "owned, switch_ship for free";
+            for (size_t k = 0; k < p.ownedShips.size(); k++)
+                if (p.ownedShips[k] == (int)i && k < p.shipHere.size() && !p.shipHere[k])
+                    status =
+                        "owned, parked at " +
+                        (k < p.shipPlaces.size() ? p.shipPlaces[k] : std::string("elsewhere")) +
+                        " -- switch there";
+        }
         else if (p.docked)
             status = Fmt("for sale %.0f cr%s", t.price * mul,
                          p.money >= t.price * mul ? "" : " (cannot afford)");

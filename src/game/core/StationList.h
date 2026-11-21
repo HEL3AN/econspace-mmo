@@ -79,6 +79,10 @@ struct HangarRow
     // smaller hold than the cargo (#219), and a button that is refused says less than one
     // that says why first.
     bool holdFits = true;
+    // Where an owned hull is parked (#472 slice 8), and whether that is here: a ship is
+    // switched to only from where it was left.
+    std::string place;
+    bool        here = true;
 };
 
 // The catalog as this pilot sees it here. The starter (index 0) is always owned, as the

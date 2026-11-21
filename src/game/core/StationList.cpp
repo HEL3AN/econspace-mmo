@@ -56,7 +56,9 @@ std::vector<HangarRow> Hangar(const std::vector<ShipType>& catalog, const std::v
         const bool mine = i == 0 || std::find(owned.begin(), owned.end(), i) != owned.end();
         r.berth = i == current ? Berth::Current : mine ? Berth::Owned : Berth::ForSale;
         r.affordable = r.berth != Berth::ForSale || money >= r.price;
-        r.holdFits = cargoUsed <= t.stats.cargoCapacity;
+        // Each ship has a hold of its own (#472 slice 8): what this one carries stays aboard it.
+        r.holdFits = true;
+        (void)cargoUsed;
         rows.push_back(r);
     }
     return rows;
