@@ -385,7 +385,7 @@ void ShapeBackend::Draw(const Item& described)
         {
             Rectangle   clip{};
             const float scale =
-                PaintScaleFor(item.pos, item.size * Reach(*item.shape, item.id), clip);
+                PaintScaleFor(item.pos, item.size * Reach(*item.shape, item.id), clip, true);
             if (scale < 1.0f &&
                 PaintInto(scale, clip, [&]() { return DrawComposition(item, item.color, light); }))
                 return;
@@ -779,7 +779,7 @@ bool ShapeBackend::PaintScaled(const Item& item, const Piece& p, const Material&
                      });
 }
 
-float ShapeBackend::PaintScaleFor(Vector2 centre, float reach, Rectangle& clip) const
+float ShapeBackend::PaintScaleFor(Vector2 centre, float reach, Rectangle& clip, bool built) const
 {
     const float   w = (float)rlGetFramebufferWidth(), h = (float)rlGetFramebufferHeight();
     const Vector2 c = GetWorldToScreen2D(centre, view_);
@@ -788,7 +788,9 @@ float ShapeBackend::PaintScaleFor(Vector2 centre, float reach, Rectangle& clip) 
     const float   x1 = std::fmin(w, c.x + r), y1 = std::fmin(h, c.y + r);
     clip = { x0, y0, std::fmax(0.0f, x1 - x0), std::fmax(0.0f, y1 - y0) };
     const float area = clip.width * clip.height;
-    const float budget = materials_ != nullptr ? materials_->PaintBudget() : area;
+    const float budget = materials_ == nullptr ? area
+                         : built               ? materials_->BuiltBudget()
+                                               : materials_->PaintBudget();
     if (area <= budget || area <= 0.0f)
         return 1.0f;
     // In eighths, so the target is not resized every frame as a body grows.

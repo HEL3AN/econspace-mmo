@@ -70,6 +70,10 @@ struct TreatmentConfig
     // screen costs: one is a 1280x720 screen at full resolution and 1080p at five eighths.
     // Lower it on an integrated GPU; it is not part of the look, and never below a quarter.
     float paintBudget = 1.0f;
+    // The same for a built thing -- a station, a ship, an outpost (#516) -- which is painted
+    // whole at reduced resolution past this. A budget of its own (owner, 2026-10-23): a station
+    // seen close up is not softened by what a planet may cost, and the two are tuned apart.
+    float builtBudget = 1.0f;
 
     // In order. The order is a decision, not a detail: bloom before pixelation gives soft
     // fat pixels, after it gives hard pixel edges that glow. They are different games to

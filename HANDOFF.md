@@ -154,7 +154,7 @@ the editor take their view from arguments and save it themselves: `--shot f.png 
 on the client, `shot out.png` in the editor, `--click X Y FRAME` for a click (examples in
 CLAUDE.md). Screenshot runs open their window hidden. For a built surface (#516) a gallery
 shot also takes `light A` (radians: put the night side in view), `livery ID`, `heading H`,
-`damage D`, `fleet N` (N of the card at once, for `perf`) and `budget MP` (the paint budget in
+`damage D`, `fleet N` (N of the card at once, for `perf`) and `budget MP` (both paint budgets in
 place of look.json's). The owner works in VS Code, where file
 cards do not render — open a screenshot with `Start-Process` rather than only sending it.
 

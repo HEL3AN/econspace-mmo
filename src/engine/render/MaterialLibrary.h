@@ -72,6 +72,9 @@ public:
     // the player's setting (TreatmentConfig::paintBudget), handed over by whoever owns both.
     void  SetPaintBudget(float pixels) { paintBudget_ = pixels; }
     float PaintBudget() const { return paintBudget_; }
+    // ...and what a built thing may (TreatmentConfig::builtBudget, #516).
+    void  SetBuiltBudget(float pixels) { builtBudget_ = pixels; }
+    float BuiltBudget() const { return builtBudget_; }
 
 private:
     struct Compiled
@@ -92,6 +95,7 @@ private:
     bool                                    disabled_ = false;
     bool                                    paintingOff_ = false;
     float                                   paintBudget_ = 1000000.0f;
+    float                                   builtBudget_ = 1000000.0f;
     Texture2D                               noise_{};
     RenderTexture2D                         paint_{};
 };
