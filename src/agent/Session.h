@@ -66,7 +66,11 @@ public:
     // if no acknowledgement came in time (the server may be throttling this client).
     bool SendAndConfirm(const Proto::Command& c, double timeoutSeconds);
 
-    const Proto::Snapshot&                    Snapshot() const { return snapshot_; }
+    const Proto::Snapshot& Snapshot() const { return snapshot_; }
+    // The last assets view the server sent (#472 slice 9), kept because it comes once.
+    const std::vector<Proto::AssetView>&      Assets() const { return assets_; }
+    bool                                      HasAssets() const { return haveAssets_; }
+    void                                      ForgetAssets() { haveAssets_ = false; }
     const std::map<int, Proto::EntityLayout>& Layout() const { return layout_.byId; }
     const Proto::GalaxyState&                 Galaxy() const { return galaxy_; }
     // The galaxy index as the server sent it (#206): names, map positions and links. Not
@@ -119,6 +123,8 @@ public:
 private:
     std::unique_ptr<Net::TcpConnection> conn_;
     Proto::Snapshot                     snapshot_;
+    std::vector<Proto::AssetView>       assets_;
+    bool                                haveAssets_ = false;
     Proto::SnapshotReceiver             snapIn_;  // the states deltas are based on (#349)
     Proto::LayoutMirror                 layout_;  // kept current by deltas (#38)
     Proto::GalaxyState                  galaxy_;

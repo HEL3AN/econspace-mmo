@@ -72,6 +72,8 @@ std::string DescribeHangar(const View& view);
 // lists as the inventory window (InventoryList).
 // In space, the cans and wrecks within reach too; `account` is who asks, whose own cans take
 // more (#472).
+// Everything the pilot keeps, place by place, as the server sent it on request (#472 slice 9).
+std::string DescribeAssets(const std::vector<Proto::AssetView>& assets);
 std::string DescribeInventory(const View& view, const std::string& account = std::string());
 
 // --- Fitting (#279) ---------------------------------------------------------------------

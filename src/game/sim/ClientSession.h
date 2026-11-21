@@ -56,6 +56,8 @@ struct ClientSession
         Inventory   hold;
     };
     std::map<int, Berth> berths;  // by hull; the flown ship is not in it
+    // The pilot asked for the assets view (#472 slice 9): the next snapshot carries it, once.
+    mutable bool assetsDue = false;
 
     bool Owns(int catalogIndex) const
     {

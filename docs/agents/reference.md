@@ -245,6 +245,12 @@ Every place that holds goods for you where you are: your hold, and docked at you
 
 No arguments.
 
+### `assets`
+
+Everything you keep, place by place: your hangars at stations, the storage and hangar of structures you may use, parked ships and what they carry, and goods in transit -- each with the system to route there (the route tool takes the system id). Hangars at stations that refuse you are marked, and request_delivery brings them where you are docked.
+
+No arguments.
+
 ### `hangar`
 
 The ships you own, the one you are flying, and what every other hull costs at this station -- at the price you would actually pay, which depends on your standing with the station's owner.

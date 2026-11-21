@@ -412,6 +412,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         }
         if (c.rentHangar >= 0)  // a hangar's rented room (#472)
             sim.RentHangar(s, c.rentHangar);
+        if (c.requestAssets)  // (#472 slice 9)
+            s.assetsDue = true;
         if (!c.deliverFrom.empty())  // goods fetched out of a hostile station (#472 slice 6)
             sim.RequestDelivery(s, c.deliverFrom, c.deliverType, c.deliverAmount);
         if (c.storeType >= 0 && c.storeAmount > 0)

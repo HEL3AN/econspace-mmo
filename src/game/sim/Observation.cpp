@@ -845,6 +845,28 @@ std::string DescribeInventory(const View& view, const std::string& account)
     return out;
 }
 
+std::string DescribeAssets(const std::vector<Proto::AssetView>& assets)
+{
+    if (assets.empty())
+        return "ASSETS: you keep nothing anywhere\n";
+    std::string out = Fmt("ASSETS in %d places\n", (int)assets.size());
+    const auto& types = AllResourceTypes();
+    for (const Proto::AssetView& a : assets)
+    {
+        std::string goods;
+        for (size_t i = 0; i < types.size() && i < a.goods.size(); i++)
+            if (a.goods[i] > 0)
+                goods += Fmt("%s%s %d", goods.empty() ? "" : ", ", ResourceName(types[i]).c_str(),
+                             a.goods[i]);
+        out += Fmt("  %s [%s]%s%s%s: %s%s%s\n", a.name.c_str(), a.kind.c_str(),
+                   a.systemName.empty() ? "" : " in ", a.systemName.c_str(),
+                   a.system.empty() ? "" : Fmt(" (%s)", a.system.c_str()).c_str(),
+                   goods.empty() ? "empty" : goods.c_str(), a.note.empty() ? "" : " -- ",
+                   a.note.c_str());
+    }
+    return out;
+}
+
 std::string DescribeHangar(const View& view)
 {
     if (view.snapshot == nullptr)

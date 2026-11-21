@@ -634,6 +634,8 @@ std::string EncodeCommand(const Command& c)
     if (!c.buyTo.empty())
         j["buyTo"] = c.buyTo;
     number("rentHangar", c.rentHangar, -1);
+    if (c.requestAssets)  // (#472 slice 9)
+        j["assets"] = true;
     if (!c.deliverFrom.empty())  // (#472 slice 6)
     {
         j["dvFrom"] = c.deliverFrom;
@@ -901,6 +903,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadText(j, "sellFrom", out.sellFrom);
     ok = ok && ReadText(j, "buyTo", out.buyTo);
     ok = ok && ReadInt(j, "rentHangar", -1, 0, ID_MAX, out.rentHangar);
+    out.requestAssets = j.value("assets", false);
     ok = ok && ReadText(j, "dvFrom", out.deliverFrom);
     ok = ok && ReadInt(j, "dvType", -1, 0, resources - 1, out.deliverType);
     ok = ok && ReadInt(j, "dvAmt", 0, 0, ID_MAX, out.deliverAmount);
@@ -1208,6 +1211,19 @@ json PlayerJson(const Proto::PlayerView& p)
             j["store"]["div"] = divs;
         }
     }
+    if (p.hasAssets)  // (#472 slice 9)
+    {
+        json as = json::array();
+        for (const Proto::AssetView& a : p.assets)
+            as.push_back({ { "kind", a.kind },
+                           { "name", a.name },
+                           { "sys", a.system },
+                           { "sysName", a.systemName },
+                           { "t", a.goods },
+                           { "note", a.note },
+                           { "locked", a.locked } });
+        j["assets"] = as;
+    }
     if (!p.locked.empty())  // (#472 slice 6)
     {
         json lk = json::array();
@@ -1345,6 +1361,27 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     }
     p.locked.clear();
     p.shipments.clear();
+    p.assets.clear();
+    p.hasAssets = false;
+    const auto assets = pj.find("assets");
+    if (assets != pj.end() && assets->is_array())
+    {
+        p.hasAssets = true;
+        for (const json& aj : *assets)
+        {
+            if (!aj.is_object())
+                continue;
+            Proto::AssetView a;
+            a.kind = Val(aj, "kind", std::string());
+            a.name = Val(aj, "name", std::string());
+            a.system = Val(aj, "sys", std::string());
+            a.systemName = Val(aj, "sysName", std::string());
+            a.goods = Val(aj, "t", std::vector<int>{});
+            a.note = Val(aj, "note", std::string());
+            a.locked = Val(aj, "locked", false);
+            p.assets.push_back(std::move(a));
+        }
+    }
     const auto lock = pj.find("lock");
     if (lock != pj.end() && lock->is_array())
         for (const json& lj : *lock)
