@@ -47,28 +47,28 @@
             "variants": [
                 { "id": "greenhouse", "shape": [
                     {"form": "disc", "radius": 0.9, "role": "panel"},
-                    {"form": "disc", "radius": 0.78, "role": "hull", "tint": [[70, 140, 70], [90, 150, 60], [60, 120, 90]], "alpha": [0.75, 0.9]},
+                    {"form": "disc", "radius": 0.78, "role": "hull", "tint": [[70, 140, 70], [90, 150, 60], [60, 120, 90]], "material": "glass", "alpha": [0.75, 0.9]},
                     {"form": "bar", "angle": [0, 30], "length": 1.56, "width": 0.05, "role": "trim", "alpha": 0.7, "row": {"count": [2, 3], "step": [0.0, 0.0], "turn": 60}},
                     {"form": "disc", "radius": 0.035, "role": "light", "tint": [[255, 120, 220], [255, 150, 200]], "alpha": 0.6, "onlyDark": true, "chance": 0.6, "row": {"count": 8, "step": [-0.146, 0.354], "turn": 45, "centred": true}},
                     {"form": "ring", "radius": 0.9, "width": 0.08, "role": "trim"}
                 ]},
                 { "id": "observation", "shape": [
                     {"form": "disc", "radius": 0.9, "role": "trim"},
-                    {"form": "disc", "radius": 0.74, "role": "hull", "tint": [[30, 45, 70], [25, 35, 50]], "alpha": 0.9},
+                    {"form": "disc", "radius": 0.74, "role": "hull", "tint": [[30, 45, 70], [25, 35, 50]], "material": "glass", "alpha": 0.9},
                     {"form": "arc", "radius": 0.55, "width": 0.08, "from": [-160, -130], "to": [-60, -30], "angle": [-30, 30], "role": "trim", "alpha": 0.5},
                     {"form": "arc", "radius": 0.84, "width": 0.05, "from": [0, 40], "to": [140, 180], "role": "light", "tint": [[200, 225, 255], [255, 220, 170]], "alpha": 0.6},
                     {"form": "bar", "length": 0.4, "width": 0.05, "role": "trim", "alpha": 0.4, "chance": 0.5}
                 ]},
                 { "id": "twin", "shape": { "vars": { "a": [0.36, 0.46], "b": [0.3, 0.44] }, "parts": [
                     {"form": "bar", "length": 0.9, "width": 0.22, "role": "panel"},
-                    {"form": "disc", "at": [-0.5, 0.0], "radius": "$a", "role": "hull", "tint": [[70, 140, 70], [90, 150, 60]], "alpha": 0.85},
+                    {"form": "disc", "at": [-0.5, 0.0], "radius": "$a", "role": "hull", "tint": [[70, 140, 70], [90, 150, 60]], "material": "glass", "alpha": 0.85},
                     {"form": "ring", "at": [-0.5, 0.0], "radius": "$a", "width": 0.1, "role": "trim"},
-                    {"form": "disc", "at": [0.5, 0.0], "radius": "$b", "role": "hull", "tint": [[70, 140, 70], [30, 45, 70]], "alpha": 0.85, "group": "second", "chance": 0.75},
+                    {"form": "disc", "at": [0.5, 0.0], "radius": "$b", "role": "hull", "tint": [[70, 140, 70], [30, 45, 70]], "material": "glass", "alpha": 0.85, "group": "second", "chance": 0.75},
                     {"form": "ring", "at": [0.5, 0.0], "radius": "$b", "width": 0.1, "role": "trim", "group": "second", "chance": 0.75}
                 ]}},
                 { "id": "cluster", "shape": { "vars": { "bend": [20, 45], "shrink": [0.72, 0.88], "glass": [[70, 140, 70], [90, 150, 60], [30, 45, 70]] }, "parts": [
                     {"form": "bar", "length": 0.62, "width": 0.14, "role": "panel", "row": {"count": 2, "step": [0.62, 0.0], "turn": "$bend", "taper": "$shrink", "centred": true}},
-                    {"form": "disc", "radius": 0.42, "role": "hull", "tint": "$glass", "alpha": 0.85, "row": {"count": 3, "step": [0.62, 0.0], "turn": "$bend", "taper": "$shrink", "centred": true}},
+                    {"form": "disc", "radius": 0.42, "role": "hull", "tint": "$glass", "material": "glass", "alpha": 0.85, "row": {"count": 3, "step": [0.62, 0.0], "turn": "$bend", "taper": "$shrink", "centred": true}},
                     {"form": "ring", "radius": 0.42, "width": 0.1, "role": "trim", "row": {"count": 3, "step": [0.62, 0.0], "turn": "$bend", "taper": "$shrink", "centred": true}}
                 ]}}
             ]

@@ -261,7 +261,7 @@
             "color": [200, 200, 210, 255],
             "layer": 4,
             "size": 500,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 8, "radius": 0.5, "angle": 22.5, "role": "hull", "pitch": 0.2},
@@ -298,7 +298,7 @@
             "color": [200, 200, 210, 255],
             "layer": 4,
             "size": 600,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "lattice", "at": [0.1, -0.7], "angle": 180, "mirror": true, "length": 2.1, "width": 0.3, "count": 9, "role": "panel", "pitch": 0.2},
@@ -337,7 +337,7 @@
             "color": [200, 200, 210, 255],
             "layer": 4,
             "size": 600,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 4, "radius": 0.62, "angle": 45, "role": "hull", "pitch": 0.2},
