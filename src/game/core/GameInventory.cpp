@@ -284,9 +284,9 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
             int                            n = 0;
             for (int g : lk.goods)
                 n += g;
-            L.Text(
-                TextFormat("%s, %s: %d units out of reach", lk.name.c_str(), lk.system.c_str(), n),
-                TextStyle::Small().Tint(t.colors.bad).Wrap());
+            L.Text(TextFormat("%s, %s: %d units%s", lk.name.c_str(), lk.system.c_str(), n,
+                              lk.hostile ? " out of reach" : ""),
+                   TextStyle::Small().Tint(lk.hostile ? t.colors.bad : t.colors.dim).Wrap());
             if (lk.why.empty())
             {
                 if (L.Button("fetch_" + std::to_string(i),

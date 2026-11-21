@@ -103,18 +103,27 @@ TEST_CASE(
     w.s->dockedStationId = 990001;
     REQUIRE(w.s->ship->AddCargo(Good::Iron(), 40));
     REQUIRE(w.sim.MoveGoods(*w.s, "hold", "hangar", Good::Iron().Index(), 40) == 40);
-    // Reachable while the station lets the pilot in: nothing to fetch.
+    // Docked elsewhere, the hangar is listed with the plain quote while the station lets the
+    // pilot in: the service carries from any hangar (slice 11), at a surcharge only to a hater.
     w.s->dockedStationId = 990002;
+    const Proto::PlayerView plain = w.sim.BuildSnapshot(*w.s, w.st->id).player;
+    REQUIRE(plain.locked.size() == 1);
+    CHECK_FALSE(plain.locked[0].hostile);
+    const double plainFee = plain.locked[0].fee;
+    int          seq = w.s->LastEventSeq();
+    // ...and the one at the station they are docked at needs no freight.
+    w.s->dockedStationId = 990001;
     CHECK(w.sim.BuildSnapshot(*w.s, w.st->id).player.locked.empty());
-    int seq = w.s->LastEventSeq();
     CHECK_FALSE(w.sim.RequestDelivery(*w.s, w.sim.Hangars().begin()->first, -1, 0));
+    w.s->dockedStationId = 990002;
 
     // The Traders Guild now hates the pilot: the hangar is listed, with its price.
     w.s->account.SetReputation(Fac::TradersGuild(), -100.0f);
     const Proto::PlayerView p = w.sim.BuildSnapshot(*w.s, w.st->id).player;
     REQUIRE(p.locked.size() == 1);
     CHECK(p.locked[0].name == "Old Depot");
-    CHECK(p.locked[0].fee > 0.0);
+    CHECK(p.locked[0].hostile);
+    CHECK(p.locked[0].fee > plainFee);  // the hostility surcharge, on the same route
     const double fee = p.locked[0].fee;
     const double before = w.s->account.GetMoney();
 
