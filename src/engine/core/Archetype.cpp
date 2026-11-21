@@ -86,7 +86,8 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
     // is the same silent wrong object an unknown component is (#191).
     if (!OnlyKnownKeys(j,
                        { "id", "name", "kind", "glyph", "sprite", "layer", "style", "material",
-                         "shape", "design", "light", "color", "size", "world", "components" },
+                         "livery", "shape", "design", "light", "color", "size", "world",
+                         "components" },
                        err))
     {
         err = "archetype '" + a.id + "': " + err;
@@ -117,6 +118,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         return false;
     }
     a.visual.material = j.value("material", std::string());
+    a.visual.livery = j.value("livery", std::string());
 
     // A ship drawn from a design (#279) is the design's shape: written twice, the two would
     // disagree about what the ship is.

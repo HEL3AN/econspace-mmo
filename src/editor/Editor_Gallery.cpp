@@ -210,7 +210,8 @@ Render::Item Editor::GalleryItem(const Archetype& a, Vector2 pos, float size) co
     it.heading = galleryHeading_;
     it.thrusting = galleryThrusting_;
     it.id = gallerySeed_;
-    it.livery = galleryLivery_;
+    if (!galleryLivery_.empty())  // else the archetype's own, as in the game
+        it.livery = galleryLivery_;
     return it;
 }
 

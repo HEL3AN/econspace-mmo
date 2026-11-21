@@ -106,6 +106,10 @@ struct Visual
     // object is drawn plain, which is what everything did before materials existed and
     // what everything still does on a machine whose driver refused the shader.
     std::string material;
+    // Whose style a built thing is in (#516): a livery id from data/materials.json, for what
+    // no faction owns -- a wreck, a gate. Whoever does own a thing paints it in their own
+    // culture instead; empty means the default livery.
+    std::string livery;
 };
 
 // One entry of the registry.
