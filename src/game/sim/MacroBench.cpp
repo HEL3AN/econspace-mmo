@@ -452,10 +452,60 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
         const int passes = (int)(days * 86400.0 / 2.0);
         const int every = std::max(1, (int)(everyHours * 1800.0));
         const int shock = shockHours > 0.0 ? (int)(shockHours * 1800.0) : -1;
+        // How the sieges went (#557): read off the chronicle as each entry is written -- one
+        // sent, laid, and then ended one of four ways, timed from the sending to the end by
+        // the system, which holds one at a time.
+        struct SiegeTally
+        {
+            int    sent = 0, laid = 0, destroyed = 0, gaveUp = 0, repelled = 0, voided = 0;
+            double lengthSum = 0.0;
+            int    lengths = 0;
+            std::map<std::string, double> begun;
+            long long                     seen = 0;
+        } sieges;
+        auto tallySieges = [&]
+        {
+            for (const ChronicleEntry& e : sim.Chronicle())
+            {
+                if (e.seq <= sieges.seen)
+                    continue;
+                sieges.seen = e.seq;
+                if (e.kind != "siege")
+                    continue;
+                auto has = [&](const char* w) { return e.text.find(w) != std::string::npos; };
+                auto ended = [&](int& counter)
+                {
+                    counter++;
+                    const auto b = sieges.begun.find(e.system);
+                    if (b != sieges.begun.end())
+                    {
+                        sieges.lengthSum += e.time - b->second;
+                        sieges.lengths++;
+                        sieges.begun.erase(b);
+                    }
+                };
+                if (has(" sent "))
+                {
+                    sieges.sent++;
+                    sieges.begun[e.system] = e.time;
+                }
+                else if (has("laid siege"))
+                    sieges.laid++;
+                else if (has("destroyed the"))
+                    ended(sieges.destroyed);
+                else if (has("gave up"))
+                    ended(sieges.gaveUp);
+                else if (has("drove the"))
+                    ended(sieges.repelled);
+                else if (has("turned back") || has("ended the siege"))
+                    ended(sieges.voided);
+            }
+        };
         for (int pass = 0; pass <= passes; pass++)
         {
             if (pass > 0)
                 sim.MaintainWorld(2.0f);
+            tallySieges();
             // A war everywhere at once: every holding left with a third of its ships.
             if (pass == shock)
             {
@@ -495,6 +545,11 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                 }
             }
         }
+        printf("\nSieges: %d sent, %d laid, %d destroyed an outpost, %d gave up, %d driven off, "
+               "%d void; %d still running; mean length %.1f h\n",
+               sieges.sent, sieges.laid, sieges.destroyed, sieges.gaveUp, sieges.repelled,
+               sieges.voided, (int)sieges.begun.size(),
+               sieges.lengths > 0 ? sieges.lengthSum / sieges.lengths / 3600.0 : 0.0);
         // What each side ended up flying, by weapon family and hull line, against the style of
         // the regions it holds: the regional difference the slice is for.
         printf("\nAt the end, what each faction's warships are, and each region's style:\n\n");
