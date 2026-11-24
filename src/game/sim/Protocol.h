@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    76;  // 76: modules are goods (#472 slice 10) -- the goods registry has ten more entries, every
+    77;  // 77: a corporation's enemy list (#466) -- a CorpAct "enemy" (name: a faction or a
+         // corporation's ticker; value: add or remove), and a CorpView's `enemies`;
+         // 76: modules are goods (#472 slice 10) -- the goods registry has ten more entries, every
          // per-good vector is wider, and a refit draws on the hangar, the hold and the market;
          // 75: a PlayerView's shipments travel as `freight`: they were written as `ship`, the
          // flown hull's key, and a delivery on its way made the client fly the starter (#554);
@@ -1057,6 +1059,14 @@ struct PatrolView
     double      upkeep = 0.0;
 };
 
+// One whom a corporation declared hostile (#466): a faction or another corporation.
+struct EnemyView
+{
+    std::string kind;  // "faction" or "corp"
+    std::string id;    // the faction's registry id, or the corporation's ticker
+    std::string name;
+};
+
 struct CorpMember
 {
     std::string pilot;
@@ -1096,6 +1106,9 @@ struct CorpView
     std::map<std::string, double> police;
     // Its patrols (#431 slice 12), by system id.
     std::vector<PatrolView> patrols;
+    // Whom it declared hostile (#466): what its patrols and armed structures on "enemies" fire
+    // on first, beside the summed standing.
+    std::vector<EnemyView> enemies;
 
     // This pilot's role in it; empty when in none.
     std::string RoleOf(const std::string& pilot) const;

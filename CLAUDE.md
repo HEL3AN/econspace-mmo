@@ -488,6 +488,9 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   A guard's fights are `GuardHunts`/`GuardEngages`, never the faction matrix: never a member,
   always back at whoever shot a member or the patrol, first as the patrol's `Engage` mode
   says. Guards hold fire on a siege's warships like everyone else; the siege counts them.
+  A corporation's **enemy list** (#466, `Corp::enemies`, verb `enemy`) is read beside the summed
+  standing by patrols and structures in "enemies" mode, as an OR, for factions (`f:<id>`) and
+  corporations (`c<N>`); a declaration never makes a first strike lawful.
 - **A ship flies a design, and a player's design is named by its content** (#279). A refit
   files `Ships::PlayerFit`'s design under `Ships::ContentId` and the ship flies that id; the
   snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot

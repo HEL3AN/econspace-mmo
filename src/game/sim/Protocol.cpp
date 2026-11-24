@@ -2671,6 +2671,13 @@ std::string EncodeCorpView(const CorpView& v)
                                     { "upkeep", p.upkeep } });
             j["patrols"] = std::move(patrols);
         }
+        if (!v.enemies.empty())
+        {
+            json enemies = json::array();
+            for (const EnemyView& e : v.enemies)
+                enemies.push_back({ { "kind", e.kind }, { "id", e.id }, { "name", e.name } });
+            j["enemies"] = std::move(enemies);
+        }
     }
     // A pilot in no corporation holds licences of their own (#509).
     if (!v.licences.empty())
@@ -2770,6 +2777,15 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
                 p.upkeep = Val(pj, "upkeep", 0.0);
                 if (!p.system.empty())
                     out.patrols.push_back(std::move(p));
+            }
+    const auto enemies = j.find("enemies");
+    if (enemies != j.end() && enemies->is_array())
+        for (const json& ej : *enemies)
+            if (ej.is_object())
+            {
+                EnemyView e{ TextOf(ej, "kind"), TextOf(ej, "id"), TextOf(ej, "name") };
+                if (!e.id.empty())
+                    out.enemies.push_back(std::move(e));
             }
     const auto invites = j.find("invites");
     if (invites != j.end() && invites->is_array())

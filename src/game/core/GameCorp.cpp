@@ -236,6 +236,24 @@ bool Game::CorpCommand(const std::string& text)
         else
             act.value = Trim(second + " " + more);
     }
+    else if (verb == "enemy")
+    {
+        // A faction's name (it may have spaces) or a corporation's ticker; `remove` last drops it
+        // from the list (#466).
+        std::string  who = Trim(rest);
+        const size_t cut = who.find_last_of(' ');
+        if (cut != std::string::npos && (Lower(who.substr(cut + 1)) == "remove"))
+        {
+            act.value = "remove";
+            who = Trim(who.substr(0, cut));
+        }
+        act.name = who;
+        if (who.empty())
+        {
+            ChatNotice("To declare an enemy: /corp enemy <faction or ticker> [remove]");
+            return true;
+        }
+    }
     else if (verb == "police")
     {
         // The budget last: a system's name may have spaces in it.
@@ -287,7 +305,8 @@ bool Game::CorpCommand(const std::string& text)
                    "police <system> <cr an "
                    "hour>|none | patrol <system> <ships>|none [design=<name>] "
                    "[engage=<mode>] | transfer <structure id> <pilot>|[TICKER] | take "
-                   "<structure id> | division <id> view|put|take <role>|<new name>; /c <text> "
+                   "<structure id> | division <id> view|put|take <role>|<new name> | enemy "
+                   "<faction or ticker> [remove]; /c <text> "
                    "talks to the "
                    "corporation");
         return true;
@@ -450,6 +469,42 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                     L.Text("/corp patrol <system> <ships> [design=<name>] [engage=<mode>] keeps "
                            "a patrol where the corporation holds or has a structure",
                            TextStyle::Label());
+                // Whom the officers declared hostile (#466): its patrols and armed structures
+                // on "enemies" fire first on these, beside the summed standing.
+                for (const Proto::EnemyView& e : corpView_.enemies)
+                {
+                    L.Field(e.kind == "corp" ? "Enemy, corporation" : "Enemy, faction",
+                            e.kind == "corp" ? e.name + " [" + e.id + "]" : e.name, t.colors.text);
+                    if (leads && L.Button("noenemy_" + e.kind + e.id, "Remove"))
+                        acts.push_back(
+                            { "enemy", e.kind == "corp" ? e.id : e.name, "", "", "", "remove" });
+                }
+                if (corpView_.enemies.empty())
+                    L.Field("Enemies", "none declared", t.colors.dim);
+                if (leads)
+                {
+                    L.Row(
+                        Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                        [&]
+                        {
+                            Ui::TextFieldOptions opt;
+                            opt.placeholder = "faction or ticker";
+                            opt.maxLength = 32;
+                            const Ui::EditResult r = L.TextField("enemy", corpEnemy_, opt);
+                            if ((L.Button("setenemy", "Declare hostile", false,
+                                          !Trim(corpEnemy_).empty()) ||
+                                 r.submitted) &&
+                                !Trim(corpEnemy_).empty())
+                            {
+                                acts.push_back({ "enemy", Trim(corpEnemy_), "", "", "", "add" });
+                                corpEnemy_.clear();
+                            }
+                        });
+                    L.Tooltip("setenemy", "A faction or another corporation (its ticker) the "
+                                          "corporation holds hostile: patrols and structures on "
+                                          "enemies fire on its ships first. Firing first on a "
+                                          "lawful faction's ships is still a crime");
+                }
                 if (leads)
                 {
                     L.Row(

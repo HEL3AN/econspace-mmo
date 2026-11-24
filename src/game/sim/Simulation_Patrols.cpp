@@ -382,6 +382,9 @@ bool Simulation::GuardHunts(const SystemState& st, const NpcShip& g, const Clien
             for (FactionId f : Factions::All())
                 if (Factions::IsLawful(f) && p.account.IsWanted(f))
                     return true;
+            // ...and a pilot of a corporation it declared hostile (#466).
+            if (const Corps::Corp* own = corps_.Find(g.GetCorp()))
+                return own->HostileToCorp(corps_.IdOf(p.accountName));
             return false;
         case Engage::Strangers: return !r.Allows(p.accountName);
     }
@@ -406,9 +409,17 @@ bool Simulation::GuardEngages(const SystemState& st, const NpcShip& g, const Npc
         case Engage::Return: return false;
         case Engage::Enemies:
             // A faction the corporation, its members together, stands badly with
-            // (Decided after the rounds, 2); another corporation's guard is nobody's enemy.
-            return n.GetRole() != NpcRole::Guard &&
-                   PartyStanding(g.GetCorp(), n.GetFaction()) < r.threshold;
+            // (Decided after the rounds, 2), or its officers declared hostile (#466); another
+            // corporation's guard is its corporation's enemy or nobody's.
+            if (n.GetRole() == NpcRole::Guard)
+            {
+                const Corps::Corp* own = corps_.Find(g.GetCorp());
+                return own != nullptr && own->HostileToCorp(n.GetCorp());
+            }
+            if (const Corps::Corp* own = corps_.Find(g.GetCorp());
+                own != nullptr && own->HostileTo(n.GetFaction()))
+                return true;
+            return PartyStanding(g.GetCorp(), n.GetFaction()) < r.threshold;
         case Engage::Strangers: return n.GetRole() == NpcRole::Guard || !r.Allows(n.GetFaction());
     }
     return false;

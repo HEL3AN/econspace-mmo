@@ -159,6 +159,16 @@ bool     ValidDivisionId(const std::string& id);
 Division DefaultDivision(const std::string& id);
 bool     DivisionRightValid(const std::string& right);  // "view", "put" or "take"
 
+// The enemy list's keys (#466): a faction is "f:<id>" by its registry id, another corporation
+// is its own id ("c<N>"), the same two forms a licence's holder uses. A declaration is the
+// leadership's word, not the sum of its members' standings, and it names who the corporation's
+// patrols and armed structures on "enemies" fire on first.
+inline constexpr size_t ENEMIES_MAX = 32;
+inline std::string      EnemyKeyOf(FactionId f)
+{
+    return "f:" + Factions::Id(f);
+}
+
 struct Corp
 {
     std::string         id;  // "c<N>", stable for the corporation's life
@@ -205,6 +215,14 @@ struct Corp
     // DefaultDivision says.
     std::map<std::string, Division> divisions;
     Division                        DivisionOf(const std::string& id) const;
+    // Whom it declared hostile (#466), by EnemyKeyOf's keys and corporation ids. Set by its CEO
+    // or a director; kept in corps.json, so it works while everyone is offline.
+    std::set<std::string> enemies;
+    bool                  HostileTo(FactionId f) const { return enemies.count(EnemyKeyOf(f)) != 0; }
+    bool                  HostileToCorp(const std::string& id) const
+    {
+        return !id.empty() && enemies.count(id) != 0;
+    }
 
     const Member* Find(const std::string& account) const;
     const Member* Ceo() const;
@@ -229,7 +247,8 @@ bool ValidTicker(const std::string& ticker, std::string& why);
 // value), a structure handed over or an abandoned one taken (#468), which the world answers;
 // and "deposit" (value: credits, from the pilot's own money; any member) and "withdraw"
 // (value: credits, to the pilot; the CEO or a director, no cap) -- the treasury's (#509), which
-// the world answers too, as it holds the pilot's money.
+// the world answers too, as it holds the pilot's money; and "enemy" (name: a faction or a
+// corporation's ticker; value: add or remove), the corporation's enemy list (#466).
 struct Act
 {
     std::string verb;
@@ -302,6 +321,12 @@ public:
                       const std::string& designName, const std::string& engage,
                       const std::string& threshold, const std::string& allow, int systemMax,
                       int corpMax, bool allowed);
+
+    // A faction or a corporation declared hostile, or dropped from the list (#466), by the CEO
+    // or a director. `target` is a faction's id or name, or a corporation's ticker; `value` is
+    // "add" (or empty) or "remove". Pirates are everyone's enemy already and one's own
+    // corporation is never one's enemy; both are refused.
+    Outcome SetEnemy(const std::string& by, const std::string& target, const std::string& value);
 
     // A storage division renamed or its rights moved (#472 slice 5), by the CEO or a director:
     // `label` (empty: as it was) and, when `right` is "view", "put" or "take", the lowest

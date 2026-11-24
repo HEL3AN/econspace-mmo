@@ -180,6 +180,16 @@ std::string CorpText(const Proto::CorpView& v)
         }
         out += "Holds: " + (held.empty() ? std::string("no system") : held) + "\n";
         out += PatrolText(v);  // its own patrols (#431 slice 12)
+        // Whom its officers declared hostile (#466): what patrols and structures on enemies
+        // fire on first, beside the summed standing.
+        if (!v.enemies.empty())
+        {
+            out += "Declared enemies:";
+            for (const Proto::EnemyView& e : v.enemies)
+                out += std::string(" ") + (e.kind == "corp" ? "corporation [" + e.id + "] " : "") +
+                       e.name + ";";
+            out += "\n";
+        }
         // Its treasury's ledger (#509), newest first: pilots' deposits and withdrawals beside
         // the fees, rent, police and patrol upkeep that come and go by themselves.
         if (!v.ledger.empty())
@@ -893,10 +903,20 @@ std::vector<Tool> BuildTools()
           "by default Shared is every member's, Stock is put into by members and taken from "
           "by directors, Command is the directors'. Moves name them as inventory lists them -- "
           "storage, storage:stock, storage:command -- and every take is a line in the "
-          "corporation's journal. The answer is the server's.",
-          Obj({ { "action", Str("create, invite, join, decline, leave, kick, role, tax, docking, "
-                                "police, patrol, transfer, take, deposit, withdraw or division") },
-                { "name", Str("create: the corporation's name, 3 to 24 characters") },
+          "corporation's journal. 'enemy' (name: a faction's name or id, or another corporation's "
+          "ticker; value: add, the default, or remove; CEO or director) declares it hostile "
+          "(#466): "
+          "your corporation's patrols and armed structures set to 'enemies' fire on its ships "
+          "first, in addition to the factions your members' standings together put below the "
+          "threshold. A declaration is not a licence: firing first on a lawful faction's ships "
+          "under its law is still a crime charged to the structure's owner. The answer is the "
+          "server's.",
+          Obj({ { "action",
+                  Str("create, invite, join, decline, leave, kick, role, tax, docking, "
+                      "police, patrol, transfer, take, deposit, withdraw, division or enemy") },
+                { "name",
+                  Str("create: the corporation's name, 3 to 24 characters; enemy: a faction or a "
+                      "corporation's ticker; division: shared, stock or command") },
                 { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite; "
                                 "transfer: the corporation it goes to") },
                 { "pilot", Str("invite, kick, role: the pilot's name; transfer: the pilot it "
