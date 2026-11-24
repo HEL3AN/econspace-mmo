@@ -283,6 +283,7 @@ const char* MissionKind(int type)
         case MissionType::Contract: return "contract";
         case MissionType::Besiege: return "besiege";
         case MissionType::Survey: return "survey";
+        case MissionType::Raid: return "raid";
     }
     return "job";
 }
@@ -742,6 +743,11 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
                        SystemTag(view, m.systemId).c_str());
         case MissionType::Survey:
             return Fmt("fly to %s%s, undock and scan it (the scanner, P)", m.systemName.c_str(),
+                       SystemTag(view, m.systemId).c_str());
+        case MissionType::Raid:
+            return Fmt("destroy the %s base going up in %s%s (hidden ones must be scanned out "
+                       "first, P)",
+                       FactionName(m.against).c_str(), m.systemName.c_str(),
                        SystemTag(view, m.systemId).c_str());
         case MissionType::Besiege:
             return Fmt("shoot down %d more of the %s defenders in %s%s", m.targetCount - m.progress,

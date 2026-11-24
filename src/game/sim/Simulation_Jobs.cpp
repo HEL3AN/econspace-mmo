@@ -237,6 +237,31 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
                             (p.arrived ? " is besieging" : " is on its way to besiege") + ". " +
                             FactionName(p.against) + " will hold it against you.";
         }
+        else if (p.kind == Plan::Kind::Settle && Factions::IsLawful(f) &&
+                 !Factions::IsLawful(p.faction) && JobSite(p) != nullptr)
+        {
+            // A lawless faction's base going up (#345): a lawful one's stations pay to have it
+            // taken down, a share of what it is worth -- what its blueprint costs at base prices,
+            // the faction's own measure of what it is spending on it.
+            const Structure* base = JobSite(p);
+            double           worth = 0.0;
+            if (const Blueprint* bp = base->GetBlueprint())
+                for (const auto& c : bp->cost)
+                    worth += c.second * Market::DefaultBasePrice(c.first);
+            m.type = MissionType::Raid;
+            m.against = p.faction;
+            m.targetCount = 1;
+            m.deadline = base->GetCompletesAt();
+            m.rewardMoney = worth * r.raidShare;
+            m.rewardRep = (float)(r.rep * 1.5);
+            m.title = "Raid: " + base->GetName();
+            m.description = "Destroy the " + base->GetName() + " the " + FactionName(p.faction) +
+                            " are putting up in " + m.systemName + " before it is finished. " +
+                            FactionName(f) + " pays the bounty" +
+                            (SignatureOf(*base) > 0.0f
+                                 ? "; the base is hidden, so scan the system for it first."
+                                 : ".");
+        }
         else if (p.kind == Plan::Kind::Survey && p.faction == f && p.target != here->id)
         {
             // The faction would send its own scouts; it pays a pilot to go instead (#345).
@@ -536,6 +561,22 @@ void Simulation::SurveyReport(ClientSession& s, const std::string& systemId)
     }
 }
 
+void Simulation::CreditRaid(ClientSession& s, const std::string& systemId,
+                            const std::string& siteKey)
+{
+    for (Mission& m : s.missions.Active())
+    {
+        if (m.type != MissionType::Raid || m.progress >= m.targetCount)
+            continue;
+        const auto it = plans_.find(m.planId);
+        if (it == plans_.end() || it->second.target != systemId || it->second.site != siteKey)
+            continue;
+        m.progress = m.targetCount;
+        s.RecordEvent(Ev::Kind::Notice, "Job ready -- " + m.title +
+                                            ": the base is down; hand it in, anywhere, to be paid");
+    }
+}
+
 void Simulation::SiegeOver(const Plan& p)
 {
     SystemState* st = SystemById(p.target);
@@ -642,9 +683,16 @@ void Simulation::StepJobs()
                     continue;
                 }
             }
+            else if (m.type == MissionType::Raid && p != nullptr && JobSite(*p) == nullptr)
+            {
+                FailJob(s, i, "the base is finished or gone", false);
+                continue;
+            }
             else if (p == nullptr)
             {
-                if (m.type == MissionType::Survey)
+                if (m.type == MissionType::Raid)
+                    FailJob(s, i, "the base is no longer going up", false);
+                else if (m.type == MissionType::Survey)
                     FailJob(s, i, "the faction's own scouts got there first",
                             m.deadline > 0.0 && time_ >= m.deadline);
                 else

@@ -101,7 +101,8 @@ Mission MissionSystem::Generate(MissionType type, Station* giver,
         case MissionType::Escort:
         case MissionType::Siege:
         case MissionType::Besiege:
-        case MissionType::Survey:           // a plan's job (#345), never a station's template
+        case MissionType::Survey:
+        case MissionType::Raid:           // a plan's job (#345), never a station's template
         case MissionType::Contract: break;  // ...nor is a market's contract (#343)
     }
     return m;

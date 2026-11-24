@@ -1426,6 +1426,11 @@ Checks: `supplyShare` and `supplyCut` at most 1; `creditsPerStock` and `offerLif
 | `escortSlack` | 600 | seconds | due this long after the convoy would arrive |
 | `siegeKills` | 3 | count | a siege job asks for this many of the besiegers shot down... |
 | `siegePerKill` | 250 | credits | ...paying this each |
+| `surveyBase` | 300 | credits | a survey job pays this... |
+| `surveyPerJump` | 100 | credits | ...and this for each jump from the faction's holding to the system |
+| `surveyWait` | 240 | seconds | a survey plan waits this long for a pilot before its own scouts go |
+| `surveyWindow` | 900 | seconds | a pilot who takes a survey job has this long; the faction's survey waits for the report |
+| `raidShare` | 0.5 | share | a lawful faction pays this much of a lawless base's cost, at base prices, to whoever destroys it going up |
 | `rep` | 3 | standing | done, a job is worth this with the poster |
 | `failRep` | 1.5 | standing | failed by the pilot, this less |
 | `offerLife` | 1800 | seconds | a station's own work (bounty, mining, delivery) stays on its board this long |

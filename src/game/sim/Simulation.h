@@ -602,6 +602,9 @@ public:
     // test's): the plan's id. It resolves after the survey's time -- and after the time the
     // faction gives pilots to take the job instead (#345).
     int BeginSurvey(FactionId f, const std::string& from, const std::string& to);
+    // A faction lays an outpost site in `to`, coming from `from`, and pays for it (#295).
+    // False when the system turns out not to be one it may settle, or there is no room.
+    bool Settle(FactionId f, const std::string& from, const std::string& to);
     // How a convoy of `f` bound for `target` would go (#407): the way it fears least from its
     // holding with the most stations within the convoy rules' reach -- or from its nearest
     // holding, or the site itself -- the escort it would ask for and could have, the worst
@@ -1818,6 +1821,8 @@ public:
     // The session's scanner has finished a pass of `systemId`: a survey job for it is done, and
     // the faction's own survey, which waited for the report, is told to resolve now (#345).
     void SurveyReport(ClientSession& s, const std::string& systemId);
+    // A structure `s` shot down, the site `siteKey` in `systemId`: a raid job on it is done.
+    void CreditRaid(ClientSession& s, const std::string& systemId, const std::string& siteKey);
     // A survey job was just taken: the faction's survey waits for the pilot until its deadline.
     void SurveyTaken(const Mission& m);
     // The besieged side's strength at a siege that a pilot can find there as ships -- its
@@ -2483,9 +2488,6 @@ private:
     void Think(FactionId f);
     void ResolveDuePlans();
     void ResolveSurvey(const Plan& p);
-    // A faction lays an outpost site in `to`, coming from `from`, and pays for it (#295).
-    // False when the system turns out not to be one it may settle, or there is no room.
-    bool Settle(FactionId f, const std::string& from, const std::string& to);
     void ResolveSettle(const Plan& p);
 
     // --- Keeping outposts, and sieges (#295, slice 5; Simulation_Sieges.cpp) ---

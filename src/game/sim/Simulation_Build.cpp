@@ -773,6 +773,8 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     const int storedBefore = t->GetStoredUsed();
     if (crime)
         ChargeAttack(*by, law, true);
+    if (by != nullptr)
+        CreditRaid(*by, systemId, key);  // a bounty on a lawless faction's site (#345)
     if (!RemoveStatic(systemId, id))
         return false;
     const bool anchor = IsAnchor(builds);

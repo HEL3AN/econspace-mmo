@@ -164,6 +164,8 @@ struct Convoys
 //   waits `surveyWait` seconds longer -- and pays `surveyBase` and `surveyPerJump` of the way
 //   from its holding for a pilot who flies there and scans the system. A pilot who takes it
 //   has `surveyWindow` seconds, and the faction's own survey waits for the report.
+// - Raid: a lawful faction's stations pay `raidShare` of what a lawless faction's base going up
+//   is worth -- its blueprint's cost at base prices -- to the pilot who destroys it.
 // Done, a job is worth `rep` standing with the poster; failed by the pilot, `failRep` less.
 // A station's own work (bounty, mining, delivery) stays on its board, under the same number,
 // for `offerLife` seconds of world time (#425), `stationOffers` of it at a time: docking again
@@ -190,6 +192,7 @@ struct Jobs
     double surveyPerJump = 100.0;
     double surveyWait = 240.0;
     double surveyWindow = 900.0;
+    double raidShare = 0.5;
     double rep = 3.0;
     double failRep = 1.5;
 };
