@@ -474,8 +474,10 @@ function (`Ships::Strike`) takes every hit on a `Ship` and an `NpcShip`; `Ships:
 cold pass's version. `PROTO_VERSION` 74 (an entity's `armourFrac`, a PlayerView's armour). Left
 for the owner (on #464): a **structure's** layers (walls armour-heavy, from its blueprint) and a
 **siege's** attrition still fight untyped -- a plan stores two floats, and typing it needs
-the mix in the plan and in the save; and the Fit tab shows the armour row and the guns' make-up
-only through `preview_fit`'s text, not yet as bars.
+the mix in the plan and in the save; and the Fit tab showed the armour row and the guns' make-up
+only through `preview_fit`'s text -- since #557 it also draws them: an armour row, a bar for
+armour and one for hull as their shares of the structure, and one bar per damage type (and the
+untyped base gun) as its share of the volley.
 
 ### As built, #557 (structures)
 
