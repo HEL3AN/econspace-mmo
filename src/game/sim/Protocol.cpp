@@ -1258,7 +1258,7 @@ json PlayerJson(const Proto::PlayerView& p)
         for (const Proto::ShipmentView& s : p.shipments)
             sh.push_back(
                 { { "from", s.from }, { "to", s.to }, { "h", s.hours }, { "t", s.goods } });
-        j["ship"] = sh;
+        j["freight"] = sh;  // not "ship": that is the flown hull (#554)
     }
     if (p.hangar.capacity > 0)  // (#472)
         j["hgr"] = { { "cap", p.hangar.capacity },     { "free", p.hangar.free },
@@ -1417,7 +1417,7 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
             l.hostile = Val(lj, "hostile", false);
             p.locked.push_back(std::move(l));
         }
-    const auto shp = pj.find("ship");
+    const auto shp = pj.find("freight");
     if (shp != pj.end() && shp->is_array())
         for (const json& sj : *shp)
         {

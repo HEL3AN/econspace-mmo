@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    74;  // 74: armour, a layer between shields and hull (#464, slice 8) -- a PlayerView's armour
+    75;  // 75: a PlayerView's shipments travel as `freight`: they were written as `ship`, the
+         // flown hull's key, and a delivery on its way made the client fly the starter (#554);
+         // 74: armour, a layer between shields and hull (#464, slice 8) -- a PlayerView's armour
          // and maxArmour, an entity's armourFrac, and every hit is made of damage types; also
          // covers the liveries of #544 (an entity's and a player's `livery`) and the region style
          // of #545 (a galaxy system's `fits`), which landed without a bump;

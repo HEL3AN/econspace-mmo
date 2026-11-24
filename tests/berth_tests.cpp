@@ -5,6 +5,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "core/Prediction.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Station.h"
@@ -143,4 +144,54 @@ TEST_CASE("Berths: an account from before places has its ships wherever the pilo
     CHECK(w.sim.ShipIsHere(*w.s, 0));
     CHECK(w.sim.SwitchShip(*w.s, 0));
     CHECK(w.s->berths.at(other).place == w.sim.PlaceKeyHere(*w.s));
+}
+
+TEST_CASE("A second ship bought while docked arrives as the flown one, through the delta (#554)")
+{
+    World     w;
+    const int other = OtherHull();
+    REQUIRE(other != 0);
+
+    Proto::SnapshotSender   out;
+    Proto::SnapshotReceiver in;
+    Proto::Snapshot         first, second;
+    REQUIRE(in.Decode(out.Encode(w.sim.BuildSnapshot(*w.s, w.s->systemId), {}), first));
+    out.Acknowledge(1);
+
+    REQUIRE(w.sim.BuyShip(*w.s, other));
+    REQUIRE(in.Decode(out.Encode(w.sim.BuildSnapshot(*w.s, w.s->systemId), {}), second));
+    CHECK(second.player.shipIndex == other);
+    REQUIRE(second.player.ownedShips.size() == 2);
+    REQUIRE(second.player.shipDesigns.size() == 2);
+    REQUIRE(second.player.shipHere.size() == 2);
+    CHECK(second.player.shipDesigns[1] == GetShipCatalog()[other].stats.design);
+    CHECK(second.player.maxHull == doctest::Approx(w.s->ship->GetMaxHull()));
+
+    // The client's ship, reconciled to it, is that hull: its stats are the new design's.
+    Ship       client(Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    Prediction prediction;
+    prediction.Reconcile(client, second.player, nullptr);
+    CHECK(client.GetStats().design == GetShipCatalog()[other].stats.design);
+    CHECK(client.GetMaxHull() == doctest::Approx(second.player.maxHull));
+}
+
+TEST_CASE("A delivery on its way does not change the hull the client flies (#554)")
+{
+    // The shipments and the flown hull once shared a wire key: with one in transit, the
+    // client read hull 0 and flew the starter's stats over another ship's hull.
+    Proto::Snapshot s;
+    s.systemId = "core";
+    s.player.ownedShips = { 0, 2 };
+    s.player.shipDesigns = { "scout", "hauler" };
+    s.player.shipIndex = 2;
+    Proto::ShipmentView sh;
+    sh.from = "A";
+    sh.to = "B";
+    sh.hours = 2.0;
+    s.player.shipments.push_back(sh);
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), back));
+    CHECK(back.player.shipIndex == 2);
+    REQUIRE(back.player.shipments.size() == 1);
+    CHECK(back.player.shipments[0].to == "B");
 }
