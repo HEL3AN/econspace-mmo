@@ -96,10 +96,15 @@ struct Plan
     // holding's warship fleet flew when it set out (Simulation::FighterIn), so a siege from a
     // laser holding fights with lasers wherever it goes. Zero in a siege from before fleets,
     // which fights as its faction's doctrine. Saved.
-    float       dps = 0.0f, hull = 0.0f;
-    std::string via;
-    double      arrivesAt = 0.0;
-    bool        arrived = false;
+    float dps = 0.0f, hull = 0.0f;
+    // ...and what its volley is made of (#557), the same fleets' mean by the fire each brings
+    // (Ships::TypeValues, in the catalogue's damage-type order; all zero is the untyped base
+    // gun alone). Against the wall's layers it is what decides how fast a siege wears it down.
+    // Saved; a siege from before it reads as its faction's doctrine.
+    Ships::TypeValues mix{};
+    std::string       via;
+    double            arrivesAt = 0.0;
+    bool              arrived = false;
     // How many of its ships are real, while the target is hot: what a pass counts the
     // living against. Transient -- a cold system has none, and a restart begins cold.
     int fielded = 0;

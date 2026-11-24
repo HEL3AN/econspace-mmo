@@ -733,12 +733,18 @@ void Simulation::Think(FactionId f)
     const bool canSiege = !weak && !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
     // ...and what each of its own warships would take off the wall a second.
     const float dps = WarshipDps(f);
+    // ...made of what its warships fire (#557): how much of it a wall's layers take, read by
+    // the wall it would be against.
+    const Ships::TypeValues fire = FighterOf(f, NpcRole::Warship).mix;
+    auto                    wallFx = [&](const Blueprint* bp)
+    { return bp != nullptr ? Blueprints::WallEffect(*bp, fire) : 1.0f; };
     // What it believes an outpost takes to bring down: it cannot see which kind it is from
     // next door, so the ordinary one's hull, mended as a supplied one is.
     const Blueprint* plain = Blueprints::Find(Outposts::BLUEPRINT);
     const float      wall = plain != nullptr ? plain->hull : 0.0f;
     // ...at its tier's rate, hull a second (#431 D1): fire below it does nothing.
     const float mend = plain != nullptr ? plain->mend * wall : 0.0f;
+    const float plainFx = wallFx(plain);
     // One Anchor at a time, paid for like an outpost (#342 S4) -- and an Anchor's hull, for a
     // rival weighing whether it could bring one down.
     const float      anchorCost = AnchorCost();
@@ -747,6 +753,7 @@ void Simulation::Think(FactionId f)
     const Blueprint* anchorBp = Blueprints::Find(ANCHOR_BLUEPRINT);
     const float      anchorWall = anchorBp != nullptr ? anchorBp->hull : 0.0f;
     const float      anchorMend = anchorBp != nullptr ? anchorBp->mend * anchorWall : 0.0f;
+    const float      anchorFx = wallFx(anchorBp);
 
     enum class Act
     {
@@ -959,7 +966,7 @@ void Simulation::Think(FactionId f)
                 }
                 const float travel = hops * siege.hop;
                 const float firing = sent - siege.defence * garrison;
-                const float rate = firing * dps - (seen->claimed ? mend : 0.0f);
+                const float rate = firing * dps * plainFx - (seen->claimed ? mend : 0.0f);
                 if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f || wall / rate > siege.seconds)
                     break;
                 int guns = 0;
@@ -1043,7 +1050,7 @@ void Simulation::Think(FactionId f)
                 }
                 const float garrison = seen.presence[g];
                 const float firing = sent - siege.defence * garrison;
-                const float rate = firing * dps - anchorMend;  // an Anchor always mends
+                const float rate = firing * dps * anchorFx - anchorMend;  // an Anchor always mends
                 if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
                     anchorWall / rate > siege.seconds)
                     break;
@@ -1117,7 +1124,7 @@ void Simulation::Think(FactionId f)
             // garrison by its own design's guns and hull, as many warships as it is a match for.
             const float guard = PatrolAsWarships(st, target->GetOwner(), f);
             const float firing = sent - siege.defence * guard;
-            const float rate = firing * dps;
+            const float rate = firing * dps * wallFx(target->GetBlueprint());
             if (pool->second.first.empty() || sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
                 hull / rate > siege.seconds)
                 continue;
