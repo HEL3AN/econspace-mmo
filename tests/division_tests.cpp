@@ -227,3 +227,42 @@ TEST_CASE("divisions and hangars are saved with the structure (#472)")
     CHECK(text.find("\"divisions\"") != std::string::npos);
     CHECK(text.find("\"hangars\"") != std::string::npos);
 }
+
+TEST_CASE("the structure's room is said once and each division says its own use (#555)")
+{
+    World          w;
+    ClientSession& dina = w.Docked("dina");  // a director sees all three divisions
+    REQUIRE(w.Move(dina, "hold", "storage", 10) == 10);
+    REQUIRE(w.Move(dina, "hold", "storage:stock", 5) == 5);
+    REQUIRE(w.Move(dina, "hold", "hangar", 3) == 3);
+    const int used = w.Depot().GetStoredUsed();  // every division and hangar, in volume
+
+    Proto::Snapshot        snap = w.sim.BuildSnapshot(dina, w.sys);
+    Proto::Snapshot        back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+    CHECK(back.player.storageUsed == used);
+    CHECK(back.player.storageCap == w.Depot().GetStorageCapacity());
+    const auto boxes = InventoryList::Reachable(back.player);
+    for (const char* id : { "storage", "storage:stock", "storage:command" })
+    {
+        const InventoryList::Container* c = InventoryList::Find(boxes, id);
+        REQUIRE(c != nullptr);
+        CHECK(c->pool == back.player.storageCap);
+        CHECK(c->poolUsed == used);
+    }
+
+    // The agent's report: the whole room once, the divisions by use, no claim that only the
+    // hold keeps goods, and the member hangar is free rather than "0 cr every 0 days".
+    Obs::View view;
+    view.snapshot = &back;
+    const std::string text = Obs::DescribeInventory(view);
+    const std::string total =
+        "Storage " + std::to_string(used) + " / " + std::to_string(back.player.storageCap);
+    CHECK(text.find(total) != std::string::npos);
+    CHECK(text.find(total, text.find(total) + 1) == std::string::npos);
+    CHECK(text.find("Shared (storage) 100") != std::string::npos);
+    CHECK(text.find("Stock (storage:stock) 50") != std::string::npos);
+    CHECK(text.find("Nothing here keeps goods for you") == std::string::npos);
+    CHECK(text.find("free: no rent here") != std::string::npos);
+    CHECK(text.find("every 0 days") == std::string::npos);
+}

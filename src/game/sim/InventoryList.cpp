@@ -57,6 +57,8 @@ std::vector<Container> Reachable(const Proto::PlayerView& p)
                 store.capacity = d.capacity;
                 store.takeOnly = !d.canPut;
                 store.putOnly = !d.canTake;
+                store.pool = p.storageCap;
+                store.poolUsed = p.storageUsed;
                 out.push_back(store);
             }
         }

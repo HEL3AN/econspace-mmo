@@ -426,6 +426,11 @@ void Game::BuildClientSnapshot()
                 // The station's windows come back as they were left (#297); its own window
                 // always, because it is where undocking is. The missions window opens on
                 // what there is to do here: a mission to hand in, or the board's offers.
+                openBeforeDock_.clear();
+                for (const int h : desk_.Layout().Order())
+                    if (desk_.Layout().IsOpen(h) && desk_.Layout().Available(h) &&
+                        desk_.Layout().Spec(h).layer == Ui::Layer::Panels)
+                        openBeforeDock_.push_back(desk_.Layout().Spec(h).id);
                 desk_.SetOpen(WIN_STATION, true);
                 bool ready = false;
                 for (const Proto::MissionView& m : snapshot_.missionActive)

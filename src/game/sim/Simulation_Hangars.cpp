@@ -207,7 +207,7 @@ bool Simulation::RentHangar(ClientSession& s, int units)
     const WorldRules::Hangars& r = WorldRules::HangarRules();
     const int                  most = HangarMost(*station) - r.freeUnits;
     if (units < 0 || units > most)
-        return refuse("at most " + std::to_string(most) + " units can be rented at " +
+        return refuse("at most " + std::to_string(most) + " volume can be rented at " +
                       station->GetName() + ", on top of the " + std::to_string(r.freeUnits) +
                       " free");
     Hangar& h = *HangarOf(HangarKey(*SystemOf(s), *station), s.accountName, true);
@@ -222,7 +222,7 @@ bool Simulation::RentHangar(ClientSession& s, int units)
     }
     const int above = std::max(0, h.goods.Used() - r.freeUnits);
     if (units < above)
-        return refuse("the hangar holds " + std::to_string(above) + " units above the " +
+        return refuse("the hangar holds " + std::to_string(above) + " volume above the " +
                       std::to_string(r.freeUnits) + " free; move them out first");
     if (units == h.rented)
         return refuse("that is what is rented now");
@@ -251,12 +251,12 @@ bool Simulation::RentHangar(ClientSession& s, int units)
     h.rented = units;
     if (units == 0)
         h.paidUntil = 0.0;
-    s.RecordEvent(Ev::Kind::Notice, units == 0
-                                        ? "The rent at " + station->GetName() + " is ended: the " +
-                                              std::to_string(r.freeUnits) + " free units stay yours"
-                                        : "The rent at " + station->GetName() + " is now " +
-                                              std::to_string(units) + " units, " +
-                                              Cr(units * r.rentPerUnit) + " every " + Days(period));
+    s.RecordEvent(Ev::Kind::Notice,
+                  units == 0
+                      ? "The rent at " + station->GetName() + " is ended: the " +
+                            std::to_string(r.freeUnits) + " free volume stays yours"
+                      : "The rent at " + station->GetName() + " is now " + std::to_string(units) +
+                            " volume, " + Cr(units * r.rentPerUnit) + " every " + Days(period));
     return true;
 }
 
@@ -278,7 +278,7 @@ void Simulation::StepHangars()
             if (h.owed <= 0.0 && PayRent(party, h.holder, rent, why))
             {
                 TellParty(party, "Paid " + Cr(rent) + " rent for " + std::to_string(h.rented) +
-                                     " units of hangar at " + where + ", for " +
+                                     " volume of hangar at " + where + ", for " +
                                      Days(h.paidUntil - time_) + " more");
                 continue;
             }
@@ -290,7 +290,7 @@ void Simulation::StepHangars()
                 h.paidUntil = 0.0;
                 TellParty(party, "The rent of your hangar at " + where +
                                      " was not paid, and has ended; the " +
-                                     std::to_string(r.freeUnits) + " free units are still yours");
+                                     std::to_string(r.freeUnits) + " free volume is still yours");
                 continue;
             }
             h.owed += above * r.rentPerUnit;

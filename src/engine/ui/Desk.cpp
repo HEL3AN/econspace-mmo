@@ -284,6 +284,13 @@ void Desk::SetOpen(const std::string& id, bool open)
     layout_.SetOpen(h, true);
 }
 
+void Desk::Raise(const std::string& id)
+{
+    const int h = layout_.Find(id);
+    if (h != DeskLayout::NONE)
+        layout_.Raise(h);
+}
+
 Frame Desk::SurfaceFrame(const std::string& id, Rectangle area)
 {
     const int              h = layout_.Find(id);

@@ -855,16 +855,29 @@ std::string DescribeInventory(const View& view, const std::string& account)
     std::string out =
         p.docked ? Fmt("INVENTORY docked at %s\n", StationName(view, p.dockedStationId).c_str())
                  : std::string("INVENTORY in space\n");
-    for (const InventoryList::Container& c : all)
+    for (size_t ci = 0; ci < all.size(); ci++)
     {
-        out += Fmt("%s (%s) %d / %d", c.name.c_str(), c.id.c_str(), c.Used(), c.capacity);
+        const InventoryList::Container& c = all[ci];
+        // A division shares the structure's room with the others: that room is said once, and
+        // each division says only what it holds (#555).
+        if (c.pool > 0 && (ci == 0 || all[ci - 1].pool == 0))
+            out += Fmt("Storage %d / %d volume, shared by its divisions\n", c.poolUsed, c.pool);
+        if (c.pool > 0)
+            out += Fmt("%s (%s) %d", c.name.c_str(), c.id.c_str(), c.Used());
+        else
+            out += Fmt("%s (%s) %d / %d", c.name.c_str(), c.id.c_str(), c.Used(), c.capacity);
         if (c.id == "hangar")  // (#472)
         {
             const Proto::HangarView& h = p.hangar;
-            out += Fmt(" [%d free + %d rented, at most %d here; rent %.1f cr a unit every %.0f "
-                       "days%s]",
-                       h.free, h.rented, h.most, h.rentPerUnit, h.periodDays,
-                       h.owed > 0.0 ? Fmt(", CLOSED: %.0f cr owed", h.owed).c_str() : "");
+            // A member's hangar in a corporation's structure has no rent: only the free room.
+            if (h.rentPerUnit <= 0.0 || h.periodDays <= 0.0)
+                out += Fmt(" [%d volume, free: no rent here%s]", h.free,
+                           h.owed > 0.0 ? Fmt(", CLOSED: %.0f cr owed", h.owed).c_str() : "");
+            else
+                out += Fmt(" [%d free + %d rented, at most %d here; rent %.1f cr per volume "
+                           "every %.0f days%s]",
+                           h.free, h.rented, h.most, h.rentPerUnit, h.periodDays,
+                           h.owed > 0.0 ? Fmt(", CLOSED: %.0f cr owed", h.owed).c_str() : "");
         }
         const auto rows = InventoryList::Rows(c, prices);
         if (rows.empty())
@@ -904,7 +917,7 @@ std::string DescribeInventory(const View& view, const std::string& account)
         out += "Move goods between them with move_goods, naming each by the id in brackets.\n";
     if (!p.docked)
         out += "In space, jettison puts goods from the hold into a can beside the ship.\n";
-    else if (p.docked)
+    else if (p.docked && all.size() == 1)
         out += "Nothing here keeps goods for you but the hold.\n";
     return out;
 }
@@ -1316,23 +1329,21 @@ std::string Describe(const View& view, Detail detail)
     if (p.storageCap > 0)
     {
         std::string kept;
-        int         used = 0;
         const auto& types = AllResourceTypes();
         for (size_t i = 0; i < types.size() && i < p.storedByType.size(); i++)
             if (p.storedByType[i] > 0)
             {
-                used += p.storedByType[i];
                 kept += Fmt("%s%s %d", kept.empty() ? "" : ", ", ResourceName(types[i]).c_str(),
                             p.storedByType[i]);
             }
-        out += Fmt("STORAGE %d/%d", used, p.storageCap) + (kept.empty() ? "" : "  " + kept) + "\n";
+        // Volume, as the hold and the hangar count: all of it, in every division and hangar.
+        out += Fmt("STORAGE %d/%d volume", p.storageUsed, p.storageCap) +
+               (kept.empty() ? "" : "  " + kept) + "\n";
         // A corporation's storage by division, as a role sees it (#472 slice 5).
         for (const Proto::DivisionView& d : p.divisions)
         {
-            int n = 0;
-            for (int g : d.goods)
-                n += g;
-            out += Fmt("  %s (%s) %d%s%s\n", d.name.c_str(),
+            const int n = InventoryList::Volume(d.goods);
+            out += Fmt("  %s (%s) %d volume%s%s\n", d.name.c_str(),
                        d.id == "shared" ? "storage" : ("storage:" + d.id).c_str(), n,
                        d.canPut ? "" : ", no put", d.canTake ? "" : ", no take");
         }

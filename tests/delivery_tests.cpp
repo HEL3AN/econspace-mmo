@@ -76,12 +76,18 @@ struct World
 
 TEST_CASE("Delivery: a quote comes from the route, by the owner's formula (#472)")
 {
-    World                           w;
-    const auto&                     r = WorldRules::DeliveryRules();
-    const std::string               sys = w.st->id;
-    const double                    sec = w.st->agg.security;
-    const double                    risk = 1.0 + r.riskWeight * (1.0 - sec);
-    const Simulation::DeliveryQuote q = w.sim.QuoteDelivery(sys, sys, 100, 1000.0);
+    World             w;
+    const auto&       r = WorldRules::DeliveryRules();
+    const std::string sys = w.st->id;
+    std::string       next;  // the system through the first gate
+    for (const auto& l : w.sim.Universe().links)
+        if (l.kind.empty() && l.a == sys)
+            next = l.b;
+    REQUIRE_FALSE(next.empty());
+    const double sec = w.st->agg.security;
+    const double nextSec = w.sim.SystemById(next)->agg.security;
+    const double risk = 1.0 + r.riskWeight * ((1.0 - sec) + (1.0 - nextSec)) / 2.0;
+    const Simulation::DeliveryQuote q = w.sim.QuoteDelivery(sys, next, 100, 1000.0);
     REQUIRE(q.ok);
     CHECK(q.jumps == 1);
     CHECK(q.risk == doctest::Approx(risk));
@@ -89,11 +95,26 @@ TEST_CASE("Delivery: a quote comes from the route, by the owner's formula (#472)
                                              r.insure * 1000.0 * (risk - 1.0))));
     CHECK(q.hours == doctest::Approx(r.hoursPerJump));
     // The cheapest is the minimum fee, and the hostile surcharge multiplies it.
-    CHECK(w.sim.QuoteDelivery(sys, sys, 1, 0.0).fee >= r.minFee);
-    CHECK(w.sim.QuoteDelivery(sys, sys, 100, 1000.0, 1.5).fee ==
+    CHECK(w.sim.QuoteDelivery(sys, next, 1, 0.0).fee >= r.minFee);
+    CHECK(w.sim.QuoteDelivery(sys, next, 100, 1000.0, 1.5).fee ==
           doctest::Approx(std::ceil(q.fee * 1.5)).epsilon(0.01));
     // No route: said, and no fee.
     CHECK_FALSE(w.sim.QuoteDelivery(sys, "nowhere", 1, 0.0).ok);
+}
+
+TEST_CASE("Delivery: inside one system it is the least fee and a short fixed time (#555)")
+{
+    World       w;
+    const auto& r = WorldRules::DeliveryRules();
+    const auto  q = w.sim.QuoteDelivery(w.st->id, w.st->id, 500, 5000.0);
+    REQUIRE(q.ok);
+    CHECK(q.jumps == 0);
+    CHECK(q.fee == doctest::Approx(r.minFee));
+    CHECK(q.hours == doctest::Approx(r.sameSystemHours));
+    // However much there is to carry, and a hostile faction still adds its surcharge.
+    CHECK(w.sim.QuoteDelivery(w.st->id, w.st->id, 5, 0.0).fee == doctest::Approx(q.fee));
+    CHECK(w.sim.QuoteDelivery(w.st->id, w.st->id, 500, 5000.0, 1.5).fee ==
+          doctest::Approx(std::ceil(r.minFee * 1.5)));
 }
 
 TEST_CASE(
