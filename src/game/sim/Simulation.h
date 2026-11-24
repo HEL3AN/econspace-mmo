@@ -598,6 +598,10 @@ public:
     int BeginUpgrade(FactionId f, const std::string& systemId, const std::string& blueprint);
     // ...and an Anchor at the unstable mouth into `slot`, the same way. 0 when it may not.
     int BeginAnchor(FactionId f, int slot);
+    // `f` sends scouts from its holding `from` to survey `to` (the faction's own turn, and a
+    // test's): the plan's id. It resolves after the survey's time -- and after the time the
+    // faction gives pilots to take the job instead (#345).
+    int BeginSurvey(FactionId f, const std::string& from, const std::string& to);
     // How a convoy of `f` bound for `target` would go (#407): the way it fears least from its
     // holding with the most stations within the convoy rules' reach -- or from its nearest
     // holding, or the site itself -- the escort it would ask for and could have, the worst
@@ -1811,6 +1815,11 @@ public:
     // The session shot `killed` down: a besieger counts towards its break-the-siege jobs, and a
     // defender of a besieged outpost towards its join-the-siege jobs (#407).
     void CreditJobKill(ClientSession& s, const NpcShip& killed);
+    // The session's scanner has finished a pass of `systemId`: a survey job for it is done, and
+    // the faction's own survey, which waited for the report, is told to resolve now (#345).
+    void SurveyReport(ClientSession& s, const std::string& systemId);
+    // A survey job was just taken: the faction's survey waits for the pilot until its deadline.
+    void SurveyTaken(const Mission& m);
     // The besieged side's strength at a siege that a pilot can find there as ships -- its
     // pirates, or the police flying its flag -- in ships; 0 when it is numbers only (#407).
     float DefendersShown(const Plan& p) const;

@@ -359,6 +359,26 @@ void Simulation::ResolveSurvey(const Plan& p)
     ChartBy(p.target, p.faction);  // after the line: it names the system by its designation
 }
 
+int Simulation::BeginSurvey(FactionId f, const std::string& from, const std::string& to)
+{
+    // How long it takes is drawn from what it is -- this faction, that system, this
+    // minute of the world's clock -- never from how many draws came before.
+    Gen::Rng rng(Gen::Key(SURVEY_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(to),
+                          (uint64_t)(time_ / 60.0)));
+    Plan     p;
+    p.id = nextPlanId_++;
+    p.kind = Plan::Kind::Survey;
+    p.faction = f;
+    p.from = from;
+    p.target = to;
+    p.startedAt = time_;
+    // ...after the time the faction gives pilots to offer to survey it for pay (#345).
+    p.dueAt = time_ + SURVEY_TIME + rng.Range(0, SURVEY_JITTER) + WorldRules::JobRules().surveyWait;
+    plans_[p.id] = p;
+    due_.insert({ p.dueAt, p.id });
+    return p.id;
+}
+
 // Plans whose time has come, a few per pass (#295). One that misses its pass because the
 // budget ran out is simply a pass late; nothing is lost.
 void Simulation::ResolveDuePlans()
@@ -1273,20 +1293,7 @@ void Simulation::Think(FactionId f)
     }
     if (act == Act::Survey)
     {
-        // How long it takes is drawn from what it is -- this faction, that system, this
-        // minute of the world's clock -- never from how many draws came before.
-        Gen::Rng rng(Gen::Key(SURVEY_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(to),
-                              (uint64_t)(time_ / 60.0)));
-        Plan     p;
-        p.id = nextPlanId_++;
-        p.kind = Plan::Kind::Survey;
-        p.faction = f;
-        p.from = from;
-        p.target = to;
-        p.startedAt = time_;
-        p.dueAt = time_ + SURVEY_TIME + rng.Range(0, SURVEY_JITTER);
-        plans_[p.id] = p;
-        due_.insert({ p.dueAt, p.id });
+        BeginSurvey(f, from, to);
         return;
     }
     if (act == Act::Settle)

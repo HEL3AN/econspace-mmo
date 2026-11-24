@@ -152,3 +152,30 @@ TEST_CASE("MissionList: an escort job says where its convoy is and points at its
     CHECK(Obs::ConvoyPartOf(snap, 58) == Obs::ConvoyPart::None);
     CHECK(Obs::ConvoyPartOf(snap, 0) == Obs::ConvoyPart::None);
 }
+
+TEST_CASE(
+    "MissionList: a survey job is a plan's job, handed in anywhere, and counts its scan (#345)")
+{
+    Proto::Snapshot    snap;
+    Proto::MissionView m = Job(MissionType::Survey, 10, 0, 1, 0);
+    m.planId = 9;
+    m.systemId = "r1-2-3";
+    m.systemName = "Kor";
+    m.title = "Survey: Kor";
+    snap.missionActive = { m };
+    snap.missionOffers = { m };
+    Obs::View view;
+    view.snapshot = &snap;
+
+    std::vector<MissionList::Row> rows = MissionList::Build(view, MissionList::Board::Offers);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].kind == "survey");
+    CHECK(rows[0].job);
+    CHECK(rows[0].where == "Kor");
+    rows = MissionList::Build(view, MissionList::Board::Active);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].status == "0 / 1");
+    snap.missionActive[0].progress = 1;
+    CHECK(MissionList::Build(view, MissionList::Board::Active)[0].progress ==
+          doctest::Approx(1.0f));
+}

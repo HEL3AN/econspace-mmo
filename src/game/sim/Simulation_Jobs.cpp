@@ -237,6 +237,25 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
                             (p.arrived ? " is besieging" : " is on its way to besiege") + ". " +
                             FactionName(p.against) + " will hold it against you.";
         }
+        else if (p.kind == Plan::Kind::Survey && p.faction == f && p.target != here->id)
+        {
+            // The faction would send its own scouts; it pays a pilot to go instead (#345).
+            // What it pays grows with the way from its holding, which is what its scouts would
+            // spend. The system's report is the same as theirs: the survey resolves on it.
+            const auto way = JumpsFrom(*this, p.from, 12);
+            const auto far = way.find(p.target);
+            const int  hops = far != way.end() ? std::max(1, far->second) : 1;
+            m.type = MissionType::Survey;
+            m.targetCount = 1;
+            m.deadline = time_ + r.surveyWindow;
+            m.rewardMoney = r.surveyBase + r.surveyPerJump * hops;
+            m.title = "Survey: " + m.systemName;
+            m.description = "Fly to " + m.systemName + ", " + std::to_string(hops) +
+                            (hops == 1 ? " jump" : " jumps") + " from " + FactionName(f) +
+                            "'s holding at " + SystemName(p.from) + ", undock and scan it. " +
+                            FactionName(f) +
+                            " has been meaning to look there and will chart what you report.";
+        }
         else
             continue;
         if (Holds(s, p.id, m.type))
@@ -483,6 +502,40 @@ void Simulation::CreditJobKill(ClientSession& s, const NpcShip& killed)
     }
 }
 
+void Simulation::SurveyTaken(const Mission& m)
+{
+    // The faction's own scouts wait for the pilot until their time is up.
+    const auto it = plans_.find(m.planId);
+    if (it == plans_.end() || it->second.kind != Plan::Kind::Survey ||
+        it->second.dueAt >= m.deadline)
+        return;
+    Plan& p = it->second;
+    due_.erase({ p.dueAt, p.id });
+    p.dueAt = m.deadline;
+    due_.insert({ p.dueAt, p.id });
+}
+
+void Simulation::SurveyReport(ClientSession& s, const std::string& systemId)
+{
+    for (Mission& m : s.missions.Active())
+    {
+        if (m.type != MissionType::Survey || m.systemId != systemId || m.progress >= m.targetCount)
+            continue;
+        const auto it = plans_.find(m.planId);
+        if (it == plans_.end())
+            continue;  // StepJobs closes it
+        m.progress = m.targetCount;
+        // The report is the faction's survey, resolved now: its intel, its chart, the region's
+        // tide, as they would have been when its scouts came.
+        Plan& p = it->second;
+        due_.erase({ p.dueAt, p.id });
+        p.dueAt = time_;
+        due_.insert({ p.dueAt, p.id });
+        s.RecordEvent(Ev::Kind::Notice, "Job ready -- " + m.title +
+                                            ": the scan is in; hand it in, anywhere, to be paid");
+    }
+}
+
 void Simulation::SiegeOver(const Plan& p)
 {
     SystemState* st = SystemById(p.target);
@@ -591,7 +644,11 @@ void Simulation::StepJobs()
             }
             else if (p == nullptr)
             {
-                FailJob(s, i, "the siege is over", false);
+                if (m.type == MissionType::Survey)
+                    FailJob(s, i, "the faction's own scouts got there first",
+                            m.deadline > 0.0 && time_ >= m.deadline);
+                else
+                    FailJob(s, i, "the siege is over", false);
                 continue;
             }
             if (m.deadline > 0.0 && time_ > m.deadline)

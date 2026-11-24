@@ -128,7 +128,9 @@ inline constexpr int WORLD_VERSION = 21;
 // 10: ships have places (#472 slice 8): a parked ship names the station it is at and keeps
 //    its own hold. A version 9 build would read every hull as flown and carrying the one hold
 //    the account had. An older file's ships are wherever the pilot docks, with empty holds.
-inline constexpr int ACCOUNT_VERSION = 10;
+// 11: a mission may be a survey job (#345): fly to a system a faction means to reach and scan
+//    it. A version 10 build knows no such mission and would keep one it could never hand in.
+inline constexpr int ACCOUNT_VERSION = 11;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 // corps.json, the players' corporations (#347). 1: the first.

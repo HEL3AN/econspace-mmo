@@ -1523,7 +1523,8 @@ bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m)
         case MissionType::Supply:
         case MissionType::Escort:
         case MissionType::Siege:
-        case MissionType::Besiege: break;  // a plan's, above
+        case MissionType::Besiege:
+        case MissionType::Survey: break;  // a plan's, above
     }
     return false;
 }
@@ -1556,6 +1557,15 @@ bool Simulation::AcceptMission(ClientSession& s, int offerId)
             GenerateDockOffers(s);
         return false;
     }
+    // A plan's job is the plan's (#345): over when it is, even for a board drawn before.
+    if (IsPlanJob(offers[offerIndex].type) && plans_.count(offers[offerIndex].planId) == 0)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Mission not taken: offer " + std::to_string(offerId) +
+                                            " is over -- what it was for is done");
+        if (s.IsDocked())
+            GenerateDockOffers(s);
+        return false;
+    }
     const std::string what = offers[offerIndex].title + ": " + offers[offerIndex].description;
     if ((int)s.missions.Active().size() >= MissionSystem::MAX_ACTIVE)
     {
@@ -1567,9 +1577,16 @@ bool Simulation::AcceptMission(ClientSession& s, int offerId)
     // A market's contract is one pilot's (#343): off every board once taken.
     if (offers[offerIndex].type == MissionType::Contract && !TakeContract(s, offers[offerIndex]))
         return false;
-    const int station = s.dockedStationId;
+    const int     station = s.dockedStationId;
+    const Mission taken = offers[offerIndex];  // Accept moves it off the board
     if (!s.missions.Accept(offerIndex))
         return false;
+    if (taken.type == MissionType::Survey)
+    {
+        // Its time starts now, and the faction's own survey waits for it (#345).
+        s.missions.Active().back().deadline = time_ + WorldRules::JobRules().surveyWindow;
+        SurveyTaken(s.missions.Active().back());
+    }
     s.RecordEvent(Ev::Kind::Notice, "Mission taken -- " + what);
     // ...and so is a station's own work (#425): off its board for everyone docked there, whose
     // boards are shown again without it. Theirs keep every other number.

@@ -309,7 +309,8 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
     // And the survey comes back when it was due, not before.
     const std::string line = FactionName(pending.faction) + " surveyed ";
     bool              returned = false;
-    for (int pass = 0; pass < 120 && !returned; pass++)
+    // (The faction gave pilots its jobs rules' surveyWait first: #345.)
+    for (int pass = 0; pass < 260 && !returned; pass++)
     {
         Pass(b);
         for (const ChronicleEntry& e : b.Chronicle())

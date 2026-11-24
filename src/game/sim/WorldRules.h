@@ -160,6 +160,10 @@ struct Convoys
 //   as `escortForce` ships of its escort. Due `escortSlack` seconds after it would arrive.
 //   Posted within `reach` of where the convoy is, too: that is where a pilot meets it (#407).
 // - Siege: shoot down `siegeKills` of the besiegers, `siegePerKill` each.
+// - Survey: before it sends its own scouts a faction offers the survey to pilots -- its plan
+//   waits `surveyWait` seconds longer -- and pays `surveyBase` and `surveyPerJump` of the way
+//   from its holding for a pilot who flies there and scans the system. A pilot who takes it
+//   has `surveyWindow` seconds, and the faction's own survey waits for the report.
 // Done, a job is worth `rep` standing with the poster; failed by the pilot, `failRep` less.
 // A station's own work (bounty, mining, delivery) stays on its board, under the same number,
 // for `offerLife` seconds of world time (#425), `stationOffers` of it at a time: docking again
@@ -182,6 +186,10 @@ struct Jobs
     double escortSlack = 600.0;
     int    siegeKills = 3;
     double siegePerKill = 250.0;
+    double surveyBase = 300.0;
+    double surveyPerJump = 100.0;
+    double surveyWait = 240.0;
+    double surveyWindow = 900.0;
     double rep = 3.0;
     double failRep = 1.5;
 };

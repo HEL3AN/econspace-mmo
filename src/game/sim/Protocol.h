@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    77;  // 77: a corporation's enemy list (#466) -- a CorpAct "enemy" (name: a faction or a
+    78;  // 78: a mission may be a survey job (#345): MissionType::Survey, a plan's job like the
+         // rest;
+         // 77: a corporation's enemy list (#466) -- a CorpAct "enemy" (name: a faction or a
          // corporation's ticker; value: add or remove), and a CorpView's `enemies`;
          // 76: modules are goods (#472 slice 10) -- the goods registry has ten more entries, every
          // per-good vector is wider, and a refit draws on the hangar, the hold and the market;

@@ -66,6 +66,7 @@ std::string Summary(const Obs::View& view, const Proto::MissionView& m)
         case MissionType::Siege:
         case MissionType::Besiege:
             return m.title + (m.systemName.empty() ? std::string() : " in " + m.systemName);
+        case MissionType::Survey: return m.title;
     }
     return m.title;
 }
@@ -83,6 +84,7 @@ const char* KindWord(int type)
         case MissionType::Siege: return "siege";
         case MissionType::Contract: return "contract";
         case MissionType::Besiege: return "besiege";
+        case MissionType::Survey: return "survey";
     }
     return "job";
 }
@@ -176,7 +178,8 @@ std::vector<Row> Build(const Obs::View& view, Board board)
                 if (m.resource >= 0 && m.resource < (int)snap.player.cargoByType.size())
                     done = snap.player.cargoByType[m.resource];
                 break;
-            case MissionType::Escort: done = m.progress; break;
+            case MissionType::Escort:
+            case MissionType::Survey: done = m.progress; break;
             case MissionType::Siege:
             case MissionType::Besiege: done = m.progress; break;
         }
