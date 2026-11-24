@@ -1430,6 +1430,7 @@ Checks: `supplyShare` and `supplyCut` at most 1; `creditsPerStock` and `offerLif
 | `surveyPerJump` | 100 | credits | ...and this for each jump from the faction's holding to the system |
 | `surveyWait` | 240 | seconds | a survey plan waits this long for a pilot before its own scouts go |
 | `surveyWindow` | 900 | seconds | a pilot who takes a survey job has this long; the faction's survey waits for the report |
+| `npcAfter` | 900 | seconds | a plan's job nobody has taken is filled by the faction's own hauler or patrol this long after the plan began (and again after each delivery); 0 never |
 | `raidShare` | 0.5 | share | a lawful faction pays this much of a lawless base's cost, at base prices, to whoever destroys it going up |
 | `rep` | 3 | standing | done, a job is worth this with the poster |
 | `failRep` | 1.5 | standing | failed by the pilot, this less |

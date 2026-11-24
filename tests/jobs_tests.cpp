@@ -1309,3 +1309,136 @@ TEST_CASE("a job taken is history, a raid done is news, a survey done is history
     for (const std::string& line : sim.Events())
         CHECK(line.find("Wren surveyed") == std::string::npos);
 }
+
+// --- NPCs competing for jobs (#345) ---
+
+namespace
+{
+// A Guild settlement going up beside a Guild holding, and the plan.
+struct Settling
+{
+    Holding h;
+    int     plan = 0;
+};
+Settling SettlementGoingUp(Simulation& sim)
+{
+    Settling u;
+    u.h = PlantOutpost(sim, Fac::TradersGuild());
+    sim.MindOf(Fac::TradersGuild()).stock = 4.0f * Simulation::OutpostCost();
+    for (const std::string& n : sim.Neighbors(u.h.system))
+    {
+        const SystemState* st = sim.SystemById(n);
+        if (u.plan == 0 && st != nullptr && !st->agg.claimed && !st->profile.outpostSite &&
+            sim.Settle(Fac::TradersGuild(), u.h.system, n))
+            for (const auto& kv : sim.Plans())
+                if (kv.second.kind == Plan::Kind::Settle && kv.second.target == n)
+                    u.plan = kv.first;
+    }
+    REQUIRE(u.plan != 0);
+    return u;
+}
+
+}  // namespace
+
+TEST_CASE("a faction's hauler fills a supply job no pilot took, the same hot or cold (#345)")
+{
+    LoadRegistries();
+    Rules            r;
+    WorldRules::Jobs quick = WorldRules::JobRules();
+    quick.npcAfter = 60.0;
+    WorldRules::SetJobRules(quick);
+
+    double dueAfter[2] = { 0.0, 0.0 };
+    int    suppliedAfter[2] = { 0, 0 };
+    float  stockAfter[2] = { 0.0f, 0.0f };
+    for (int hot = 0; hot < 2; hot++)
+    {
+        Simulation sim;
+        Make(sim, 7);
+        sim.SetAllHot(hot == 1);
+        const Settling u = SettlementGoingUp(sim);
+        const Plan     p = *PlanOf(sim, u.plan);
+        const double   first = p.dueAt;
+        const float    stock = sim.MindOf(Fac::TradersGuild()).stock;
+        // Before its time: nothing.
+        RunMinutes(sim, 0.5);
+        CHECK(PlanOf(sim, u.plan)->supplied == 0);
+        CHECK(PlanOf(sim, u.plan)->dueAt == doctest::Approx(first));
+        // After the first, then the second, then no more than the site takes.
+        RunMinutes(sim, 4.0);
+        const Plan* now = PlanOf(sim, u.plan);
+        REQUIRE(now != nullptr);
+        CHECK(now->supplied == WorldRules::JobRules().supplyMax);
+        const double remaining = first - p.startedAt;
+        CHECK(now->dueAt < p.startedAt + remaining * 0.9);
+        CHECK(sim.MindOf(Fac::TradersGuild()).stock < stock);
+        suppliedAfter[hot] = now->supplied;
+        dueAfter[hot] = now->dueAt - p.startedAt;
+        stockAfter[hot] = stock - sim.MindOf(Fac::TradersGuild()).stock;
+    }
+    CHECK(suppliedAfter[0] == suppliedAfter[1]);
+    CHECK(dueAfter[0] == doctest::Approx(dueAfter[1]));
+    CHECK(stockAfter[0] == doctest::Approx(stockAfter[1]));
+}
+
+TEST_CASE("the hauler waits for a pilot who has taken the job (#345)")
+{
+    LoadRegistries();
+    Rules            r;
+    WorldRules::Jobs quick = WorldRules::JobRules();
+    quick.npcAfter = 60.0;
+    WorldRules::SetJobRules(quick);
+    Simulation sim;
+    Make(sim, 7);
+    const Settling u = SettlementGoingUp(sim);
+    ClientSession& s = DockedAt(sim, u.h);
+    const int      offer = OfferOf(s, MissionType::Supply, u.plan);
+    REQUIRE(offer >= 0);
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
+    RunMinutes(sim, 4.0);
+    CHECK(PlanOf(sim, u.plan)->supplied == 0);
+}
+
+TEST_CASE("a lawful faction's patrol brings down a pirate base nobody raided, for the bounty "
+          "(#345)")
+{
+    LoadRegistries();
+    Rules            r;
+    WorldRules::Jobs quick = WorldRules::JobRules();
+    quick.npcAfter = 60.0;
+    WorldRules::SetJobRules(quick);
+    Simulation sim;
+    Make(sim, 7);
+    const Raiding u = BaseGoingUp(sim);
+    const float   stock = sim.MindOf(Fac::TradersGuild()).stock;
+    RunMinutes(sim, 0.5);
+    CHECK(PlanOf(sim, u.plan) != nullptr);  // not yet
+    RunMinutes(sim, 1.5);
+    CHECK(PlanOf(sim, u.plan) == nullptr);
+    const SystemState& st = *sim.SystemById(u.target);
+    bool               standing = false;
+    for (const auto& e : st.entities)
+        standing = standing || e->GetId() == u.site;
+    CHECK_FALSE(standing);
+    CHECK(sim.MindOf(Fac::TradersGuild()).stock < stock);
+    CHECK(JobLines(sim, "patrols brought down") == 1);
+}
+
+TEST_CASE("a pilot who raids first is paid, and the patrol does not come (#345)")
+{
+    LoadRegistries();
+    Rules            r;
+    WorldRules::Jobs quick = WorldRules::JobRules();
+    quick.npcAfter = 60.0;
+    WorldRules::SetJobRules(quick);
+    Simulation sim;
+    Make(sim, 7);
+    const Raiding  u = BaseGoingUp(sim);
+    ClientSession& s = DockedAt(sim, u.h);
+    const int      offer = OfferOf(s, MissionType::Raid, u.plan);
+    REQUIRE(offer >= 0);
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
+    RunMinutes(sim, 3.0);
+    CHECK(PlanOf(sim, u.plan) != nullptr);  // the pilot has it
+    CHECK(JobLines(sim, "patrols brought down") == 0);
+}

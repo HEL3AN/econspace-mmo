@@ -79,6 +79,7 @@
         "surveyWait": 240,
         "surveyWindow": 900,
         "raidShare": 0.5,
+        "npcAfter": 900,
         "rep": 3,
         "failRep": 1.5,
         "offerLife": 1800,
