@@ -96,7 +96,11 @@ namespace Save
 //    type, which the siege's fire is read against the wall's layers by. A version 19 build would
 //    wear a wall down untyped and write the plan back without it. A plan from an older file
 //    reads as its faction's doctrine, the warships it flies now.
-inline constexpr int WORLD_VERSION = 20;
+// 21: a siege's plan also carries its ships' armour and hull-line `resist` (#568), what the
+//    garrison's fire is read against. A version 20 build would fight the besiegers' ships
+//    untyped and write the plan back without them. A plan from an older file reads them as
+//    its faction's doctrine.
+inline constexpr int WORLD_VERSION = 21;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

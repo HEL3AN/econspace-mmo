@@ -1205,7 +1205,9 @@ section of `world_rules.json`); the open ones are `contracts` (`id`, `faction`, 
 | `cost` | resources taken from the hold when the site is laid down, all at once; at least one |
 | `buildSeconds` | world seconds from site to finished object |
 | `lifetime` | world seconds it stands once finished; 0 or absent -- until removed |
-| `hull` | **required**, more than 0: the damage that destroys the finished thing. Anything buildable can be destroyed |
+| `hull` | exactly one of `hull` and `holds`, more than 0: the damage that destroys the finished thing, in points. Anything buildable can be destroyed |
+| `holds` | the other way to state it (#568): the seconds the siege's reference fleet needs to bring it down, net of its tier's mending. `hull` is derived at load as `holds x (referenceDps - mendDps)`. A wall in these units is measured by the same guns whoever owns it, and a refit of the reference design rescales every wall. A load error if the tier mends as much as the fleet fires |
+| `tier` | one of the file's `tiers`: `mend` (a share of the hull mended a second) **or** `mendShips` (the mending as the fire of that many of the reference fleet's ships, a number of points a second: fire below it does nothing), and `armour` / `resist` (#557) |
 | `wreck` | the `Derelict` archetype it leaves when destroyed; absent -- nothing is left (a buoy) |
 | `placement.reach` | at most this far from the ship laying it down; must be more than 0 |
 | `placement.clearance` | gap to the edge of any station, gate, wreck or structure |
@@ -1217,6 +1219,18 @@ section of `world_rules.json`); the open ones are `contracts` (`id`, `faction`, 
 | `dismantle.refund` | share of the cost an owner gets back for dismantling a finished structure (default 0.5) |
 | `destruction.siteHull` | a site's hull at the moment it goes down, as a share of `hull`; it grows to all of it at completion (default 0.25) |
 | `destruction.wreckShare` | share of the cost, in credits at the base price, a destroyed structure's wreck pays whoever searches it (default 0.25) |
+
+**Walls and the reference fleet (#568).** `siege.reference` (a stock design id, today the
+doctrine's cruiser) and `siege.referenceShips` set a yardstick in guns: the fire of that many
+ships as a player's ship of the design fires. Outposts and stations are stated in it -- an outpost
+`holds` an hour, a station four, against six cruisers, and their tiers mend two and four of a
+cruiser's fire -- so a wall's length is a world number, from the designs, and not a hull someone
+tuned. Nobody owns the yardstick: a player's outpost is as hard to take as a faction's, and a
+lone pilot's guns cannot take one at all (it mends more than a pilot fires), which is EVE-like and
+intended. A siege that the planner judges cannot finish within `siege.seconds` is not begun.
+Defenders answer a siege: the holder lends relief from its holdings within reach when the
+besiegers stand at the outpost (`Plan::relief`, #431 D2), and what is left goes home with the
+siege.
 
 **Taking things down (#39).** The owner dismantles their own site or structure from within
 `placement.reach` of it, and the hold gets back, per resource and rounded down,

@@ -457,9 +457,11 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
         // the system, which holds one at a time.
         struct SiegeTally
         {
-            int    sent = 0, laid = 0, destroyed = 0, gaveUp = 0, repelled = 0, voided = 0;
-            double lengthSum = 0.0;
-            int    lengths = 0;
+            int sent = 0, laid = 0, destroyed = 0, gaveUp = 0, repelled = 0, voided = 0;
+            std::vector<double>           lengthList;
+            int                           relieved = 0;
+            double                        lengthSum = 0.0;
+            int                           lengths = 0;
             std::map<std::string, double> begun;
             long long                     seen = 0;
         } sieges;
@@ -479,18 +481,23 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                     const auto b = sieges.begun.find(e.system);
                     if (b != sieges.begun.end())
                     {
+                        sieges.lengthList.push_back(e.time - b->second);
                         sieges.lengthSum += e.time - b->second;
                         sieges.lengths++;
                         sieges.begun.erase(b);
                     }
                 };
-                if (has(" sent "))
+                if (has("sent relief"))
+                    sieges.relieved++;
+                else if (has(" sent "))
                 {
                     sieges.sent++;
-                    sieges.begun[e.system] = e.time;
                 }
                 else if (has("laid siege"))
+                {
                     sieges.laid++;
+                    sieges.begun[e.system] = e.time;  // timed from the besiegers' arrival
+                }
                 else if (has("destroyed the"))
                     ended(sieges.destroyed);
                 else if (has("gave up"))
@@ -546,10 +553,21 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
             }
         }
         printf("\nSieges: %d sent, %d laid, %d destroyed an outpost, %d gave up, %d driven off, "
-               "%d void; %d still running; mean length %.1f h\n",
+               "%d void; %d still running; %d relieved\n",
                sieges.sent, sieges.laid, sieges.destroyed, sieges.gaveUp, sieges.repelled,
-               sieges.voided, (int)sieges.begun.size(),
-               sieges.lengths > 0 ? sieges.lengthSum / sieges.lengths / 3600.0 : 0.0);
+               sieges.voided, (int)sieges.begun.size(), sieges.relieved);
+        {
+            std::vector<double>& l = sieges.lengthList;
+            std::sort(l.begin(), l.end());
+            if (l.empty())
+                printf("Siege length at the outpost: none ended\n");
+            else
+                printf("Siege length at the outpost (min): median %.1f, p10 %.1f, p90 %.1f, max "
+                       "%.1f, mean %.1f\n",
+                       l[l.size() / 2] / 60.0, l[l.size() / 10] / 60.0,
+                       l[std::min(l.size() - 1, l.size() * 9 / 10)] / 60.0, l.back() / 60.0,
+                       sieges.lengthSum / (double)l.size() / 60.0);
+        }
         // What each side ended up flying, by weapon family and hull line, against the style of
         // the regions it holds: the regional difference the slice is for.
         printf("\nAt the end, what each faction's warships are, and each region's style:\n\n");

@@ -374,6 +374,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   planner and the pass both read it, so a refit of the doctrine's warship moves every siege.
   The volley's damage types (`Plan::mix`, saved) meet the wall's layers -- a tier's `armour` in
   blueprints.json -- through `Structure::StrikeWith` and `Blueprints::WallEffect` (#557).
+  A wall is measured in a reference fleet's guns, not in points (#568): `siege.reference` and a
+  blueprint's `holds` give `hull`, a tier's `mendShips` its mending, so one yardstick serves every
+  owner and a refit of the reference design rescales all walls; an outpost holds an hour, a
+  station four. The defender answers: its holdings in reach lend relief when the besiegers
+  arrive (`Plan::relief`), and the ship-against-ship attrition is typed by the fleets' mixes.
 - **NPCs and players fight by one model** (owner, 2026-10-22, #186). An NPC's guns and hull
   are its design's as a player's ship of it has them (`Ships::Stats::volley`, `combatHull`),
   fired at `Ships::PLAYER_FIRE_INTERVAL` from `Sim::PLAYER_WEAPON_RANGE`; only the shields are

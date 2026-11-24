@@ -2515,6 +2515,8 @@ private:
     // What is left of a lent force goes home (#295): each holding that lent it its share of
     // `p.force`, as many jumps away as it came, `hop` seconds a jump -- a Return each.
     void SendHome(const Plan& p, double hop);
+    // The holder's relief of a siege that has just laid siege to its outpost (#568, D2).
+    void SendRelief(Plan& p, SystemState& st);
     // The police answer from here, now (#431 slice 9): the system's own free police of the
     // law warp beside `by`, and its stations launch what the faction can spare. How many of
     // each is the band's. Returns how many came.

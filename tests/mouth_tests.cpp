@@ -17,6 +17,7 @@
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
 
+#include "small_walls.h"
 #include "temp_dir.h"
 
 #include <nlohmann/json.hpp>
@@ -38,7 +39,7 @@ void LoadRegistries()
 {
     Factions::Load(DATA + "factions.json");
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
-    REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
+    REQUIRE(Blueprints::Load(SmallWalls(DATA)));
 }
 
 Gen::WorldParams Params(uint64_t seed)

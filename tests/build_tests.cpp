@@ -1493,17 +1493,22 @@ TEST_CASE("defences mend by tier: one frigate cannot bring an outpost down, enou
     REQUIRE(StructureById(sim, sys, id) != nullptr);
     CHECK(StructureById(sim, sys, id)->GetDamage(sim.Time()) <= frigate.damage + 0.01f);
 
-    // A few cruisers' is above it, and it comes down.
-    int n = 1;
-    while ((float)n * cruiser.damage * shotsPerSecond < mend * 1.5f)
-        n++;
-    CHECK(n <= 4);  // an outpost falls to a few pilots...
-    fire(guns(cruiser, n), 600.0);
+    // A lone pilot's guns cannot take an outpost, whatever the ship (#568): it is measured in
+    // the siege's reference fleet, and mends as much as a couple of its ships fire. The
+    // reference fleet itself -- the same design, as many -- brings it down in about the
+    // seconds the blueprint says it holds: standing at half that time, gone a little after.
+    const Blueprints::Siege& rules = Blueprints::SiegeRules();
+    CHECK(rules.referenceShips * cruiser.damage * shotsPerSecond > mend);
+    const std::vector<ClientSession*> fleet = guns(cruiser, rules.referenceShips);
+    fire(fleet, 0.5 * outpost.holds);
+    REQUIRE(StructureById(sim, sys, id) != nullptr);
+    CHECK(StructureById(sim, sys, id)->HullFraction(sim.Time()) < 0.75f);
+    fire(fleet, 0.7 * outpost.holds);
     CHECK(StructureById(sim, sys, id) == nullptr);
 
-    // ...a station's frame only to a fleet, and a beacon to anyone.
+    // ...a station's frame needs more of them still, and a beacon falls to anyone.
     const Blueprint& station = *Blueprints::Find("trade_station");
-    CHECK(station.mend * station.hull / (cruiser.damage * shotsPerSecond) >= 8.0f);
+    CHECK(station.mend * station.hull / (cruiser.damage * shotsPerSecond) >= 3.9f);
     const Blueprint& beacon = *Blueprints::Find("beacon");
     CHECK(beacon.mend * beacon.hull < frigate.damage * shotsPerSecond);
 }
@@ -1539,13 +1544,13 @@ TEST_CASE("the front line binds claims and sieges, never guns (#431 D3)")
     ShipStats cruiser;
     REQUIRE(StatsOfDesign("cruiser", cruiser));
     std::vector<ClientSession*> guns;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < Blueprints::SiegeRules().referenceShips; i++)
     {
         ClientSession& g = sim.CreateSession(sys, at, cruiser);
         g.accountName = i == 0 ? std::string("raider") : "raider" + std::to_string(i);
         guns.push_back(&g);
     }
-    const double until = sim.Time() + 600.0;
+    const double until = sim.Time() + 1.5 * outpost.holds;
     while (sim.Time() < until && StructureById(sim, sys, id) != nullptr)
     {
         for (ClientSession* g : guns)

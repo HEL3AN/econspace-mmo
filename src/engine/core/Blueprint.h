@@ -33,7 +33,14 @@ struct Blueprint
     // What it takes to shoot the finished thing down (#39). Not optional: anything buildable
     // is killable, or the map fills up and never changes again. A site has a share of it
     // that grows as it goes up (Blueprints::Destruction).
+    //
+    // Either points (`hull` in the file), or -- for a wall a fleet has to take (#568) --
+    // `holds`: the seconds the siege's reference fleet needs to bring it down net of its
+    // mending, from which Blueprints::Load derives `hull` (and `mend`) in points, so a wall
+    // is measured in the same guns whoever owns it and a refit of the reference design
+    // rescales every wall. Zero `holds`: stated in points.
     float hull = 0.0f;
+    float holds = 0.0f;
     // Its tier (#431 D1), one of the file's `tiers`, and what that tier mends: a share of `hull`
     // per world second, for as long as it stands finished. Fire below that rate is undone as
     // fast as it lands, so the tier is what decides how many guns it takes -- a beacon falls to
@@ -170,6 +177,14 @@ struct Siege
     float reach = 3.0f;
     float hop = 120.0f;
     float pool = 1.5f;
+    // The yardstick for every wall (#568): `referenceShips` of the design `reference` (a stock
+    // design id, the doctrine's warship), firing as a player's ship of it does. Not a faction's
+    // fleet -- a player's outpost has none -- so the same wall holds the same whoever owns it.
+    std::string reference;
+    int         referenceShips = 0;
+    // Its fire, hull a second: what a tier's `mendShips` and a blueprint's `holds` are in.
+    float referenceDps = 0.0f;   // the whole fleet's
+    float referenceShip = 0.0f;  // one of its ships'
 };
 const Siege& SiegeRules();
 

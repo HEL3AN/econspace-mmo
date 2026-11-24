@@ -273,6 +273,10 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
         const Ships::Fighter its = FighterIn(*home, f, NpcRole::Warship);
         fighter.dps += its.dps * took.force;
         fighter.hull += its.hull * took.force;
+        fighter.armour += its.armour * took.force;
+        for (size_t l = 0; l < fighter.resist.size(); ++l)
+            for (size_t t = 0; t < fighter.resist[l].size(); ++t)
+                fighter.resist[l][t] += its.resist[l][t] * took.force;
         for (size_t t = 0; t < fighter.mix.size(); ++t)
             fighter.mix[t] += its.mix[t] * its.dps * took.force;  // by the fire it brings
         there -= took.force;
@@ -306,6 +310,10 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     p.lent = sent;
     p.dps = fighter.dps / force;
     p.hull = fighter.hull / force;
+    p.armour = fighter.armour / force;
+    for (size_t l = 0; l < p.resist.size(); ++l)
+        for (size_t t = 0; t < p.resist[l].size(); ++t)
+            p.resist[l][t] = fighter.resist[l][t] / force;
     for (size_t t = 0; t < p.mix.size(); ++t)
         p.mix[t] = fighter.dps > 0.0f ? fighter.mix[t] / fighter.dps : 0.0f;
     plans_[p.id] = p;
@@ -335,11 +343,47 @@ bool Simulation::ArriveSiege(Plan& p)
     }
     p.arrived = true;
     st->agg.presence[p.faction] += p.force;
+    SendRelief(p, *st);
     Announce("siege", p.faction, p.target,
              FactionName(p.faction) + " laid siege to " + Against(p, t) + " in " +
                  SystemName(p.target));
     FieldSiege(*st, p, true);
     return true;
+}
+
+// The holder's answer to a siege at its outpost (#568, #431 D2): what its holdings within reach
+// can spare, the garrison's strength lent the same way a siege's is, set out when the besiegers
+// stand there. A trespasser's structure (`evicting`) is nobody's to relieve.
+void Simulation::SendRelief(Plan& p, SystemState& st)
+{
+    const FactionId g = p.against;
+    if (!p.evicting.empty() || g == Factions::Unaffiliated() || !p.relief.empty())
+        return;
+    const Blueprints::Siege& r = Blueprints::SiegeRules();
+    std::string              in;
+    int                      hops = 1;
+    for (const Plan::Lent& l : PoolFor(g, st.id, r.pool * Factions::TemperamentOf(g).capacity, &in))
+    {
+        SystemState* home = SystemById(l.from);
+        if (home == nullptr)
+            continue;
+        float&     there = home->agg.presence[g];
+        Plan::Lent took = l;
+        took.force = std::min(l.force, there);
+        if (took.force <= 0.0f)
+            continue;
+        there -= took.force;
+        p.reliefForce += took.force;
+        hops = std::max(hops, took.hops);
+        p.relief.push_back(took);
+    }
+    if (p.relief.empty())
+        return;
+    p.reliefAt = time_ + hops * (double)r.hop;
+    Record("siege", g, p.target,
+           FactionName(g) + " sent relief to " + SystemName(p.target) + ": " +
+               std::to_string((int)std::lround(p.reliefForce)) + " ships, " + std::to_string(hops) +
+               " jumps away");
 }
 
 void Simulation::ResolveSiege(const Plan& p)
@@ -372,6 +416,22 @@ void Simulation::RecallSiege(const Plan& p)
     }
     // ...and goes home, each holding its share of what survived, as many jumps away as it came.
     SendHome(p, Blueprints::SiegeRules().hop);
+    // The holder's relief too (#568): on the road, all of it; at the outpost, what is left.
+    if (!p.relief.empty())
+    {
+        float back = p.reliefForce;
+        if (p.reliefHere && st != nullptr)
+        {
+            float& there = st->agg.presence[p.against];
+            back = std::min(back, there);
+            there -= back;
+        }
+        Plan home = p;
+        home.faction = p.against;
+        home.lent = p.relief;
+        home.force = back;
+        SendHome(home, Blueprints::SiegeRules().hop);
+    }
 }
 
 void Simulation::SendHome(const Plan& p, double hop)
@@ -468,6 +528,16 @@ void Simulation::StepSieges()
         }
         SystemAggregate& a = st->agg;
         const FactionId  fi = p.faction, gi = p.against;
+        // The relief the holder sent when the besiegers stood there has come: it stands with
+        // the garrison from now.
+        if (!p.relief.empty() && !p.reliefHere && time_ >= p.reliefAt)
+        {
+            p.reliefHere = true;
+            a.presence[gi] += p.reliefForce;
+            Record("siege", gi, p.target,
+                   "Relief reached " + SystemName(p.target) + ": " + FactionName(gi) +
+                       " stands with its garrison against the " + FactionName(fi));
+        }
 
         // Where it is real, a besieger a player shot down is one fewer: what the arithmetic
         // below does not know about, and the one way a player changes a siege's course.
@@ -513,11 +583,15 @@ void Simulation::StepSieges()
         {
             besieger = Ships::Fighter{ p.dps, p.hull };
             besieger.mix = p.mix;
+            besieger.armour = p.armour;
+            besieger.resist = p.resist;
         }
         const Ships::Fighter garrison =
             FighterIn(*st, gi, gi == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
-        auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
-        { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
+        // By the layers, as a hit is (#568): a fleet's mix against the other's armour and hull.
+        const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+        auto                    bite = [&cat](const Ships::Fighter& by, const Ships::Fighter& on)
+        { return Ships::Bite(cat, by, on); };
         // A player's structure is guarded by its owner's corporation's patrol here, if it
         // keeps one (#431 slice 12): its ships stand with the garrison, by their own design's
         // guns and hull, and the besiegers' fire is shared between the two by their numbers.

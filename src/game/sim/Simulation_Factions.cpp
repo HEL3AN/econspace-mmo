@@ -596,6 +596,9 @@ void Simulation::StepFactions()
             // A siege's contingents, a convoy's escort (#342 S6), police answering a crime.
             for (const Plan::Lent& l : kv.second.lent)
                 owes(l.from, kv.second.faction, l.force);
+            // ...and the relief a siege's target holder lent (#568), short at home likewise.
+            for (const Plan::Lent& l : kv.second.relief)
+                owes(l.from, kv.second.against, l.force);
         }
         else if (kv.second.kind == Plan::Kind::Return)
             owes(kv.second.target, kv.second.faction, kv.second.force);

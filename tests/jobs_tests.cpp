@@ -18,6 +18,7 @@
 #include "sim/WorldRules.h"
 
 #include "factions_named.h"
+#include "small_walls.h"
 #include "temp_dir.h"
 
 #include <cmath>
@@ -37,7 +38,7 @@ void LoadRegistries()
 {
     REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
-    REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
+    REQUIRE(Blueprints::Load(SmallWalls(DATA)));
 }
 
 Gen::WorldParams Params(uint64_t seed)

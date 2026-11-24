@@ -1216,6 +1216,22 @@ bool Simulation::SaveWorld(const std::string& path) const
                 for (float m : p.mix)
                     mix.push_back(m);
                 pj["mix"] = std::move(mix);
+                pj["armour"] = p.armour;  // (#568)
+                if (!p.relief.empty())
+                {
+                    json relief = json::array();
+                    for (const Plan::Lent& l : p.relief)
+                        relief.push_back(
+                            { { "from", l.from }, { "force", l.force }, { "hops", l.hops } });
+                    pj["relief"] = std::move(relief);
+                    pj["reliefForce"] = p.reliefForce;
+                    pj["reliefAt"] = p.reliefAt;
+                    pj["reliefHere"] = p.reliefHere;
+                }
+                json resist = json::array();
+                for (const auto& row : p.resist)
+                    resist.push_back(row);
+                pj["resist"] = std::move(resist);
             }
             pj["via"] = p.via;
             pj["arrivesAt"] = p.arrivesAt;
@@ -1533,6 +1549,42 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                     }
                 else
                     p.mix = FighterOf(p.faction, NpcRole::Warship).mix;
+                if (pj.contains("relief") && pj["relief"].is_array())
+                {
+                    for (const json& lj : pj["relief"])
+                        if (lj.is_object() && HasSystem(lj.value("from", std::string())))
+                        {
+                            Plan::Lent l;
+                            l.from = lj.value("from", std::string());
+                            l.force = std::max(0.0f, lj.value("force", 0.0f));
+                            l.hops = std::max(1, lj.value("hops", 1));
+                            p.relief.push_back(l);
+                        }
+                    p.reliefForce = std::max(0.0f, pj.value("reliefForce", 0.0f));
+                    p.reliefAt = pj.value("reliefAt", 0.0);
+                    p.reliefHere = pj.value("reliefHere", false);
+                }
+                // What they have to lose (#568); an older plan reads as the doctrine's.
+                const json* rs =
+                    pj.contains("resist") && pj["resist"].is_array() ? &pj["resist"] : nullptr;
+                const float armour = pj.value("armour", 0.0f);
+                if (worldVersionRead_ >= 21 && rs != nullptr && std::isfinite(armour))
+                {
+                    p.armour = std::max(0.0f, armour);
+                    for (size_t l = 0; l < p.resist.size() && l < rs->size(); ++l)
+                        for (size_t t = 0; t < p.resist[l].size() && t < (*rs)[l].size(); ++t)
+                        {
+                            const float r =
+                                (*rs)[l][t].is_number() ? (*rs)[l][t].get<float>() : 1.0f;
+                            p.resist[l][t] = std::isfinite(r) ? std::clamp(r, 0.0f, 4.0f) : 1.0f;
+                        }
+                }
+                else
+                {
+                    const Ships::Fighter now = FighterOf(p.faction, NpcRole::Warship);
+                    p.armour = now.armour;
+                    p.resist = now.resist;
+                }
             }
             // A siege from before pooling (version 7) is already at its outpost, and lent by
             // nobody: what is left of it stays where it is, as it did then.
