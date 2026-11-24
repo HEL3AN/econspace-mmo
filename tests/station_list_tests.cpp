@@ -22,7 +22,11 @@ TEST_CASE("StationList: the market lists every good, what selling pays and what 
     const double fee = Goods::Rules().fee;
 
     const std::vector<StationList::MarketRow> rows = StationList::Market(in);
-    REQUIRE(rows.size() == AllResourceTypes().size());
+    // Every good a market may stock, and no module that is not on its shelf (#566).
+    size_t ordinary = 0;
+    for (ResourceType g : AllResourceTypes())
+        ordinary += Goods::Def(g).IsModule() ? 0 : 1;
+    REQUIRE(rows.size() == ordinary);
     CHECK(rows[0].type == Good::Iron());
     CHECK(rows[0].name == ResourceName(Good::Iron()));
     CHECK(rows[0].hold == 7);
@@ -55,6 +59,8 @@ TEST_CASE("StationList: the market lists every good, what selling pays and what 
     // Before the first snapshot the lists are empty: every row is there, at nothing.
     const std::vector<StationList::MarketRow> none = StationList::Market({});
     REQUIRE(none.size() == rows.size());
+    for (const StationList::MarketRow& r : none)
+        CHECK_FALSE(Goods::Def(r.type).IsModule());
     CHECK(none[2].price == 0.0f);
     CHECK(none[2].hold == 0);
     CHECK(none[2].canBuy == 0);
@@ -104,4 +110,30 @@ TEST_CASE(
           doctest::Approx(catalog[last].price * ShipPriceMultiplier(RepTier::Hated)));
     CHECK(allied[last].price < hated[last].price);
     CHECK(allied[last].affordable);
+}
+
+TEST_CASE("StationList: a module is a row only where the shelf or the hold has one (#566)")
+{
+    ResourceType laser;
+    REQUIRE(ModuleGood("weapons.laser", laser));
+    StationList::MarketInput in;
+    const size_t             n = (size_t)Goods::Count();
+    in.prices.assign(n, 10.0f);
+    in.asks.assign(n, 11.0f);
+    in.stock.assign(n, 5);
+    in.cargo.assign(n, 0);
+    in.stock[(size_t)laser.Index()] = 0;
+    auto has = [&](const std::vector<StationList::MarketRow>& rows)
+    {
+        for (const StationList::MarketRow& r : rows)
+            if (r.type == laser)
+                return true;
+        return false;
+    };
+    CHECK_FALSE(has(StationList::Market(in)));
+    in.stock[(size_t)laser.Index()] = 2;
+    CHECK(has(StationList::Market(in)));
+    in.stock[(size_t)laser.Index()] = 0;
+    in.cargo[(size_t)laser.Index()] = 1;  // one aboard: it can be sold here
+    CHECK(has(StationList::Market(in)));
 }

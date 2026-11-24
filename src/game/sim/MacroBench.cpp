@@ -524,6 +524,32 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
             }
             if (pass % every != 0)
                 continue;
+            // What the shelves hold, per good: every trading market's stock as a share of its
+            // target, and how many markets are all but out (#566) -- where ships are made of
+            // goods, this is where a faction that cannot buy one shows first.
+            {
+                std::string line;
+                for (ResourceType g : AllResourceTypes())
+                {
+                    double have = 0.0, want = 0.0;
+                    int    dry = 0, markets = 0;
+                    for (const auto& kv : sim.Systems())
+                    {
+                        if (kv.second.profile.markets <= 0)
+                            continue;
+                        markets++;
+                        have += kv.second.market.Stock(g);
+                        want += kv.second.market.Target(g);
+                        dry +=
+                            kv.second.market.Stock(g) < 0.05 * kv.second.market.Target(g) ? 1 : 0;
+                    }
+                    char buf[96];
+                    snprintf(buf, sizeof(buf), " %s %.0f%%(%d/%d dry)", Goods::Id(g).c_str(),
+                             want > 0.0 ? 100.0 * have / want : 0.0, dry, markets);
+                    line += buf;
+                }
+                printf("goods at hour %.0f:%s\n", pass / 1800.0, line.c_str());
+            }
             for (FactionId f : Factions::All())
             {
                 float ships = 0.0f;
@@ -549,6 +575,38 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                     printf("  COLLAPSE: %s holds %d systems with %.1f ships\n",
                            Factions::Id(f).c_str(), held, ships);
                     collapsed = true;
+                    if (pass == passes)
+                    {
+                        // Why it cannot buy (#566): what the ship it would buy is made of, and
+                        // what the market it would buy at holds of each, by ask over base.
+                        for (const auto& kv : sim.Systems())
+                            if (kv.second.agg.claimed && kv.second.agg.controller == f)
+                            {
+                                const SystemState* shop =
+                                    sim.BuyingMarket(kv.first, f == Factions::Pirates());
+                                const std::string design =
+                                    Archetypes::ShipCatalogue().Pick(Factions::Id(f), "warship", 0);
+                                printf("  WHY %s: holds %s, buys at %s, a %s needs:",
+                                       Factions::Id(f).c_str(), kv.first.c_str(),
+                                       shop != nullptr ? shop->id.c_str() : "(no market)",
+                                       design.c_str());
+                                if (shop != nullptr)
+                                {
+                                    auto show = [&](const Ships::Cost& c)
+                                    {
+                                        for (const auto& [g, n] : c)
+                                            printf(" %s %dx (shelf %.0f, ask %.1fx base)",
+                                                   Goods::Id(g).c_str(), n, shop->market.Stock(g),
+                                                   shop->market.Ask(g) /
+                                                       shop->market.GetBasePrice(g));
+                                    };
+                                    show(sim.PartsCost(design));
+                                    show(Simulation::GunCost(design));
+                                }
+                                printf("\n");
+                                break;
+                            }
+                    }
                 }
             }
         }

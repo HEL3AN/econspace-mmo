@@ -264,6 +264,11 @@ TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#2
         const SystemAggregate& a = kv.second.agg;
         if (a.claimed && Factions::IsLawful(a.controller))
         {
+            CAPTURE(kv.first);
+            CAPTURE(a.police);
+            CAPTURE(a.traders);
+            CAPTURE(a.prosperity);
+            CAPTURE(a.security);
             CHECK(a.police >= 1.0f);
             CHECK(a.traders >= 1.0f);
         }

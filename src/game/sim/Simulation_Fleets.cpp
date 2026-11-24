@@ -442,6 +442,7 @@ const Ships::Cost& Simulation::DesignCost(const std::string& design) const
     if (designCostsFrom_ != Archetypes::Generation())
     {
         designCosts_.clear();
+        designParts_.clear();
         designCostsFrom_ = Archetypes::Generation();
     }
     auto it = designCosts_.find(design);
@@ -468,18 +469,63 @@ Ships::Cost Simulation::GunCost(const std::string& design)
         for (const Ships::FitLine& l : d->fit)
             if (const Ships::ModulePart* m = c.FindModule(l.module);
                 m != nullptr && c.FamilyOfModule(l.module) != nullptr)
-                for (const auto& [good, n] : m->cost)
-                    units[good.Index()] += n * l.count;
+            {
+                ResourceType g;
+                if (ModuleGood(m->id, g))
+                    units[g.Index()] += l.count;
+            }
     Ships::Cost out;
     for (const auto& [i, n] : units)
         out.emplace_back(ResourceType::FromIndex(i), n);
     return out;
 }
 
+const Ships::Cost& Simulation::PartsCost(const std::string& design) const
+{
+    const Ships::Cost& all = DesignCost(design);  // also drops both caches when data changed
+    auto               it = designParts_.find(design);
+    if (it != designParts_.end())
+        return it->second;
+    // The whole cost less what the guns are made of: a gun is bought as a module good, whose
+    // own parts the yard that made it has already paid.
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Ships::Design*    d = c.FindDesign(design);
+    std::map<int, int>      units;
+    for (const auto& [good, n] : all)
+        units[good.Index()] += n;
+    if (d != nullptr)
+        for (const Ships::FitLine& l : d->fit)
+            if (const Ships::ModulePart* m = c.FindModule(l.module);
+                m != nullptr && c.FamilyOfModule(l.module) != nullptr)
+            {
+                ResourceType g;
+                if (!ModuleGood(m->id, g))
+                    continue;
+                for (const auto& [good, n] : m->cost)
+                    units[good.Index()] -= n * l.count;
+            }
+    Ships::Cost out;
+    for (const auto& [i, n] : units)
+        if (n > 0)
+            out.emplace_back(ResourceType::FromIndex(i), n);
+    return designParts_.emplace(design, std::move(out)).first->second;
+}
+
+Inventory Simulation::WreckModules(const std::string& design, double share, int key)
+{
+    Inventory    out;
+    const double frac = (double)((uint32_t)key * 2654435761u % 1000u) / 1000.0;
+    for (const auto& [good, n] : GunCost(design))
+        out.Add(good, (int)std::floor((double)n * share + frac));
+    return out;
+}
+
 double Simulation::ShipPriceAt(const SystemState& st, const std::string& design) const
 {
     double price = 0.0;
-    for (const auto& [good, n] : DesignCost(design))
+    for (const auto& [good, n] : PartsCost(design))
+        price += st.market.Ask(good) * (double)n;
+    for (const auto& [good, n] : GunCost(design))
         price += st.market.Ask(good) * (double)n;
     return price;
 }
@@ -563,32 +609,39 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
         fits.push_back({ d, std::string(), std::string(), 0.0f });
 
     double& treasury = minds_[f].treasury;
-    // As many of `design` as the market has the goods of its guns for, none of them dear, and
-    // the treasury the money for: up to `n`, and bought. The whole ship is paid for at the ask
-    // -- money limits how many -- but only its guns leave the market: the hull and its parts
-    // are the faction's own yards' work from bulk ore, and the guns are what a region's market
-    // decides (#186, a call the design left free: Iron, which every hull is, runs short
-    // everywhere, and would stop every faction alike rather than lean any).
+    // As many of `design` as the market has the goods of, none of its guns dear, and the
+    // treasury the money for: up to `n`, and bought (#566). The whole ship leaves the shelf --
+    // its frame, sections and parts as raw goods, its guns as module goods -- at the ask, and
+    // the fee goes to the market's owner as any trade's does. A market short of any one of
+    // them is a market short of ships: nothing is built from nothing.
     auto buy = [&](const std::string& design, float n) -> float
     {
-        const Ships::Cost& cost = DesignCost(design);
+        const Ships::Cost& parts = PartsCost(design);
         const Ships::Cost  guns = GunCost(design);
-        if (cost.empty() || n <= 0.0f)
+        if ((parts.empty() && guns.empty()) || n <= 0.0f)
             return 0.0f;
         double can = n, price = 0.0;
-        for (const auto& [good, units] : cost)
+        for (const auto& [good, units] : parts)
+        {
             price += shop->market.Ask(good) * (double)units;
+            can = std::min(can, shop->market.Stock(good) / (double)units);
+        }
         for (const auto& [good, units] : guns)
         {
             if (shop->market.Ask(good) > rules.dearAt * shop->market.GetBasePrice(good))
                 return 0.0f;
+            price += shop->market.Ask(good) * (double)units;
             can = std::min(can, shop->market.Stock(good) / (double)units);
         }
+        const double fee = Goods::Rules().fee;
         if (price > 0.0)
-            can = std::min(can, treasury / price);
+            can = std::min(can, treasury / (price * (1.0 + fee)));
         if (can <= 1e-6)
             return 0.0f;
-        treasury -= price * can;
+        treasury -= price * can * (1.0 + fee);
+        PayFee(*shop, price * can * fee);
+        for (const auto& [good, units] : parts)
+            shop->market.SetStock(good, shop->market.Stock(good) - (double)units * can);
         for (const auto& [good, units] : guns)
             shop->market.SetStock(good, shop->market.Stock(good) - (double)units * can);
         return (float)can;
@@ -729,6 +782,10 @@ float Simulation::RefitFleets(SystemState& st, FactionId f, double rate)
                 treasury -= pay * n;
                 for (const auto& [good, units] : guns)
                     shop->market.SetStock(good, shop->market.Stock(good) - (double)units * n);
+                // The guns taken out are dismantled to the market: a refit loses nothing.
+                if (!guns.empty())
+                    for (const auto& [good, units] : GunCost(from))
+                        shop->market.SetStock(good, shop->market.Stock(good) + (double)units * n);
                 done.emplace_back(from, to, n);
                 refitted += n;
             }

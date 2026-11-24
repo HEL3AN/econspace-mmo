@@ -716,9 +716,14 @@ public:
     // What a ship of `design` costs at `st`'s market's ask, in credits; 0 for one that does
     // not derive.
     double ShipPriceAt(const SystemState& st, const std::string& design) const;
-    // What a design's guns -- the modules of a weapon family -- are made of: what a purchase
-    // takes from the market (BuyShips).
+    // What a design's guns -- the modules of a weapon family -- are, as module goods (#566):
+    // what a purchase takes off the market's shelf (BuyShips). Everything else a ship is made
+    // of, its frame, sections and other parts, is PartsCost: raw goods, off the same shelf.
     static Ships::Cost GunCost(const std::string& design);
+    const Ships::Cost& PartsCost(const std::string& design) const;
+    // The module goods a ship of `design` carries as guns, and so what its wreck may hold:
+    // `share` of each, the fraction left over decided by `key`, never by a draw (#566).
+    static Inventory WreckModules(const std::string& design, double share, int key);
     // Whether `f`'s holdings stand below the style rules' `defensiveBelow` of what they keep:
     // a faction so weakened plans nothing new until it recovers.
     bool Defensive(FactionId f) const;
@@ -2486,6 +2491,7 @@ private:
     std::map<int, Ships::Style> styles_;
     // What each design is made of (Ships::Stats::cost), by id, for the catalogue load named.
     mutable std::map<std::string, Ships::Cost> designCosts_;
+    mutable std::map<std::string, Ships::Cost> designParts_;
     mutable unsigned                           designCostsFrom_ = 0;
     const Ships::Cost&                         DesignCost(const std::string& design) const;
     // Reckons every open region's style, and logs where a region's leading family or line

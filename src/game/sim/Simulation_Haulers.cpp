@@ -16,6 +16,7 @@
 // it and flying to a market to unload. Shot down, either leaves its cargo in a wreck for
 // whoever searches it first.
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 
 #include "core/Blueprint.h"
 #include "economy/Market.h"
@@ -205,12 +206,19 @@ void Simulation::DeliverCargo(SystemState& st, bool all)
 
 void Simulation::LeaveCargoWreck(SystemState& st, const NpcShip& ship)
 {
-    if (ship.GetCargoAmount() <= 0)
+    // What it carried, and the guns it was bought with: they left a market's shelf when it was
+    // bought (#566), so a share of them is back in the world for whoever finds the wreck.
+    const Inventory guns =
+        WreckModules(ship.GetDesign(), WorldRules::WreckRules().moduleShare, ship.GetId());
+    if (ship.GetCargoAmount() <= 0 && guns.Empty())
         return;
     auto wreck =
         std::make_unique<Derelict>(ship.GetPosition(), std::max(30.0f, ship.GetSize() * 3.0f),
                                    "Wreck of " + ship.GetName(), 0.0);
-    wreck->Contents().Add(ship.GetCargo(), ship.GetCargoAmount());
+    if (ship.GetCargoAmount() > 0)
+        wreck->Contents().Add(ship.GetCargo(), ship.GetCargoAmount());
+    for (const auto& [good, n] : guns.All())
+        wreck->Contents().Add(good, n);
     // ...for a while, like any wreck (#41): an instant on the clock, so it goes on time in a
     // system nobody is in.
     if (Blueprints::Rules().wreckSeconds > 0.0f)
