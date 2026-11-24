@@ -386,6 +386,7 @@
                 "caps": 0.96,
                 "cloud": 0.42,
                 "cities": 0.55,
+                "settled": "item.settled",
                 "deep": [0.03, 0.1, 0.24],
                 "shallow": [0.06, 0.3, 0.42],
                 "lowland": [0.17, 0.26, 0.11],

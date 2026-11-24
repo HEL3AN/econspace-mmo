@@ -36,7 +36,7 @@ TEST_CASE("every source is named the same way in data and in code")
                             "light.tint",    "light.surface",  "light.strength",  "light.ambient",
                             "clock.time",    "item.axis",      "item.seed",       "item.partSeed",
                             "item.angle",    "texture.noise",  "item.partShape",  "item.frame",
-                            "livery.accent", "livery.params",  "livery.style" };
+                            "livery.accent", "livery.params",  "livery.style",    "item.settled" };
     for (const char* n : names)
     {
         Render::Source s;
@@ -210,6 +210,8 @@ TEST_CASE("a seed is the object's own, the same on every client, and two objects
     CHECK(Render::Resolve(Bound("s", "item.seed"), in).v[0] == doctest::Approx(Render::SeedOf(42)));
     CHECK(Render::Resolve(Bound("p", "item.partSeed"), in).v[0] == doctest::Approx(0.25f));
     CHECK(Render::Resolve(Bound("a", "item.angle"), in).v[0] == doctest::Approx(1.5f));
+    item.settled = 0.4f;
+    CHECK(Render::Resolve(Bound("c", "item.settled"), in).v[0] == doctest::Approx(0.4f));
     // A texture is no number: the library binds it, and the value says so by being empty.
     CHECK(Render::Resolve(Bound("t", "texture.noise"), in).count == 0);
 }
@@ -442,4 +444,33 @@ TEST_CASE("the shipped liveries offer a palette, and never the pirates' or the d
         CHECK(l.id != "Pirates");
     }
     CHECK(palette >= 5);
+}
+
+TEST_CASE("a planet is settled where a station is within its reach (#515)")
+{
+    auto planet = [](float x, float size)
+    {
+        Render::Item it;
+        it.kind = EntityKind::Planet;
+        it.pos = { x, 0.0f };
+        it.size = size;
+        return it;
+    };
+    auto station = [](float x)
+    {
+        Render::Item it;
+        it.kind = EntityKind::Station;
+        it.pos = { x, 0.0f };
+        return it;
+    };
+    std::vector<Render::Item> scene = { planet(0.0f, 10000.0f), planet(500000.0f, 10000.0f),
+                                        station(30000.0f), station(-60000.0f) };
+    Render::MarkSettled(scene);
+    CHECK(scene[0].settled == doctest::Approx(1.0f));  // two stations in reach
+    CHECK(scene[1].settled == 0.0f);                   // nobody near: a dark night side
+    CHECK(scene[2].settled == 1.0f);                   // only planets are marked
+
+    scene.pop_back();
+    Render::MarkSettled(scene);
+    CHECK(scene[0].settled == doctest::Approx(0.8f));  // one station
 }

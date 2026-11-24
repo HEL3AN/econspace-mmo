@@ -53,6 +53,8 @@ enum class Source
     // side of the object it is on -- a window on the night side -- and to lay grime that
     // runs on from one part to the next.
     ItemFrame,
+    // float, 0..1 -- how settled the body is (#515): what lights a planet's night side.
+    ItemSettled,
 
     LightDir,       // vec2, unit vector toward the strongest light (#119)
     LightTint,      // vec4, 0..1 -- the colour of the light arriving: a rim, a glow
