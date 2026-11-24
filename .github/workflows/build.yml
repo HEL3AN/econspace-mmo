@@ -9,6 +9,14 @@ on:
 permissions:
   contents: read
 
+# A newer push cancels the run still going for an older one on the same ref: merges to main
+# come in bursts, and each full run takes an hour, so they queued behind each other. The
+# latest commit carries every earlier one, so its run still catches what they broke. A pull
+# request's run is cancelled by its own next push the same way.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # What runs when (owner, 2026-11-24). A pull request runs the quick gate: Formatting and
   # Linux (GCC), which builds, runs every test and the agent bots, in about a quarter of an
