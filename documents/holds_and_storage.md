@@ -398,6 +398,67 @@ on price and speed, and earn the gap.**
   A pilot raiding convoys therefore raises the price of the service -- and the value of player
   couriers -- in that region, which is the economy answering, not a balance patch.
 
+## Modules as goods
+
+Decided by the owner on 2026-11-22: modules are real goods, made at shipyards by recipe, sold on
+markets, carried, stored in hangars, moved with the one `move` verb and dropped in wrecks. The
+economy stays a living one: nothing appears from nothing. The earlier `tradable: false` shape is
+rejected.
+
+- **The goods.** Each `ModulePart` of ships.json (11 today) gets an entry in `goods.json` with
+  `kind: "module"` and `module: "<part id>"`. The base price is computed at load from the part's
+  `cost` goods at their base prices times a yard margin (`market.moduleMargin` in goods.json, 1.3; data, not code), so a price
+  is never typed twice and a change to a cost moves it (#464 decision 7: lasers are Crystal and
+  Circuits). `volume` is by mass class in data. Tier 3.
+- **Where they are made.** `station.shipyard` recipes take a module's own cost goods and give
+  the module (`rate` an hour, per yard). A yard short of its inputs stops; haulers and belts
+  bring more as for any recipe (`Simulation_Haulers.cpp`). Nothing else makes a module.
+  **Production stops by itself at the limit every recipe has**: `Market::Step` clamps a stock at
+  `STOCK_CAP` times its target, and a recipe runs only as far as its inputs, so a yard whose
+  modules nobody buys stops filling at a small number rather than piling up. Until NPC fleets
+  buy modules (the follow-up), the sinks are player refits and wrecks that are not picked up,
+  so the stocks are small on purpose.
+- **Which markets stock them.** The stock vector has every good, so the price is defined
+  everywhere and the haulers need no new path. Stock starts at **0** except in a system with a
+  shipyard. A module has a small nominal target in every market (the price and the stock cap
+  need one: a target of 0 would clamp a delivered unit to nothing and price it at the floor),
+  and at zero stock the price sits at the ceiling, so the haul rule (bid beats ask by the
+  margin) carries modules from the yards to wherever they would sell. **Contracts post only
+  for a good the system makes or uses**, so a module is never asked for where it is neither
+  made nor used. A market lists a module in the market window only with stock > 0 or a yard of
+  its own; haulers skip a module whose source stock is 0. Rejected: a per-market allowlist (a
+  second table to keep right) and 30 extra goods carried alike everywhere.
+- **Refit.** Each module a fit adds is taken from the hangar here, then the ship's hold, then
+  bought at the local market's ask. If none is anywhere, the quote says so and the refit is
+  refused: there is no build-to-order at the old ore price. `Ships::RefitPrice` becomes the cost
+  of the modules that have to be bought, at the market's prices times the yard's `markup`; it
+  and the server share `Obs::QuoteFit`, as now.
+- **Removed modules** go to the hangar here (the hold if it is full; a refit is refused when
+  neither has room, and the quote says so). The half-ore refund (`REFIT_REFUND`) goes: the
+  module itself is the value and can be sold.
+- **Wrecks of player ships** drop each fitted module into the can at a share (`world_rules.json`
+  -> `wreck.moduleShare`, 0.5), the rounding decided by the wreck's key, never a random draw.
+  Anyone, a pilot or an NPC, may take them. **NPC ships drop none for now**: they are spawned and
+  bought with money alone, so dropping their modules would make goods from nothing. They start
+  to when fleets buy their modules from markets (the follow-up).
+- **The free starter is an exception, on purpose**: the ship that replaces a lost one stays free
+  and arrives with its stock fit, as EVE's rookie ship does, so nobody is locked out by a loss.
+- **The UI.** Modules are rows of the inventory and market windows like any good. Dragging one
+  onto a slot of the Fit tab sends the existing `refit` with that fit; dragging a fitted module
+  off its slot into the inventory sends the fit without it. No new message and no new verb.
+- **Agents.** `fitting` / `preview_fit` report, per module, the count in hangar, hold and
+  the market's ask and stock; `inventory` and `move_goods` carry modules as any good; `refit`
+  is unchanged.
+- **Versions.** PROTO bump (the goods vector widens, a quote reports sources). WORLD: none: a
+  market names its goods by string id, and one loaded without a module key gets 0 stock (the
+  target in a yard's system), never the target everywhere, so an old world does not mint
+  modules. ACCOUNT: none. GENERATOR: none (nothing generated changes).
+- **Performance.** Goods grow from 10 to 21, and the market `Step` and the haul search are
+  per good per system, so a macrobench before and after goes in the build PR (Release build).
+  The haul search skips empty module stocks, which is most of them.
+- **After this**: NPC factions' fleet buying (#464 slice 4) should take hulls and modules from
+  these markets instead of spending money alone; filed as its own issue.
+
 ## What we build overall
 
 Everything a pilot owns has a place. Goods live in containers: a ship's hold, a personal hangar
@@ -471,11 +532,9 @@ whatever is current when it lands.
    system and place, with a "route there" button into the route planner (#432), and the
    unreachable hangars of slice 6. *PROTO bump (an assets summary sent on request). Agent:
    `assets`.*
-10. **Modules as goods** (after #150, with #464). Modules join the goods registry as kind
-    `module`; shipyards make them from their `cost`; refits draw from the hangar, then the hold,
-    then buy; removed modules go to the hangar; wrecks drop fitted modules at a share; a module
-    dragged onto a fitting slot fits it. *PROTO bump (per-good vectors widen). ACCOUNT and WORLD
-    bumps if any saved key changes. Agent: `refit` unchanged; modules move with `move_goods`.*
+10. **Modules as goods** (after #150, with #464). EVE-like (owner, 2026-11-22); the design is
+    [Modules as goods](#modules-as-goods) below, built as data, economy, refit, UI and agent
+    PRs. *PROTO bump. WORLD and ACCOUNT: none (saves name goods by string id).*
 11. **The NPC delivery service** (with #473's courier contracts, which show its quote). Quotes
     from the route, freight in transit, the fee to the faction. *PROTO bump. WORLD: shipments in
     transit. Agent: `delivery_quote`, `request_delivery`.*
