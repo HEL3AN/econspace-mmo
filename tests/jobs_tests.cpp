@@ -1007,3 +1007,151 @@ TEST_CASE("a siege posts a break-the-siege job on the besieged's board; besieger
     REQUIRE(sim->CompleteMission(s, 0));
     CHECK(s.account.GetMoney() == doctest::Approx(money + reward));
 }
+
+// --- Survey jobs (#345) ---
+
+namespace
+{
+// A Guild holding, a neighbour it means to survey, and the plan: the faction offers the job.
+struct Surveying
+{
+    Holding     h;
+    std::string target;
+    int         plan = 0;
+};
+Surveying SurveyPlanned(Simulation& sim, FactionId f)
+{
+    Surveying u;
+    u.h = PlantOutpost(sim, f);
+    sim.MindOf(f).stock = 4.0f * Simulation::OutpostCost();
+    // One a faction has not charted: a frontier system, nobody's chart has it yet.
+    for (const std::string& n : sim.Neighbors(u.h.system))
+        if (u.target.empty() && sim.HasSystem(n) && !sim.OnPublicCharts(n))
+            u.target = n;
+    REQUIRE_FALSE(u.target.empty());
+    u.plan = sim.BeginSurvey(f, u.h.system, u.target);
+    REQUIRE(u.plan != 0);
+    return u;
+}
+
+// The pilot, undocked and in the target, scanning for one whole pass.
+void ScanTarget(Simulation& sim, ClientSession& s, const std::string& target)
+{
+    sim.StepPlayerUndock(s);
+    sim.ServerEnterSystem(s, target, s.systemId);
+    REQUIRE(sim.StartScan(s));
+    sim.SetTime(sim.Time() + WorldRules::ScanRules().seconds + 0.1);
+    sim.StepPlayerScan(s);
+}
+}  // namespace
+
+TEST_CASE("a pilot who scans the system a faction means to survey is paid, and the survey resolves "
+          "on the report (#345)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = Fac::TradersGuild();
+    Simulation      sim;
+    Make(sim, 7);
+    const Surveying u = SurveyPlanned(sim, f);
+    const double    ownDue = PlanOf(sim, u.plan)->dueAt;
+    // The faction gives pilots a while before it sends its own scouts.
+    CHECK(ownDue >= sim.Time() + WorldRules::JobRules().surveyWait);
+    ClientSession& s = DockedAt(sim, u.h);
+
+    const int offer = OfferOf(s, MissionType::Survey, u.plan);
+    REQUIRE(offer >= 0);
+    const Mission job = s.missions.Offers()[(size_t)offer];
+    CHECK(job.faction == f);
+    CHECK(job.systemId == u.target);
+    CHECK(job.rewardMoney >= WorldRules::JobRules().surveyBase);
+    CHECK(IsPlanJob(job.type));
+
+    REQUIRE(sim.AcceptMission(s, job.offerId));
+    REQUIRE(ActiveOf(s, MissionType::Survey) == 0);
+
+    // It is in the account, and an agent is told what to do about it.
+    {
+        TempDir           dir;
+        const std::string path = dir.Path("pilot.json");
+        REQUIRE(sim.SaveAccount(s, path));
+        ClientSession& back =
+            sim.CreateSession(u.h.system, { 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        REQUIRE(sim.LoadAccount(back, path) == Save::Result::Ok);
+        REQUIRE(back.missions.Active().size() == 1);
+        CHECK(back.missions.Active()[0].type == MissionType::Survey);
+        CHECK(back.missions.Active()[0].planId == u.plan);
+        CHECK(back.missions.Active()[0].systemId == u.target);
+
+        Proto::MissionView v;
+        v.type = (int)MissionType::Survey;
+        v.title = "Survey: Vela";
+        v.targetCount = 1;
+        v.systemId = u.target;
+        v.systemName = "Vela";
+        Proto::Snapshot snap;
+        snap.missionActive.push_back(v);
+        Obs::View view;
+        view.snapshot = &snap;
+        CHECK(Obs::MissionNeeds(view, v).find("scan") != std::string::npos);
+        CHECK(Obs::DescribeMissions(view).find("survey: Survey: Vela") != std::string::npos);
+    }
+    // The faction's scouts wait for the pilot until the job's time is up.
+    CHECK(PlanOf(sim, u.plan)->dueAt == doctest::Approx(s.missions.Active()[0].deadline));
+    CHECK(PlanOf(sim, u.plan)->dueAt > ownDue);
+    // A pass of the wrong system is nothing.
+    REQUIRE(s.missions.Active()[0].progress == 0);
+    CHECK(s.missions.Active()[0].deadline > sim.Time());
+
+    ScanTarget(sim, s, u.target);
+    const Mission& done = s.missions.Active()[0];
+    CHECK(done.progress == done.targetCount);
+    CHECK(sim.MissionCompletableNow(s, done));
+    // The plan resolves on the report: the faction knows the system and has charted it.
+    CHECK(PlanOf(sim, u.plan)->dueAt <= sim.Time());
+    sim.MaintainWorld(2.0f);
+    CHECK(PlanOf(sim, u.plan) == nullptr);
+    CHECK(sim.MindOf(f).intel.count(u.target) == 1);
+    CHECK(sim.SystemById(u.target)->agg.chartedBy == Factions::Id(f));
+
+    const float  stock = sim.MindOf(f).stock;
+    const double money = s.account.GetMoney();
+    const double reward = done.rewardMoney;
+    REQUIRE(sim.CompleteMission(s, 0));
+    CHECK(s.account.GetMoney() == doctest::Approx(money + reward));
+    CHECK(sim.MindOf(f).stock ==
+          doctest::Approx(std::max(0.0, stock - reward / WorldRules::JobRules().creditsPerStock)));
+}
+
+TEST_CASE("a survey job that is not done in time fails with a penalty; one taken after the plan "
+          "is over is refused (#345)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = Fac::TradersGuild();
+    Simulation      sim;
+    Make(sim, 7);
+    const Surveying u = SurveyPlanned(sim, f);
+    ClientSession&  s = DockedAt(sim, u.h);
+    const int       offer = OfferOf(s, MissionType::Survey, u.plan);
+    REQUIRE(offer >= 0);
+    const int offerId = s.missions.Offers()[(size_t)offer].offerId;
+    REQUIRE(sim.AcceptMission(s, offerId));
+    const float standing = s.account.GetReputation(f);
+    RunMinutes(sim, WorldRules::JobRules().surveyWindow / 60.0 + 2.0);
+    // Its time ran out: the faction's own scouts went, and the pilot did not.
+    CHECK(PlanOf(sim, u.plan) == nullptr);
+    CHECK(ActiveOf(s, MissionType::Survey) < 0);
+    CHECK(s.account.GetReputation(f) < standing);
+
+    // The board drawn before it was over is no longer the world's.
+    const Surveying v = SurveyPlanned(sim, f);
+    ClientSession&  t = DockedAt(sim, v.h);
+    const int       o2 = OfferOf(t, MissionType::Survey, v.plan);
+    REQUIRE(o2 >= 0);
+    const int stale = t.missions.Offers()[(size_t)o2].offerId;
+    RunMinutes(sim, 12.0);
+    CHECK(PlanOf(sim, v.plan) == nullptr);
+    CHECK_FALSE(sim.AcceptMission(t, stale));
+    CHECK(ActiveOf(t, MissionType::Survey) < 0);
+}

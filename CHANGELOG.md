@@ -15,6 +15,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 0.1 client cannot join and the next playtest starts on a fresh world.
 
 ### World, knowledge and territory
+- A faction offers pilots to survey the system it means to reach before it sends its own scouts: fly there, scan, and its survey resolves on your report (#345).
 - Every pilot has their own map: public charts, their own finds and their corporation's (#443).
 - Factions chart what they reach, and first contact reveals native names (#453); native names follow their culture (#448).
 - The discoverer names a system and the admin moderates (#459).

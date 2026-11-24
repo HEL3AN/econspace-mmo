@@ -226,6 +226,7 @@ void Simulation::StepPlayerScan(ClientSession& s)
         found += "\n  " + Resolve(s, *st, *e);
         resolved++;
     }
+    SurveyReport(s, st->id);
     std::string line = "Scan of " + SystemName(st->id) + " complete: ";
     if (resolved == 0 && partial == 0)
         line += "no signatures";

@@ -19,6 +19,7 @@ enum class MissionType
     // A short market's contract (#343, #407): bring N of a good to its station by a deadline.
     Contract,
     Besiege,  // join a siege (#407): shoot down N of the besieged outpost's defenders
+    Survey,   // survey a system the faction means to reach: fly there and scan it (#345)
 };
 
 // Whether a mission is a plan's job (#345): handed in anywhere -- the faction pays by wire --
@@ -26,7 +27,7 @@ enum class MissionType
 inline bool IsPlanJob(MissionType t)
 {
     return t == MissionType::Supply || t == MissionType::Escort || t == MissionType::Siege ||
-           t == MissionType::Besiege;
+           t == MissionType::Besiege || t == MissionType::Survey;
 }
 
 // A siege's job of either side (#407): shoot down N of the other side's ships.
@@ -55,11 +56,12 @@ inline int ContractOffer(int contractId)
 // The number a plan's job has on every board (#345): one per plan and kind.
 inline int PlanOffer(int planId, MissionType type)
 {
-    const int kind = type == MissionType::Supply   ? 0
-                     : type == MissionType::Escort ? 1
-                     : type == MissionType::Siege  ? 2
-                                                   : 3;
-    return PLAN_BASE + (planId & 0x0FFFFFFF) * 4 + kind;
+    const int kind = type == MissionType::Supply    ? 0
+                     : type == MissionType::Escort  ? 1
+                     : type == MissionType::Siege   ? 2
+                     : type == MissionType::Besiege ? 3
+                                                    : 4;
+    return PLAN_BASE + (planId & 0x07FFFFFF) * 8 + kind;
 }
 
 // A station's own work (bounty, mining, delivery): numbered as it is posted, below the rest.
