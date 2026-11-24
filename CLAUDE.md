@@ -156,6 +156,15 @@ published on GitHub, and **every performance number** -- an unoptimized build is
 slower and points at the wrong costs (#296). A build with no `CMAKE_BUILD_TYPE` is neither: no
 optimisation and no symbols, so always name one.
 
+**CI on a pull request is the quick gate** (owner, 2026-11-24): Formatting and Linux (GCC) --
+build, every test, the agent bots -- in about a quarter of an hour; Linux (GCC) is the required
+check. Windows, macOS and the sanitizers run after the merge, on every push to main, and in a
+release. So build and run the tests on Windows locally before pushing (the tests a change
+touches, not the whole suite each time), and when a change is risky for one platform or for
+memory -- the wire, saves, threads, raw buffers -- run everything on the branch first with
+`gh workflow run build.yml --ref <branch>`. A red main after a merge is the merging agent's to
+fix first.
+
 Windows/MinGW and Linux/GCC, both built by CI (#12). The transport picks winsock or
 Berkeley sockets at compile time; `ws2_32` is linked only on Windows. On Windows, close a
 running executable before rebuilding — it will not let you overwrite it. On Linux the
