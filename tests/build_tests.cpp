@@ -19,6 +19,7 @@
 #include "sim/Observation.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 #include "temp_dir.h"
 
 #include "raymath.h"
@@ -1172,10 +1173,25 @@ TEST_CASE("a player's outpost is one of the structures the account's cap counts 
     CHECK(asked);
 }
 
+// The hand-written start is a region of its own with stations to spare: room for a player's,
+// whose station counts against the region's cap (#438), for the length of a test.
+struct RoomForStations
+{
+    WorldRules::Growth was = WorldRules::GrowthRules();
+    RoomForStations()
+    {
+        WorldRules::Growth g = was;
+        g.stationsPerRegion = 99;
+        WorldRules::SetGrowthRules(g);
+    }
+    ~RoomForStations() { WorldRules::SetGrowthRules(was); }
+};
+
 TEST_CASE("a player builds an outpost, docks at it and grows it along the chain (#433)")
 {
     LoadRegistries();
-    Simulation sim;
+    RoomForStations room;
+    Simulation      sim;
     StartServer(sim, "");
     ClientSession&    s = Founder(sim, "hunter");
     ClientSession&    ann = Founder(sim, "ann");
@@ -1362,7 +1378,8 @@ TEST_CASE("a player grows their own station into a shipyard and refits there; no
           "(#432)")
 {
     LoadRegistries();
-    Simulation sim;
+    RoomForStations room;
+    Simulation      sim;
     StartServer(sim, "");
     ClientSession&    s = Founder(sim, "hunter");
     ClientSession&    ann = Founder(sim, "ann");

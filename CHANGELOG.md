@@ -15,6 +15,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 0.1 client cannot join and the next playtest starts on a fresh world.
 
 ### World, knowledge and territory
+- A player's finished station (trade, mining, shipyard) has a mission board -- the holder's jobs and work of its own -- and counts against the region's cap on stations, as a faction's does (#438).
 - A job nobody takes is filled by the faction's own hauler or patrol after a while, at the same price to its stock (#345).
 - Plan jobs are in the chronicle: taken, and done -- a raid or a siege broken is news too (#345).
 - A lawful faction pays a bounty on a pirate base going up, to the pilot who destroys it (#345).
