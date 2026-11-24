@@ -343,6 +343,19 @@ float Effect(const Catalogue& c, const TypeValues& mix, const LayerTable& resist
 void Strike(const Catalogue& c, const TypeValues& mix, const LayerTable& resist, float amount,
             Pools& pools);
 
+// A layer table read from data -- { "armour": { "kinetic": 0.9 } } onto a table of ones -- the
+// way a hull line's `resist` is, for anything else with layers (a structure's tier, #557).
+bool ReadResist(const nlohmann::json& j, const Catalogue& c, LayerTable& out, std::string& err);
+// A damage type as a mix: all of it that type, or untyped (all zero) for a name the catalogue
+// does not have.
+TypeValues MixOf(const Catalogue& c, const std::string& type);
+// The one multiplier a volley of `mix` does to a thing with `armour` and `hull` points to lose
+// (a structure has no shield), as the points it takes off per point fired when it is stripped
+// from full: total over the sum of each layer's points over its multiplier. 1 for nothing
+// to strip. The same arithmetic as Strike, in one number, for a planner that cannot play a siege.
+float PoolEffect(const Catalogue& c, const TypeValues& mix, const LayerTable& resist, float armour,
+                 float hull);
+
 // What a pilot reads of a style (#464, slice 7): "lasers 68%, railguns 32%; heavy hulls 49%,
 // light hulls 39%, brawler hulls 13%" -- every family and line by share, largest first -- or,
 // `brief`, only the leading one of each ("lasers 68%; heavy hulls 49%"). Empty for a style

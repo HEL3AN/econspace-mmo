@@ -6,6 +6,7 @@
 #include "entities/Planet.h"
 #include "entities/Station.h"
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -281,7 +282,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
             case Component::Salvageable:
             case Component::JumpLink: params = { "range" }; break;
             case Component::Mineable: params = { "extractRate", "range" }; break;
-            case Component::Defensive: params = { "range", "damage" }; break;
+            case Component::Defensive: params = { "range", "damage", "damageType" }; break;
             case Component::Storage: params = { "capacity" }; break;
             case Component::Shipyard: params = { "markup" }; break;
             case Component::Signature: params = { "strength" }; break;
@@ -309,6 +310,20 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
             case Component::Defensive:
                 a.weaponRange = p.value("range", a.weaponRange);
                 a.weaponDamage = p.value("damage", a.weaponDamage);
+                // A battery's guns are of a damage type like any ship's (#557); a name the
+                // catalogue lacks is a load error, never a quietly untyped gun.
+                if (p.contains("damageType"))
+                {
+                    a.weaponType = p["damageType"].is_string() ? p["damageType"].get<std::string>()
+                                                               : std::string();
+                    const auto& types = g_ships.damageTypes;
+                    if (std::find(types.begin(), types.end(), a.weaponType) == types.end())
+                    {
+                        err = "archetype '" + a.id + "': component 'defensive': damageType '" +
+                              a.weaponType + "' is not one of ships.json's damageTypes";
+                        return false;
+                    }
+                }
                 break;
             // Parsed and checked so that data written now stays valid, but no pass reads
             // it: holding cargo off a ship belongs to the player-mutable world (#44).

@@ -3,6 +3,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include <algorithm>
 
 Structure::Structure(Vector2 pos, float size, std::string name, std::string builds)
     : Entity(pos, size, Color{ 200, 200, 210, 255 }, EntityKind::Structure), name_(std::move(name)),
@@ -79,6 +80,29 @@ void Structure::SetDamage(float d, double at)
 {
     damage_ = d < 0.0f ? 0.0f : d;
     damagedAt_ = at;
+}
+
+void Structure::StrikeWith(float amount, const Ships::TypeValues& mix, double now)
+{
+    const Blueprint*        bp = GetBlueprint();
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    const float             max = MaxHull(now);
+    if (bp == nullptr || max <= 0.0f || ships.damageTypes.empty())
+    {
+        TakeDamage(amount, now);
+        return;
+    }
+    // What damage there is, taken as layers: the armour goes first, so it is what the damage
+    // has eaten of the first `armour` points and the hull the rest. A hit goes through the
+    // same function a ship's does, and what is gone is the layers' sum again -- mending, which
+    // undoes the last damage first, then restores hull before armour.
+    const float  armour = bp->armour * max;
+    const float  hurt = GetDamage(now);
+    Ships::Pools pools;
+    pools.armour = std::max(0.0f, armour - hurt);
+    pools.hull = std::max(0.0f, (max - armour) - std::max(0.0f, hurt - armour));
+    Ships::Strike(ships, mix, bp->resist, amount, pools);
+    SetDamage(max - pools.armour - pools.hull, now);
 }
 
 void Structure::SetMends(bool on, double now)

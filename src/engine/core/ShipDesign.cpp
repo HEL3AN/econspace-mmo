@@ -1708,6 +1708,37 @@ void Strike(const Catalogue& c, const TypeValues& mix, const LayerTable& resist,
     }
 }
 
+bool ReadResist(const json& j, const Catalogue& c, LayerTable& out, std::string& err)
+{
+    return ReadLayerTable(j, c, out, err);
+}
+
+TypeValues MixOf(const Catalogue& c, const std::string& type)
+{
+    TypeValues mix{};
+    for (size_t t = 0; t < c.damageTypes.size() && t < mix.size(); ++t)
+        if (c.damageTypes[t] == type)
+            mix[t] = 1.0f;
+    return mix;
+}
+
+float PoolEffect(const Catalogue& c, const TypeValues& mix, const LayerTable& resist, float armour,
+                 float hull)
+{
+    armour = std::max(0.0f, armour);
+    hull = std::max(0.0f, hull);
+    float       seconds = 0.0f;  // per point of raw damage a second
+    const float pools[2] = { armour, hull };
+    const int   layers[2] = { LayerArmour, LayerHull };
+    for (int i = 0; i < 2; ++i)
+    {
+        const float m = Effect(c, mix, resist, layers[i]);
+        if (pools[i] > 0.0f)
+            seconds += m > 0.0f ? pools[i] / m : 1e9f;
+    }
+    return seconds > 0.0f ? (armour + hull) / seconds : 1.0f;
+}
+
 std::string StyleWords(const Catalogue& c, const Style& s, bool brief)
 {
     auto order = [](std::vector<std::pair<std::string, float>> v)

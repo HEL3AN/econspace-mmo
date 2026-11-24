@@ -1,8 +1,8 @@
 {
     "tiers": {
-        "minor": { "mend": 0.004 },
-        "outpost": { "mend": 0.015 },
-        "station": { "mend": 0.03 }
+        "minor": { "mend": 0.004, "armour": 0.3 },
+        "outpost": { "mend": 0.015, "armour": 0.6 },
+        "station": { "mend": 0.03, "armour": 0.7 }
     },
     "blueprints": [
         {

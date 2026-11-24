@@ -230,27 +230,60 @@ bool Load(const std::string& path)
         return false;
     }
 
-    // Tiers (#431 D1): { name: { "mend": share of hull per second } }. Every blueprint names
-    // one; a name the file does not define is an error, not a structure that never mends.
-    std::vector<std::pair<std::string, float>> tiers;
-    const json                                 noTiers = json::object();
-    const json&                                tj = j.contains("tiers") ? j["tiers"] : noTiers;
+    // Tiers (#431 D1): { name: { "mend": share of hull per second, "armour": share of hull that
+    // is armour, "resist": { layer: { type: multiplier } } } }. Every blueprint names one; a
+    // name the file does not define is an error, not a structure that never mends. Its walls
+    // (#557) are read against the ship catalogue the way a hull line's are: no weapon family
+    // may do less than `minEffect` to either layer, or the file does not load.
+    struct Tier
+    {
+        std::string       name;
+        float             mend = 0.0f, armour = 0.0f;
+        Ships::LayerTable resist = Ships::NeutralTable();
+    };
+    std::vector<Tier> tiers;
+    const json        noTiers = json::object();
+    const json&       tj = j.contains("tiers") ? j["tiers"] : noTiers;
     if (!tj.is_object())
     {
         g_error = path + ": 'tiers' is an object of { tier: { \"mend\": share } }";
         return false;
     }
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
     for (auto it = tj.begin(); it != tj.end(); ++it)
     {
-        float mend = 0.0f;
-        if (!it.value().is_object() || !OnlyKnownKeys(it.value(), { "mend" }, err) ||
-            !it.value().contains("mend") || !ReadShare(it.value(), "mend", mend, err))
+        Tier t;
+        t.name = it.key();
+        if (!it.value().is_object() ||
+            !OnlyKnownKeys(it.value(), { "mend", "armour", "resist" }, err) ||
+            !it.value().contains("mend") || !ReadShare(it.value(), "mend", t.mend, err) ||
+            !ReadShare(it.value(), "armour", t.armour, err))
         {
             g_error = path + ": tiers: '" + it.key() +
                       "': " + (err.empty() ? "is not { \"mend\": share }" : err);
             return false;
         }
-        tiers.emplace_back(it.key(), mend);
+        if (it.value().contains("resist") &&
+            !Ships::ReadResist(it.value()["resist"], ships, t.resist, err))
+        {
+            g_error = path + ": tiers: '" + it.key() + "': resist: " + err;
+            return false;
+        }
+        if (!ships.damageTypes.empty())
+            for (const Ships::Family& f : ships.families)
+                for (int layer : { Ships::LayerArmour, Ships::LayerHull })
+                {
+                    const float e = Ships::Effect(ships, f.damage, t.resist, layer);
+                    if (e < ships.minEffect - 1e-5f)
+                    {
+                        g_error = path + ": tiers: '" + it.key() + "': family '" + f.id +
+                                  "' does " + std::to_string(e) + " to its " +
+                                  (layer == Ships::LayerArmour ? "armour" : "hull") +
+                                  ", below minEffect " + std::to_string(ships.minEffect);
+                        return false;
+                    }
+                }
+        tiers.push_back(std::move(t));
     }
 
     std::vector<Blueprint> loaded;
@@ -291,9 +324,11 @@ bool Load(const std::string& path)
     {
         bool tiered = false;
         for (const auto& t : tiers)
-            if (t.first == b.tier)
+            if (t.name == b.tier)
             {
-                b.mend = t.second;
+                b.mend = t.mend;
+                b.armour = t.armour;
+                b.resist = t.resist;
                 tiered = true;
             }
         if (!tiered)
@@ -406,6 +441,15 @@ bool Load(const std::string& path)
     g_upkeep = upkeep;
     g_siege = siege;
     return true;
+}
+
+float WallEffect(const Blueprint& bp, const Ships::TypeValues& mix)
+{
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    if (ships.damageTypes.empty())
+        return 1.0f;
+    return Ships::PoolEffect(ships, mix, bp.resist, bp.armour * bp.hull,
+                             (1.0f - bp.armour) * bp.hull);
 }
 
 const Blueprint* Find(const std::string& id)

@@ -520,7 +520,8 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             ev->hitLawful = true;
             ev->hitFaction = law;
         }
-        const bool killed = DamageStructure(st, targetId, s.ship->GetDamage(), &s);
+        const bool killed =
+            DamageStructure(st, targetId, s.ship->GetDamage(), &s, s.ship->GetMix());
         if (killed && crime && ev != nullptr)
         {
             ev->killedLawful = true;

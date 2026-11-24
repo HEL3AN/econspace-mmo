@@ -696,13 +696,14 @@ bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::s
     return LawIn(st, law);
 }
 
-bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSession* by)
+bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSession* by,
+                                 const Ships::TypeValues& mix)
 {
-    return HitStructure(st, id, damage, by, Loss::Attack, Factions::Unaffiliated());
+    return HitStructure(st, id, damage, by, Loss::Attack, Factions::Unaffiliated(), mix);
 }
 
 bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSession* by, Loss cause,
-                              FactionId attacker)
+                              FactionId attacker, const Ships::TypeValues& mix)
 {
     Structure* t = StructureIn(st, id);
     if (t == nullptr || damage <= 0.0f)
@@ -718,7 +719,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     if (by != nullptr && !corps_.Commands(by->accountName, t->GetOwner()))
         st.provokedBy[id][by->id] = time_ + PROVOKED_SECONDS;
 
-    t->TakeDamage(damage, time_);
+    t->StrikeWith(damage, mix, time_);
     // Its owner hears of it, on or off (#431 C2): a player's, shot by somebody else or
     // besieged. Wear is not an attack, and a faction's outpost has its history instead.
     FactionId   ownerFaction;

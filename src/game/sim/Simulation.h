@@ -1498,7 +1498,10 @@ public:
     // left it is destroyed: its wreck, if its blueprint names one, goes down where it stood
     // holding the rules' share of the cost, and the structure goes through RemoveStatic.
     // Returns true when this hit destroyed it.
-    bool DamageStructure(SystemState& st, int id, float damage, ClientSession* by);
+    // `mix` is what the shot is made of (Ships::TypeValues), taken through the structure's
+    // layers (Structure::StrikeWith) as a ship's is; empty -- untyped.
+    bool DamageStructure(SystemState& st, int id, float damage, ClientSession* by,
+                         const Ships::TypeValues& mix = Ships::TypeValues{});
     // How a structure was brought down, for what the history says of a faction's outpost: by
     // somebody's guns, by a faction's siege, or by nobody supplying it.
     enum class Loss
@@ -2508,7 +2511,7 @@ private:
     // one that rests on something else as well is weaker.
     void ShakeClaim(SystemState& st, FactionId f);
     bool HitStructure(SystemState& st, int id, float damage, ClientSession* by, Loss cause,
-                      FactionId attacker);
+                      FactionId attacker, const Ships::TypeValues& mix = Ships::TypeValues{});
     // What is left of a lent force goes home (#295): each holding that lent it its share of
     // `p.force`, as many jumps away as it came, `hop` seconds a jump -- a Return each.
     void SendHome(const Plan& p, double hop);

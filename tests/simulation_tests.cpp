@@ -2084,9 +2084,14 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
         for (int i = 0; i < 60; i++)  // one second: exactly one shot
             f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
         CHECK(fires.size() == 1);
-        // (armour first, then the hull: what it has left of both)
+        // (armour first, then the hull: what it has left of both -- the station's guns are of a
+        // damage type, so the armour takes them at its multiplier, #557)
+        const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+        const float             onArmour = Ships::Effect(cat, Ships::MixOf(cat, mil->weaponType),
+                                                         Ships::NeutralTable(), Ships::LayerArmour);
         CHECK(pirate->GetArmour() + pirate->GetHull() ==
-              doctest::Approx(pirate->GetMaxArmour() + pirate->GetMaxHull() - mil->weaponDamage));
+              doctest::Approx(pirate->GetMaxArmour() + pirate->GetMaxHull() -
+                              mil->weaponDamage * onArmour));
         REQUIRE_FALSE(fires.empty());
         CHECK(fires[0].shooterFaction == Fac::Independent());
         CHECK(fires[0].targetSessionId == 0);
@@ -2127,10 +2132,13 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
             f.sim.StepStationDefence(f.World(), players, &fires, dt);
         REQUIRE(fires.size() == 1);
         CHECK(fires[0].targetSessionId == f.s.id);
-        // Shields take the first hits.
+        // Shields take the first hits, at the multiplier of the guns' damage type (#557).
+        const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+        const float onShield = Ships::Effect(cat, Ships::MixOf(cat, mil->weaponType),
+                                             f.s.ship->GetStats().resist, Ships::LayerShield);
         CHECK(f.s.ship->GetShields() + f.s.ship->GetHull() ==
               doctest::Approx(f.s.ship->GetMaxShields() + f.s.ship->GetMaxHull() -
-                              mil->weaponDamage));
+                              mil->weaponDamage * onShield));
 
         // Hidden in cover, the same wanted player is not seen.
         fires.clear();
