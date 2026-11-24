@@ -713,6 +713,20 @@ private:
     int             missionsSel_[2] = { 0, 0 };          // the mission chosen on each
     Rectangle radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
     int       settingsTab_ = 0;
+    // The paint budgets in force, million pixels (#553): the player's, else look.json's.
+    float PaintBudgetMP() const
+    {
+        return Ui::PaintBudgetSetting() > 0.0f ? Ui::PaintBudgetSetting()
+                                               : treatment_.Config().paintBudget;
+    }
+    float BuiltBudgetMP() const
+    {
+        return Ui::BuiltBudgetSetting() > 0.0f ? Ui::BuiltBudgetSetting()
+                                               : treatment_.Config().builtBudget;
+    }
+    float paintDraft_ = 0.5f;
+    float builtDraft_ = 0.5f;
+    bool  budgetDragging_ = false;
     // The UI scale while its slider is held: applied on release, because a scale applied
     // while dragging moves the slider out from under the cursor.
     float scaleDraft_ = 1.0f;

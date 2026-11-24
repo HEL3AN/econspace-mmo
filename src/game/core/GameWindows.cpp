@@ -710,6 +710,106 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                             hint("This machine compiled none of its shaders: the picture is drawn "
                                  "without it.",
                                  t.colors.warn);
+
+                        // How large a planet or a station may be painted at full detail (#553).
+                        // Presets and the two values; kept on this machine, never sent.
+                        struct Preset
+                        {
+                            const char* name;
+                            float       mp;
+                        };
+                        static const Preset presets[] = { { "Laptop", 0.5f },
+                                                          { "Desktop", 1.0f },
+                                                          { "High", 2.0f } };
+                        auto                saveBudgets = [&]
+                        {
+                            if (uiSettingsWritable_ && !Ui::SaveUiSettings(uiSettingsPath_))
+                                TraceLog(LOG_WARNING, "UI settings: cannot write %s",
+                                         uiSettingsPath_.c_str());
+                        };
+                        if (!budgetDragging_)
+                        {
+                            paintDraft_ = PaintBudgetMP();
+                            builtDraft_ = BuiltBudgetMP();
+                        }
+                        L.FormRow(
+                            "Paint quality",
+                            [&]
+                            {
+                                // Four in a line when there is room, two by two otherwise.
+                                struct Choice
+                                {
+                                    std::string id, label;
+                                    bool        on;
+                                    float       mp;  // 0: the look's own
+                                };
+                                std::vector<Choice> choices;
+                                for (int i = 0; i < 3; i++)
+                                    choices.push_back(
+                                        { "paintPreset" + std::to_string(i), presets[i].name,
+                                          Ui::PaintBudgetSetting() > 0.0f &&
+                                              std::fabs(PaintBudgetMP() - presets[i].mp) < 0.001f &&
+                                              std::fabs(BuiltBudgetMP() - presets[i].mp) < 0.001f,
+                                          presets[i].mp });
+                                choices.push_back({ "paintDefault", "Default",
+                                                    Ui::PaintBudgetSetting() <= 0.0f &&
+                                                        Ui::BuiltBudgetSetting() <= 0.0f,
+                                                    0.0f });
+                                const size_t perRow = wide ? 4 : 2;
+                                L.Column(
+                                    Box().GrowX().Gap(t.metrics.rowGap),
+                                    [&]
+                                    {
+                                        for (size_t r = 0; r < choices.size(); r += perRow)
+                                            L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                                                  [&]
+                                                  {
+                                                      for (size_t i = r;
+                                                           i < std::min(r + perRow, choices.size());
+                                                           i++)
+                                                      {
+                                                          const Choice& c = choices[i];
+                                                          if (!L.Button(c.id, c.label, c.on))
+                                                              continue;
+                                                          Ui::SetPaintBudgetSetting(c.mp);
+                                                          Ui::SetBuiltBudgetSetting(c.mp);
+                                                          saveBudgets();
+                                                      }
+                                                  });
+                                    });
+                            });
+                        L.Tooltip("paintDefault", "What the game ships with (look.json)");
+                        L.FormRow("Planets and stars",
+                                  [&]
+                                  {
+                                      if (L.Slider("paintBudget", paintDraft_, Ui::MIN_PAINT_BUDGET,
+                                                   Ui::MAX_PAINT_BUDGET, true))
+                                      {
+                                          budgetDragging_ = true;
+                                          Ui::SetPaintBudgetSetting(paintDraft_);
+                                      }
+                                      L.Text(TextFormat("%.2f MP", paintDraft_), TextStyle::Body());
+                                  });
+                        L.FormRow("Stations and ships",
+                                  [&]
+                                  {
+                                      if (L.Slider("builtBudget", builtDraft_, Ui::MIN_PAINT_BUDGET,
+                                                   Ui::MAX_PAINT_BUDGET, true))
+                                      {
+                                          budgetDragging_ = true;
+                                          Ui::SetBuiltBudgetSetting(builtDraft_);
+                                      }
+                                      L.Text(TextFormat("%.2f MP", builtDraft_), TextStyle::Body());
+                                  });
+                        if (budgetDragging_ && !f.Down(MOUSE_BUTTON_LEFT))
+                        {
+                            budgetDragging_ = false;
+                            saveBudgets();
+                        }
+                        hint("Million pixels a body may cover before it is painted smaller and "
+                             "scaled up. A faster graphics card can take more and look sharper "
+                             "close up; a slow one wants less.",
+                             t.colors.dim);
                     }
                     else
                     {
