@@ -816,8 +816,39 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
         line("Hold", (float)q.before.cargoCapacity, (float)q.after.cargoCapacity, "%.0f");
         line("Mining", q.before.miningRate, q.after.miningRate, "%.1f");
         line("Scanner", 1.0f + q.before.scan, 1.0f + q.after.scan, "%.1fx");
+        line("Armour", q.before.armour, q.after.armour, "%.0f");
         line("Hull", q.before.hull, q.after.hull, "%.0f");
+        // What the structure is made of, as the fit would have it (#557): the armour a hit
+        // takes first, then the hull, each as its share of the two.
+        {
+            const float whole = q.after.armour + q.after.hull;
+            if (whole > 0.0f)
+            {
+                L.Text("Structure: armour then hull", TextStyle::Small().Tint(t.colors.dim));
+                L.Bar(q.after.armour / whole, t.colors.warn);
+                L.Bar(q.after.hull / whole, t.colors.good);
+            }
+        }
         line("Guns", q.before.damage, q.after.damage, "%.0f");
+        // ...and what the guns are made of: a share of the volley for each damage type, the
+        // rest the base gun's, which is untyped and does the same to every layer.
+        {
+            const std::vector<std::string>& types = Archetypes::ShipCatalogue().damageTypes;
+            float                           typed = 0.0f;
+            auto                            share = [&](const std::string& what, float f)
+            {
+                L.Field(what, std::string(TextFormat("%.0f%%", f * 100.0f)), t.colors.text);
+                L.Bar(f, t.colors.accent);
+            };
+            for (size_t k = 0; k < types.size() && k < q.after.mix.size(); k++)
+                if (q.after.mix[k] > 0.005f)
+                {
+                    typed += q.after.mix[k];
+                    share(types[k], q.after.mix[k]);
+                }
+            if (q.after.damage > 0.0f && typed < 0.995f)
+                share("untyped", 1.0f - typed);
+        }
         if (q.changed && !q.design.id.empty())
             L.Field(q.price >= 0.0 ? "Price here" : "Refund", Credits(std::abs(q.price)) + " cr",
                     t.colors.money);
