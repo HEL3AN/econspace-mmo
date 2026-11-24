@@ -820,6 +820,39 @@ TEST_CASE("the holder lends relief to a besieged outpost: it sets out when the b
     CHECK(back.armour == doctest::Approx(plan.armour));
 }
 
+TEST_CASE("the planner's odds count the relief the holder could lend (#568)")
+{
+    auto                     sim = World();
+    const Blueprints::Siege& rules = Blueprints::SiegeRules();
+    const Blueprint&         outpost = *Blueprints::Find(Outposts::BLUEPRINT);
+    const float              mend = outpost.mend * outpost.hull;
+    const float              fx =
+        Blueprints::WallEffect(outpost, sim->FighterOf(Fac::Pirates(), NpcRole::Warship).mix);
+    // A siege that wins unopposed: a few ships, a thin garrison, no help.
+    // (a wall that holds ten times what the fixture's does, so the relief has time to come)
+    const float wall = 10.0f * outpost.hull;
+    const float sent = 6.0f;
+    const auto  alone = sim->ForecastSiege(Fac::Pirates(), Fac::TradersGuild(), sent, 1.0f, 0.0f,
+                                           0.0, wall, mend, true, fx);
+    REQUIRE(alone.falls);
+    CHECK(alone.seconds <= rules.seconds);
+    // The same wall with a holder's relief arriving a jump in: slower, and what is left of
+    // the force is less. A big enough relief makes it hopeless.
+    const auto helped = sim->ForecastSiege(Fac::Pirates(), Fac::TradersGuild(), sent, 1.0f, 6.0f,
+                                           rules.hop, wall, mend, true, fx);
+    CHECK(helped.left < alone.left);
+    if (helped.falls)
+        CHECK(helped.seconds >= alone.seconds);
+    const auto swamped = sim->ForecastSiege(Fac::Pirates(), Fac::TradersGuild(), sent, 1.0f, 60.0f,
+                                            rules.hop, wall, mend, true, fx);
+    CHECK_FALSE(swamped.falls);
+    // ...which the holdings in reach of a target are what a holder could lend.
+    const Scene s = GuildOutpostNextToPirates(*sim);
+    const auto  pool = sim->ReliefFor(Fac::Pirates(), s.frontier);
+    CHECK(pool.first >= 0.0f);
+    CHECK(sim->ReliefFor(Factions::Unaffiliated(), s.frontier).first == 0.0f);
+}
+
 // --- Pooled sieges (#295, the owner's decision of 2026-10-11) ---------------------------------
 
 namespace

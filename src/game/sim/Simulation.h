@@ -718,6 +718,21 @@ public:
     // Hull one of `f`'s besieging warships takes off a structure a second: its own warship
     // design's guns (Ships::WarshipDps). The planner and the siege pass both read it.
     float WarshipDps(FactionId f) const { return FighterOf(f, NpcRole::Warship).dps; }
+    // How a siege would go by the pass's own arithmetic (#568), played forward in steps: `f`'s
+    // `sent` warships against `g`'s `garrison` and the `relief` its holdings in reach would lend,
+    // which stands with it `reliefAfter` seconds in; the wall `wall` points, mended `mend` a
+    // second if `mends`, taking `fx` of what the besiegers fire (Blueprints::WallEffect). Both
+    // sides bleed by Ships::Bite as the pass has them. `falls` says whether the wall comes down
+    // within the siege's seconds, `seconds` when, `left` what is left of the force.
+    struct SiegeOdds
+    {
+        bool  falls = false;
+        float seconds = 0.0f, left = 0.0f;
+    };
+    SiegeOdds ForecastSiege(FactionId f, FactionId g, float sent, float garrison, float relief,
+                            double reliefAfter, float wall, float mend, bool mends, float fx) const;
+    // What `g`'s holdings in reach of `target` could lend a siege there, and the farthest jump.
+    std::pair<float, int> ReliefFor(FactionId g, const std::string& target) const;
     // The strength of `f` in a system that is besieging an outpost there rather than
     // patrolling it: warships where the system is hot, never the director's police or pirates.
     float SiegeForceIn(const std::string& systemId, FactionId f) const;

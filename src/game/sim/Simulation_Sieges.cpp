@@ -386,6 +386,63 @@ void Simulation::SendRelief(Plan& p, SystemState& st)
                " jumps away");
 }
 
+std::pair<float, int> Simulation::ReliefFor(FactionId g, const std::string& target) const
+{
+    if (g == Factions::Unaffiliated())
+        return { 0.0f, 0 };
+    const Blueprints::Siege& r = Blueprints::SiegeRules();
+    float                    total = 0.0f;
+    int                      hops = 0;
+    for (const Plan::Lent& l : PoolFor(g, target, r.pool * Factions::TemperamentOf(g).capacity))
+    {
+        total += l.force;
+        hops = std::max(hops, l.hops);
+    }
+    return { total, hops };
+}
+
+Simulation::SiegeOdds Simulation::ForecastSiege(FactionId f, FactionId g, float sent,
+                                                float garrison, float relief, double reliefAfter,
+                                                float wall, float mend, bool mends, float fx) const
+{
+    const Blueprints::Siege& r = Blueprints::SiegeRules();
+    const Ships::Catalogue&  cat = Archetypes::ShipCatalogue();
+    const Ships::Fighter     by = FighterOf(f, NpcRole::Warship);
+    const Ships::Fighter     on =
+        FighterOf(g, g == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
+    const float     biteOn = Ships::Bite(cat, on, by), biteBy = Ships::Bite(cat, by, on);
+    constexpr float STEP = 30.0f;
+    SiegeOdds       o;
+    float           force = sent, defenders = garrison, hp = wall;
+    bool            came = false;
+    for (float t = 0.0f; t < r.seconds; t += STEP)
+    {
+        if (!came && relief > 0.0f && t >= (float)reliefAfter)
+        {
+            defenders += relief;
+            came = true;
+        }
+        // Both sides bleed, each by the other's guns over its own hull (the pass's formulas).
+        const float lostHere = std::min(force, r.attrition * biteOn * defenders * STEP);
+        const float lostThere =
+            defenders > 0.0f ? std::min(defenders, r.attrition * biteBy * force * STEP) : 0.0f;
+        force -= lostHere;
+        defenders -= lostThere;
+        if (force < MIN_FORCE)
+            break;
+        const float firing = std::max(0.0f, force - r.defence * defenders);
+        hp = std::min(wall, hp - (firing * by.dps * fx - (mends ? mend : 0.0f)) * STEP);
+        if (hp <= 0.0f)
+        {
+            o.falls = true;
+            o.seconds = t + STEP;
+            break;
+        }
+    }
+    o.left = force;
+    return o;
+}
+
 void Simulation::ResolveSiege(const Plan& p)
 {
     SiegeOver(p);  // its jobs (#345)

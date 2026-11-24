@@ -968,9 +968,13 @@ void Simulation::Think(FactionId f)
                     hops = std::max(hops, l.hops);
                 }
                 const float travel = hops * siege.hop;
-                const float firing = sent - siege.defence * garrison;
-                const float rate = firing * dps * plainFx - (seen->claimed ? mend : 0.0f);
-                if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f || wall / rate > siege.seconds)
+                // How it would go by the pass's own arithmetic, with the relief the holder's
+                // holdings in reach would lend counted (#568).
+                const auto relief = ReliefFor(g, nid);
+                const auto odds = ForecastSiege(f, g, sent, garrison, relief.first,
+                                                (double)relief.second * siege.hop, wall, mend,
+                                                seen->claimed, plainFx);
+                if (sent < 1.5f || !odds.falls)
                     break;
                 int guns = 0;
                 for (FactionId d : o.defenders)
@@ -988,8 +992,8 @@ void Simulation::Think(FactionId f)
                 // The share of its force the garrison would tie up, the guns, and how much
                 // of its time there it would take to bring the outpost down -- all as it
                 // saw them, and that sighting will be older by the time it has got there.
-                const float risk =
-                    siege.defence * garrison / sent + 0.5f * guns + wall / rate / siege.seconds;
+                const float risk = siege.defence * garrison / sent + 0.5f * guns +
+                                   odds.seconds / siege.seconds + (sent - odds.left) / sent;
                 const float score =
                     worth - Intelligence::BelievedRisk(
                                 risk, Intelligence::Staleness(*seen, time_ + travel)) /
@@ -1052,15 +1056,16 @@ void Simulation::Think(FactionId f)
                     hops = std::max(hops, l.hops);
                 }
                 const float garrison = seen.presence[g];
-                const float firing = sent - siege.defence * garrison;
-                const float rate = firing * dps * anchorFx - anchorMend;  // an Anchor always mends
-                if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
-                    anchorWall / rate > siege.seconds)
+                const auto  relief = ReliefFor(g, nid);
+                const auto  odds = ForecastSiege(f, g, sent, garrison, relief.first,
+                                                 (double)relief.second * siege.hop, anchorWall,
+                                                 anchorMend, true, anchorFx);  // it always mends
+                if (sent < 1.5f || !odds.falls)
                     break;
                 const float worth =
                     entry != mind.intel.end() ? promise(entry->second) : t.unclaimed + t.curiosity;
-                const float risk =
-                    siege.defence * garrison / sent + anchorWall / rate / siege.seconds;
+                const float risk = siege.defence * garrison / sent + odds.seconds / siege.seconds +
+                                   (sent - odds.left) / sent;
                 const float score =
                     worth - Intelligence::BelievedRisk(
                                 risk, Intelligence::Staleness(
