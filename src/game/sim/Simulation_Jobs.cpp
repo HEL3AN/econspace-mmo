@@ -430,6 +430,7 @@ bool Simulation::CompleteJob(ClientSession& s, int index)
         s.account.AddMoney(m.rewardMoney);
         s.account.AddReputation(m.faction, m.rewardRep);
         PayJob(m);
+        JobNews(s, m, true);
         active.erase(active.begin() + index);
         s.RecordEvent(Ev::Kind::Notice, "Delivered -- " + std::to_string(m.targetCount) + " " +
                                             ResourceName(m.resource) + " to the " + site + " in " +
@@ -441,6 +442,7 @@ bool Simulation::CompleteJob(ClientSession& s, int index)
     PayJob(m);
     s.account.AddMoney(m.rewardMoney);
     s.account.AddReputation(m.faction, m.rewardRep);
+    JobNews(s, m, true);
     active.erase(active.begin() + index);
     s.RecordEvent(Ev::Kind::Notice, "Job done -- " + what + ", paid " + Money(m.rewardMoney) +
                                         " by " + FactionName(m.faction));
@@ -525,6 +527,56 @@ void Simulation::CreditJobKill(ClientSession& s, const NpcShip& killed)
             s.RecordEvent(Ev::Kind::Notice,
                           "Job ready -- " + m.title + ": hand it in, anywhere, to be paid");
     }
+}
+
+void Simulation::JobNews(const ClientSession& s, const Mission& m, bool done)
+{
+    std::string who = s.ship ? s.ship->GetPilotName() : s.accountName;
+    if (who.empty())
+        who = s.accountName.empty() ? std::string("A pilot") : s.accountName;
+    const std::string poster = FactionName(m.faction);
+    const std::string where = SystemName(m.systemId);
+    std::string       text;
+    bool              feed = false;  // the feed shows it; else only the history
+    switch (m.type)
+    {
+        case MissionType::Raid:
+            text = done ? who + " destroyed the " + FactionName(m.against) + " base going up in " +
+                              where + "; " + poster + " paid the bounty"
+                        : who + " took " + poster + "'s bounty on the " + FactionName(m.against) +
+                              " base going up in " + where;
+            feed = done;
+            break;
+        case MissionType::Siege:
+            text = done ? who + " helped break the siege of " + where + " for " + poster
+                        : who + " took " + poster + "'s job to break the siege of " + where;
+            feed = done;
+            break;
+        case MissionType::Besiege:
+            text = done ? who + " helped " + poster + " bring down the outpost in " + where
+                        : who + " took " + poster + "'s job to join the siege of " + where;
+            feed = done;
+            break;
+        case MissionType::Survey:
+            text = done ? who + " surveyed " + where + " for " + poster
+                        : who + " took " + poster + "'s job to survey " + where;
+            break;
+        case MissionType::Escort:
+            text = done ? who + " saw " + poster + "'s convoy through to " + where
+                        : who + " took " + poster + "'s job to escort its convoy to " + where;
+            break;
+        case MissionType::Supply:
+            if (!done)
+                return;  // a delivery is routine until it is made
+            text = who + " delivered " + std::to_string(m.targetCount) + " " +
+                   ResourceName(m.resource) + " to " + poster + "'s site in " + where;
+            break;
+        default: return;
+    }
+    if (feed)
+        Announce("job", m.faction, m.systemId, text);
+    else
+        Record("job", m.faction, m.systemId, text);
 }
 
 void Simulation::SurveyTaken(const Mission& m)

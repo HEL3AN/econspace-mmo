@@ -1255,3 +1255,57 @@ TEST_CASE("a raid job whose base is brought down by somebody else closes with no
     CHECK(ActiveOf(s, MissionType::Raid) < 0);
     CHECK(s.account.GetReputation(Fac::TradersGuild()) == doctest::Approx(standing));
 }
+
+// --- Jobs in the news (#345) ---
+
+namespace
+{
+int JobLines(const Simulation& sim, const std::string& needle)
+{
+    int n = 0;
+    for (const ChronicleEntry& e : sim.Chronicle())
+        if (e.kind == "job" && e.text.find(needle) != std::string::npos)
+            n++;
+    return n;
+}
+}  // namespace
+
+TEST_CASE("a job taken is history, a raid done is news, a survey done is history only (#345)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    const Raiding  u = BaseGoingUp(sim);
+    ClientSession& s = DockedAt(sim, u.h);
+    s.ship->SetPilotName("Kestrel");
+    const int offer = OfferOf(s, MissionType::Raid, u.plan);
+    REQUIRE(offer >= 0);
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
+    CHECK(JobLines(sim, "Kestrel took") == 1);
+    CHECK(JobLines(sim, "destroyed") == 0);
+
+    sim.StepPlayerUndock(s);
+    sim.ServerEnterSystem(s, u.target, s.systemId);
+    sim.DamageStructure(*sim.SystemById(u.target), u.site, 1.0e9f, &s);
+    REQUIRE(sim.CompleteMission(s, 0));
+    CHECK(JobLines(sim, "Kestrel destroyed the " + FactionName(Fac::Pirates()) + " base") == 1);
+    // ...and it is in the feed that clients read, not only in the history.
+    bool inFeed = false;
+    for (const std::string& line : sim.Events())
+        inFeed = inFeed || line.find("Kestrel destroyed") != std::string::npos;
+    CHECK(inFeed);
+
+    // A survey is history and not news, like the faction's own.
+    const Surveying v = SurveyPlanned(sim, Fac::TradersGuild());
+    ClientSession&  t = DockedAt(sim, v.h);
+    t.ship->SetPilotName("Wren");
+    const int o2 = OfferOf(t, MissionType::Survey, v.plan);
+    REQUIRE(o2 >= 0);
+    REQUIRE(sim.AcceptMission(t, t.missions.Offers()[(size_t)o2].offerId));
+    ScanTarget(sim, t, v.target);
+    REQUIRE(sim.CompleteMission(t, 0));
+    CHECK(JobLines(sim, "Wren surveyed") == 1);
+    for (const std::string& line : sim.Events())
+        CHECK(line.find("Wren surveyed") == std::string::npos);
+}
