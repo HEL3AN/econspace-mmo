@@ -416,3 +416,25 @@ TEST_CASE("a contract crosses the wire, and an agent reads where, when and what 
     CHECK(text.find("due in 10 min") != std::string::npos);
     CHECK(text.find("hand in docked at") != std::string::npos);
 }
+
+TEST_CASE("no contract is posted for a module where it is neither made nor used (#472 slice 10)")
+{
+    GoodsFile  file;
+    Rules      r;
+    Simulation sim;
+    StartServer(sim);
+    // Modules start off the shelf everywhere, so every market is short of every one of them.
+    for (const auto& kv : sim.Systems())
+    {
+        sim.MindOf(sim.SystemById(kv.first)->agg.controller).treasury = 1.0e9;
+        for (ResourceType g : AllResourceTypes())
+            if (Goods::Def(g).IsModule())
+            {
+                CHECK(sim.SystemById(kv.first)->market.Stock(g) == doctest::Approx(0.0));
+                CHECK(sim.SystemById(kv.first)->market.Target(g) > 0.0);
+            }
+    }
+    sim.PostContracts();
+    for (const auto& kv : sim.Contracts())
+        CHECK_FALSE(Goods::Def(kv.second.good).IsModule());
+}

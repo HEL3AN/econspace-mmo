@@ -9,7 +9,8 @@
         "beltRegrow": 0.1,
         "haulEvery": 120,
         "haulCargo": 30,
-        "haulMargin": 0.1
+        "haulMargin": 0.1,
+        "moduleMargin": 1.3
     },
     "goods": [
         { "id": "Iron",        "name": "Iron",         "tier": 0, "price": 10,  "stock": 400, "supply": "local", "mined": true, "volume": 10 },
@@ -21,7 +22,17 @@
         { "id": "Circuits",    "name": "Circuits",     "tier": 2, "price": 130, "stock": 60,  "supply": "imported", "volume": 1 },
         { "id": "Ammunition",  "name": "Ammunition",   "tier": 2, "price": 80,  "stock": 90,  "supply": "imported", "volume": 2 },
         { "id": "RepairPaste", "name": "Repair Paste", "tier": 2, "price": 105, "stock": 60,  "supply": "imported", "volume": 2 },
-        { "id": "Medicine",    "name": "Medicine",     "tier": 2, "price": 120, "stock": 50,  "supply": "imported", "volume": 1 }
+        { "id": "Medicine",    "name": "Medicine",     "tier": 2, "price": 120, "stock": 50,  "supply": "imported", "volume": 1 },
+        { "id": "hull.cockpit", "name": "Cockpit", "tier": 3, "stock": 4, "volume": 10, "module": "hull.cockpit", "parts": {"Iron": 4, "Ice": 2} },
+        { "id": "hull.engine", "name": "Main engine", "tier": 3, "stock": 4, "volume": 25, "module": "hull.engine", "parts": {"Iron": 10, "Crystal": 4} },
+        { "id": "hull.thruster", "name": "Thruster", "tier": 3, "stock": 4, "volume": 10, "module": "hull.thruster", "parts": {"Iron": 4, "Crystal": 1} },
+        { "id": "hull.rcs", "name": "RCS block", "tier": 3, "stock": 4, "volume": 3, "module": "hull.rcs", "parts": {"Iron": 1, "Ice": 1} },
+        { "id": "hull.cargo", "name": "Cargo pod", "tier": 3, "stock": 4, "volume": 15, "module": "hull.cargo", "parts": {"Iron": 6} },
+        { "id": "hull.armour", "name": "Armour plate", "tier": 3, "stock": 4, "volume": 20, "module": "hull.armour", "parts": {"Iron": 10} },
+        { "id": "weapons.laser", "name": "Laser", "tier": 3, "stock": 4, "volume": 10, "module": "weapons.laser", "parts": {"Crystal": 2, "Circuits": 1} },
+        { "id": "weapons.railgun", "name": "Railgun", "tier": 3, "stock": 4, "volume": 25, "module": "weapons.railgun", "parts": {"Steel": 3, "Ammunition": 1} },
+        { "id": "weapons.tractor", "name": "Tractor beam", "tier": 3, "stock": 4, "volume": 10, "module": "weapons.tractor", "parts": {"Iron": 4, "Crystal": 2} },
+        { "id": "gate.probe", "name": "Scan probe", "tier": 3, "stock": 4, "volume": 8, "module": "gate.probe", "parts": {"Iron": 5, "Crystal": 4} }
     ],
     "planets": {
         "planet.oceanic": { "Food": 40 },
@@ -47,6 +58,8 @@
             "recipes": [
                 { "in": { "Steel": 2, "Crystal": 1 }, "out": { "RepairPaste": 2 }, "rate": 6 }
             ],
+            "makes": { "hull.cockpit": 1, "hull.engine": 1, "hull.thruster": 1, "hull.rcs": 1, "hull.cargo": 1, "hull.armour": 1,
+                       "weapons.laser": 1, "weapons.railgun": 1, "weapons.tractor": 1, "gate.probe": 1 },
             "uses": { "Steel": 10, "Circuits": 2, "Fuel": 4, "Food": 6 }
         },
         "station.military": {

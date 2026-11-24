@@ -404,21 +404,31 @@ bool AtShipyard(const View& view, float* markup)
 
 namespace
 {
-float Standing(const View& view, FactionId f)
+// One module as a good here (#472 slice 10): how many the pilot has in the hold and the hangar
+// and what this market asks and holds. `known` is false for a part with no good.
+struct ModuleStock
 {
-    const Proto::PlayerView& p = view.snapshot->player;
-    const size_t             i = (size_t)f.Index();
-    return i < p.reputation.size() ? p.reputation[i] : 0.0f;
-}
-
-// A module's ore at this system's prices, times the yard's markup: what one costs fitted.
-double ModulePrice(const View& view, const Ships::ModulePart& m, float markup)
+    bool   known = false;
+    int    hangar = 0, hold = 0, shelf = 0;
+    double ask = 0.0;
+};
+ModuleStock StockOf(const View& view, const Ships::ModulePart& m)
 {
-    double v = 0.0;
-    for (const auto& [r, n] : m.cost)
-        if ((size_t)r.Index() < view.snapshot->marketPrices.size())
-            v += (double)n * view.snapshot->marketPrices[(size_t)r.Index()];
-    return v * markup * ShipPriceMultiplier(Factions::TierOf(Standing(view, DockedFaction(view))));
+    ModuleStock  out;
+    ResourceType g;
+    if (!ModuleGood(m.id, g))
+        return out;
+    const Proto::Snapshot&   snap = *view.snapshot;
+    const Proto::PlayerView& p = snap.player;
+    const std::vector<int>&  hangar = p.hangar.capacity > 0 ? p.hangar.goods : p.storedByType;
+    auto                     at = [&](const std::vector<int>& v)
+    { return g.Index() < (int)v.size() ? v[(size_t)g.Index()] : 0; };
+    out.known = true;
+    out.hangar = at(hangar);
+    out.hold = at(p.cargoByType);
+    out.shelf = at(snap.marketStock);
+    out.ask = g.Index() < (int)snap.marketAsk.size() ? snap.marketAsk[(size_t)g.Index()] : 0.0;
+    return out;
 }
 
 std::string Provides(const Ships::Provides& p)
@@ -466,19 +476,43 @@ FitQuote QuoteFit(const View& view, const std::vector<Ships::FitLine>& fit)
     q.changed = q.design.id != now->id;
     float      markup = 1.5f;
     const bool yard = AtShipyard(view, &markup);
-    q.price = Ships::RefitPrice(ships, *now, q.design, view.snapshot->marketPrices, markup);
-    if (q.price > 0.0)
-        q.price *= ShipPriceMultiplier(Factions::TierOf(Standing(view, DockedFaction(view))));
+    // Modules are goods (#472 slice 10): what the fit adds comes from the hangar here, then
+    // the hold, then this market's shelf; what it takes out goes to the hangar, else the hold.
+    // The market's part is priced at its ask a unit, which is what the server's next unit
+    // costs and a little less than the whole, so the server may say no to a close call.
     const Proto::PlayerView& p = view.snapshot->player;
+    const Ships::ModuleMoves moves = Ships::RefitMoves(*hull, *now, q.design);
+    const std::vector<int>&  hangar = p.hangar.capacity > 0 ? p.hangar.goods : p.storedByType;
+    auto                     at = [](const std::vector<int>& v, int i)
+    { return i >= 0 && i < (int)v.size() ? v[(size_t)i] : 0; };
+    for (const auto& [id, n] : moves.take)
+    {
+        ResourceType g;
+        if (!ModuleGood(id, g))
+            continue;
+        const int   have = at(hangar, g.Index()) + at(p.cargoByType, g.Index());
+        const int   buy = std::max(0, n - have);
+        const int   shelf = at(view.snapshot->marketStock, g.Index());
+        const float ask = g.Index() < (int)view.snapshot->marketAsk.size()
+                              ? view.snapshot->marketAsk[(size_t)g.Index()]
+                              : 0.0f;
+        q.fromHere += n - buy;
+        q.toBuy += buy;
+        q.price += buy * ask;
+        if (buy > shelf && q.problem.empty())
+            q.problem = Fmt("%d more %s needed: you have %d and this market has %d", buy - shelf,
+                            ResourceName(g).c_str(), have, shelf);
+    }
+    q.price *= 1.0 + Goods::Rules().fee;
     if (!q.changed)
         q.problem = "that is the fit the " + q.hull + " has";
     else if (!yard)
         q.problem = "refits are done docked at a station with a shipyard";
-    else if (q.after.cargoCapacity < p.cargoUsed)
+    else if (q.problem.empty() && q.after.cargoCapacity < p.cargoUsed)
         q.problem = Fmt("the hold would take %d and carries %d; sell some first",
                         q.after.cargoCapacity, p.cargoUsed);
-    else if (q.price > 0.0 && q.price > p.money)
-        q.problem = Fmt("it costs %.0f cr and you have %.0f cr", q.price, p.money);
+    else if (q.price > 0.0 && q.price > p.money && q.problem.empty())
+        q.problem = Fmt("the modules it needs cost %.0f cr and you have %.0f cr", q.price, p.money);
     q.ok = q.problem.empty();
     return q;
 }
@@ -513,8 +547,8 @@ std::string DescribeQuote(const FitQuote& q)
     if (!makeup.empty())
         out += "  damage   " + makeup + " (the base gun is untyped)\n";
     if (!q.design.id.empty())
-        out += q.price >= 0.0 ? Fmt("  price %.0f cr\n", q.price)
-                              : Fmt("  refund %.0f cr\n", -q.price);
+        out += Fmt("  modules  %d from your hangar and hold, %d to buy here for about %.0f cr\n",
+                   q.fromHere, q.toBuy, q.price);
     out += q.ok ? std::string("  the server would take it: call refit with this fit\n")
                 : "  refused: " + q.problem + "\n";
     return out;
@@ -526,13 +560,11 @@ std::string DescribeFitting(const View& view)
     const Ships::Design* now = CurrentDesign(view);
     if (hull == nullptr || now == nullptr)
         return "No world state yet.\n";
-    float       markup = 1.5f;
-    const bool  yard = AtShipyard(view, &markup);
+    const bool  yard = AtShipyard(view, nullptr);
     std::string out =
         Fmt("FITTING of your %s%s -- %s\n", hull->name.c_str(),
             now->id == hull->id ? "" : " (refitted)",
-            yard ? Fmt("docked at a shipyard, modules at %.2fx their ore", (double)markup).c_str()
-                 : "refits are done docked at a station with a shipyard");
+            yard ? "docked at a shipyard" : "refits are done docked at a station with a shipyard");
     out += "Fit now (pass a whole fit like this to preview_fit and refit; a fit sets no scale):\n";
     for (const Ships::FitLine& l : Ships::Normalized(now->fit))
         out += Fmt("  {\"module\": \"%s\", \"in\": \"%s\", \"on\": \"%s\", \"count\": %d}\n",
@@ -547,10 +579,15 @@ std::string DescribeFitting(const View& view)
         out += Fmt("  %s/%s: %d/%d -- %s\n", g.in.c_str(), g.on.c_str(), g.used, g.capacity,
                    mods.empty() ? "nothing" : mods.c_str());
     }
-    out += "Modules (mass; what it adds; price fitted here, half its ore back when removed):\n";
+    out += "Modules are goods: a fit uses what you hold in the hangar here, then the hold, then "
+           "buys at this market (mass; what it adds; yours in hangar/hold; on this market's "
+           "shelf at its ask). Modules taken out go to the hangar, then the hold.\n";
     for (const Ships::ModulePart& m : ships.modules)
-        out += Fmt("  %-16s mass %g; %s; %.0f cr\n", m.id.c_str(), (double)m.mass,
-                   Provides(m.provides).c_str(), ModulePrice(view, m, markup));
+    {
+        const ModuleStock k = StockOf(view, m);
+        out += Fmt("  %-16s mass %g; %s; you have %d/%d; market %d at %.0f cr\n", m.id.c_str(),
+                   (double)m.mass, Provides(m.provides).c_str(), k.hangar, k.hold, k.shelf, k.ask);
+    }
     out += "Side and edge sockets take modules in pairs; drives go in the stern; a ship keeps a "
            "drive.\n";
     return out;
@@ -609,9 +646,9 @@ std::string DescribeDesigns(const View& view)
         else if (!r.thisHull)
             apply = "for the " + r.hull + "; fly one to apply it";
         else if (r.quote.ok)
-            apply = r.quote.price >= 0.0
-                        ? Fmt("apply here for %.0f cr", r.quote.price)
-                        : Fmt("apply here for a refund of %.0f cr", -r.quote.price);
+            apply = r.quote.toBuy > 0 ? Fmt("apply here, buying %d modules for about %.0f cr",
+                                            r.quote.toBuy, r.quote.price)
+                                      : std::string("apply here from your own modules");
         else
             apply = "cannot apply: " + r.quote.problem;
         out += Fmt("  \"%s\" -- %s (%s): speed %.0f  turn %.2f  cargo %d  mining %.1f/s  hull %.0f"

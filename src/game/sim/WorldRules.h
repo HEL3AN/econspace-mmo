@@ -386,6 +386,14 @@ struct Hangars
     double periodDays = 30.0;
 };
 
+// What a lost player ship's wreck holds of the modules it carried beyond its hull's own fit
+// (#472 slice 10): this share of each kind, rounded down. NPC ships drop none until fleets buy
+// their modules from markets.
+struct Wrecks
+{
+    double moduleShare = 0.5;
+};
+
 // The NPC delivery service (#472, documents/holds_and_storage.md): every faction's freight
 // office carries goods between a pilot's containers for
 //   max(minFee, rate * volume * jumps * risk) + insure * value * (risk - 1)
@@ -553,6 +561,7 @@ const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
 const Hangars&     HangarRules();
+const Wrecks&      WreckRules();
 const Deliveries&  DeliveryRules();
 const Security&    SecurityRules();
 const Patrols&     PatrolRules();
@@ -573,6 +582,7 @@ void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
 void SetHangarRules(const Hangars& h);
+void SetWreckRules(const Wrecks& w);
 void SetDeliveryRules(const Deliveries& d);
 void SetSecurityRules(const Security& s);
 void SetPatrolRules(const Patrols& p);

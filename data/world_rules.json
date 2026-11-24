@@ -173,6 +173,9 @@
         "rentPerUnit": 0.2,
         "periodDays": 30
     },
+    "wrecks": {
+        "moduleShare": 0.5
+    },
     "deliveries": {
         "rate": 1,
         "minFee": 50,

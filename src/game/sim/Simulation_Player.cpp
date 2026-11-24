@@ -9,6 +9,7 @@
 #include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
 #include "sim/SaveFile.h"
+#include "sim/WorldRules.h"
 
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
@@ -188,6 +189,18 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
         Inventory    kept;  // what survives
         for (ResourceType rt : AllResourceTypes())
             kept.Add(rt, (int)std::floor(s.ship->GetCargoAmount(rt) * share));
+        // What the pilot fitted beyond the hull's own fit survives at the modules' share
+        // (#472 slice 10); the hull's own is the hull's, and an NPC ship drops none.
+        const Ships::Catalogue& designs = Archetypes::ShipCatalogue();
+        if (known)
+            if (const Ships::Design* stockDesign = designs.FindDesign(catalog[hull].stats.design))
+                if (const Ships::Design* flown = designs_.Find(s.DesignOf(hull)))
+                    for (const auto& [moduleId, n] : Ships::ModulesBeyond(*stockDesign, *flown))
+                    {
+                        ResourceType g;
+                        if (ModuleGood(moduleId, g))
+                            kept.Add(g, (int)std::floor(n * WorldRules::WreckRules().moduleShare));
+                    }
         if (worth >= 1.0 || !kept.Empty())
         {
             const std::string pilot = s.ship->GetPilotName();
@@ -933,23 +946,6 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
     return r;
 }
 
-// A hull whose hold is smaller than what the ship carries is refused, not refitted (#219).
-// Refit swaps stats and leaves the cargo alone, so without this a full Hauler became a Scout
-// carrying four times its capacity. Refusing keeps "a hold never holds more than it can"
-// true without deciding for the player which ore to throw away.
-static bool HoldFits(ClientSession& s, const std::string& name, const ShipStats& stats,
-                     const std::string& verb)
-{
-    const int used = s.ship->GetCargoUsed();
-    if (used <= stats.cargoCapacity)
-        return true;
-    s.RecordEvent(Ev::Kind::Notice, verb + " refused: the hold carries " + std::to_string(used) +
-                                        " and a " + name + " holds " +
-                                        std::to_string(stats.cargoCapacity) +
-                                        "; sell or hand in cargo first");
-    return false;
-}
-
 bool Simulation::SwitchShip(ClientSession& s, int catalogIndex)
 {
     const std::vector<ShipType>& catalog = GetShipCatalog();
@@ -1186,20 +1182,77 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
     ShipStats stats;
     if (!PlayerStats(want, stats, why))
         return refuse(why);
-    if (!HoldFits(s, name, stats, "Refit of the " + name))
-        return false;
-
-    // At the system's ore prices, as the snapshot shows them, and by standing as a ship is.
-    std::vector<float> ore;
-    for (ResourceType rt : AllResourceTypes())
-        ore.push_back((float)st->market.GetPrice(rt));
-    double price = Ships::RefitPrice(ships, *now, want, ore, yard->GetArchetype()->refitMarkup);
-    if (price > 0.0)
-        price *= ShipPriceMultiplier(Factions::TierOf(s.account.GetReputation(
-            yard->GetKind() == EntityKind::Station ? static_cast<const Station*>(yard)->GetFaction()
-                                                   : Factions::Unaffiliated())));
-    if (price > 0.0 && !s.account.CanAfford(price))
-        return refuse("it costs " + Credits(price) + " here and you have " +
+    // Modules are goods (#472 slice 10): each one a fit adds is drawn from the hangar here,
+    // then the hold, then bought at this market; each one it takes out goes to the hangar,
+    // else the hold. Planned in full first, so a refit refused changes nothing.
+    const Ships::ModuleMoves moves = Ships::RefitMoves(*stock, *now, want);
+    Container                hangar;
+    std::string              hangarWhy;
+    const bool               haveHangar =
+        ContainerOf(s, "hangar", hangar, hangarWhy) || ContainerOf(s, "storage", hangar, hangarWhy);
+    Inventory&    hold = s.ship->Hold();
+    FactionId     sellerFaction;
+    const Entity* market = DockedMarket(s, *st, sellerFaction);
+    struct Draw
+    {
+        ResourceType good;
+        int          hangar = 0, hold = 0, buy = 0;
+    };
+    std::vector<Draw> draws;
+    int               hangarFreed = 0, holdFreed = 0;
+    double            cost = 0.0, fee = 0.0;
+    const double      feeRate = market != nullptr ? FeeAt(*st, *market).rate : 0.0;
+    const double      standing = 1.0 / std::min(1.0f, SellPriceMultiplier(Factions::TierOf(
+                                                          s.account.GetReputation(sellerFaction))));
+    for (const auto& [moduleId, n] : moves.take)
+    {
+        ResourceType g;
+        if (!ModuleGood(moduleId, g))
+            return refuse("there is no good for the module " + moduleId);
+        Draw d;
+        d.good = g;
+        d.hangar = haveHangar ? std::min(n, hangar.goods->Amount(g)) : 0;
+        d.hold = std::min(n - d.hangar, hold.Amount(g));
+        d.buy = n - d.hangar - d.hold;
+        if (d.buy > 0)
+        {
+            const int stockHere = market != nullptr ? (int)st->market.Stock(g) : 0;
+            if (market == nullptr || stockHere < d.buy)
+                return refuse(std::to_string(d.buy - std::min(stockHere, d.buy)) + " more " +
+                              ResourceName(g) + " needed: you have " +
+                              std::to_string(d.hangar + d.hold) + " and this market has " +
+                              std::to_string(stockHere));
+            const double price = st->market.QuoteBuy(g, d.buy) * standing;
+            cost += price * (1.0 + feeRate);
+            fee += price * feeRate;
+        }
+        hangarFreed += d.hangar * Goods::Volume(g);
+        holdFreed += d.hold * Goods::Volume(g);
+        draws.push_back(d);
+    }
+    // Where what comes out goes: the hangar while it has room, then the hold.
+    int hangarRoom = haveHangar ? hangar.capacity - hangar.goods->Used() + hangarFreed : 0;
+    int holdUsed = hold.Used() - holdFreed;
+    std::vector<std::pair<ResourceType, std::pair<int, int>>> returns;  // to hangar, to hold
+    for (const auto& [moduleId, n] : moves.give)
+    {
+        ResourceType g;
+        if (!ModuleGood(moduleId, g))
+            continue;  // a module with no good is dismantled
+        const int vol = Goods::Volume(g);
+        int       toHangar =
+            haveHangar && hangar.accepts ? std::min(n, std::max(0, hangarRoom) / vol) : 0;
+        hangarRoom -= toHangar * vol;
+        const int toHold = n - toHangar;
+        holdUsed += toHold * vol;
+        returns.push_back({ g, { toHangar, toHold } });
+    }
+    if (holdUsed > stats.cargoCapacity)
+        return refuse("the hold would carry " + std::to_string(holdUsed) + " and a " + name +
+                      " holds " + std::to_string(stats.cargoCapacity) +
+                      "; sell or store cargo first, or the modules taken out have nowhere to go");
+    if (cost > 0.0 && !s.account.CanAfford(cost))
+        return refuse("the modules it needs cost " + Credits(cost) + " here and you have " +
                       Credits(s.account.GetMoney()));
 
     std::string id = want.id;
@@ -1210,11 +1263,38 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
             return refuse(why);
         designsChanged_ = true;
     }
-    s.account.AddMoney(-price);
+    for (const Draw& d : draws)
+    {
+        if (d.hangar > 0)
+            hangar.goods->Remove(d.good, d.hangar);
+        if (d.hold > 0)
+            hold.Remove(d.good, d.hold);
+        if (d.buy > 0)
+        {
+            int bought = 0;  // bought and fitted in one go: they never sit in the hold
+            st->market.Buy(d.good, d.buy, bought);
+        }
+    }
+    for (const auto& [g, to] : returns)
+    {
+        if (to.first > 0)
+            hangar.goods->Add(g, to.first);
+        if (to.second > 0)
+            hold.Add(g, to.second);
+    }
+    if (cost > 0.0)
+    {
+        s.account.AddMoney(-cost);
+        PayFee(FeeAt(*st, *market), fee);
+    }
     FlyDesign(s, hull, id);
+    std::string took;
+    for (const auto& [g, to] : returns)
+        took += (took.empty() ? "" : ", ") + std::to_string(to.first + to.second) + " " +
+                ResourceName(g);
     s.RecordEvent(Ev::Kind::Notice,
-                  "Refitted the " + name +
-                      (price >= 0.0 ? " for " + Credits(price) : ", refunded " + Credits(-price)));
+                  "Refitted the " + name + (cost > 0.0 ? " for " + Credits(cost) : std::string()) +
+                      (took.empty() ? std::string() : "; " + took + " taken out"));
     return true;
 }
 

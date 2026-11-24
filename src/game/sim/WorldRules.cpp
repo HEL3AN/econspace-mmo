@@ -21,6 +21,7 @@ WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
 WorldRules::Hangars     g_hangars;
+WorldRules::Wrecks      g_wrecks;
 WorldRules::Deliveries  g_deliveries;
 WorldRules::Security    g_security;
 WorldRules::Patrols     g_patrols;
@@ -91,7 +92,7 @@ bool Load(const std::string& path)
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
             it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
-            it.key() != "hangars" && it.key() != "deliveries")
+            it.key() != "hangars" && it.key() != "deliveries" && it.key() != "wrecks")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -404,6 +405,17 @@ bool Load(const std::string& path)
         g_error = path + ": hangars: periodDays must be more than zero";
         return false;
     }
+    // What a lost ship's wreck keeps of its fitted modules (#472 slice 10).
+    Wrecks wr;
+    if (j.contains("wrecks") &&
+        !ReadSection(j["wrecks"], path + ": wrecks", { { "moduleShare", &wr.moduleShare } }, {}, {},
+                     g_error))
+        return false;
+    if (wr.moduleShare < 0.0 || wr.moduleShare > 1.0)
+    {
+        g_error = path + ": wrecks: moduleShare is a share, 0 to 1";
+        return false;
+    }
     // The NPC delivery service (#472).
     Deliveries dl;
     if (j.contains("deliveries") && !ReadSection(j["deliveries"], path + ": deliveries",
@@ -547,6 +559,7 @@ bool Load(const std::string& path)
     g_influence = inf;
     g_licences = lc;
     g_hangars = hg;
+    g_wrecks = wr;
     g_deliveries = dl;
     g_security = sec;
     g_patrols = pat;
@@ -693,6 +706,16 @@ const Hangars& HangarRules()
 void SetHangarRules(const Hangars& h)
 {
     g_hangars = h;
+}
+
+void SetWreckRules(const Wrecks& w)
+{
+    g_wrecks = w;
+}
+
+const Wrecks& WreckRules()
+{
+    return g_wrecks;
 }
 
 const Deliveries& DeliveryRules()

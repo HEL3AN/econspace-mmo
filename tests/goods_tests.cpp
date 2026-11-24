@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <cmath>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -82,7 +83,7 @@ TEST_CASE("goods are data: a chain of tiers, and a mistake in the file changes n
         GoodsFile file;
         const int n = Goods::Count();
         CHECK(n >= 6);
-        CHECK(n <= 10);
+        CHECK(n <= 40);
         // Every good above the raw tier is made by some station from goods of a lower tier,
         // and every raw one comes from a belt or a planet: the chain has no loose end.
         for (ResourceType g : AllResourceTypes())
@@ -298,6 +299,20 @@ TEST_CASE("stations make and use goods in the coarse pass, and the stock outlive
         StartServer(sim);
         refinery = RefiningSystem(sim);
         REQUIRE_FALSE(refinery.empty());
+        // A yard in the same system would draw steel into modules (#472 slice 10); this case
+        // watches the refinery alone.
+        {
+            std::vector<Recipe>& all = sim.SystemById(refinery)->profile.rates.recipes;
+            all.erase(std::remove_if(all.begin(), all.end(),
+                                     [](const Recipe& r)
+                                     {
+                                         for (const auto& out : r.out)
+                                             if (Goods::Def(out.first).IsModule())
+                                                 return true;
+                                         return false;
+                                     }),
+                      all.end());
+        }
         const SystemState& st = *sim.SystemById(refinery);
         CHECK(st.profile.belts > 0);  // its belts, which the coarse pass asks itself (#348)
         // Half an hour of the world with nobody in it: the refineries run on the belts' ore,
@@ -372,4 +387,75 @@ TEST_CASE("the wire carries a purchase and the market's bid, ask and stock (#343
     CHECK(r.tradeAcks[0].bought == 5);
     CHECK(r.tradeAcks[0].cost == doctest::Approx(80.0));
     CHECK(r.tradeAcks[0].fee == doctest::Approx(1.6));
+}
+
+TEST_CASE("modules are goods: made by a yard's recipe, scarce everywhere else (#472 slice 10)")
+{
+    GoodsFile          file;
+    const ResourceType laser = Good::Named("weapons.laser");
+    const GoodDef&     def = Goods::Def(laser);
+    REQUIRE(def.IsModule());
+    CHECK(def.module == "weapons.laser");
+    // Its price is its parts' at their base prices times the yard margin, never typed.
+    double parts = 0.0;
+    for (const auto& [g, n] : def.parts)
+        parts += n * Goods::Def(g).price;
+    CHECK(def.price == doctest::Approx(std::round(parts * Goods::Rules().moduleMargin)));
+
+    // A new market has none on its shelf, and the price at no stock is the ceiling: finite,
+    // so the haulers have a gap to carry a yard's stock into.
+    Market m;
+    CHECK(m.Stock(laser) == doctest::Approx(0.0));
+    CHECK(std::isfinite(m.Ask(laser)));
+    CHECK(m.Mid(laser) == doctest::Approx(def.price * Goods::Rules().ceiling));
+    int bought = 0;
+    CHECK(m.Buy(laser, 1, bought) == doctest::Approx(0.0));
+    CHECK(bought == 0);
+
+    // The shipyard's recipe makes it from its parts, and stops at the cap every recipe has.
+    const Industry* yard = Goods::IndustryOf("station.shipyard");
+    REQUIRE(yard != nullptr);
+    MarketRates rates;
+    rates.recipes = yard->recipes;
+    bool makesLaser = false;
+    for (const Recipe& r : rates.recipes)
+        for (const auto& out : r.out)
+            makesLaser = makesLaser || out.first == laser;
+    CHECK(makesLaser);
+    m.Step(rates, 10.0);
+    CHECK(m.Stock(laser) > 0.0);
+    for (int i = 0; i < 200; i++)
+        m.Step(rates, 10.0);
+    CHECK(m.Stock(laser) <= m.Target(laser) * 10.0 + 1e-9);
+
+    // A market without the recipe never makes one, and a yard's own starts with it on the shelf.
+    Market other;
+    other.Step(MarketRates{}, 100.0);
+    CHECK(other.Stock(laser) == doctest::Approx(0.0));
+    Market fresh;
+    fresh.SetMarkets(1, &rates);
+    CHECK(fresh.Stock(laser) == doctest::Approx(fresh.Target(laser)));
+}
+
+TEST_CASE("a module in goods.json names its part and its parts, and nothing else (#472)")
+{
+    const TempDir     tmp;
+    const std::string path = tmp.Path("goods.json");
+    auto              write = [&](const std::string& good)
+    {
+        std::ofstream f(path);
+        f << R"({"goods":[{"id":"Iron","price":10,"stock":100,"mined":true},)" << good << "]}";
+    };
+    write(R"({"id":"m","module":"x.y","parts":{"Iron":2},"stock":4})");
+    CHECK(Goods::Load(path));
+    CHECK(Goods::Def(Good::Named("m")).price > 0.0);
+    write(R"({"id":"m","module":"x.y","stock":4})");  // no parts
+    CHECK_FALSE(Goods::Load(path));
+    write(R"({"id":"m","module":"x.y","parts":{"Iron":2},"price":9,"stock":4})");  // a typed price
+    CHECK_FALSE(Goods::Load(path));
+    write(R"({"id":"m","parts":{"Iron":2},"stock":4})");  // parts of no module
+    CHECK_FALSE(Goods::Load(path));
+    write(R"({"id":"m","module":"x.y","parts":{"Nothing":2},"stock":4})");
+    CHECK_FALSE(Goods::Load(path));
+    Goods::Load(DATA + "goods.json");
 }

@@ -1426,6 +1426,9 @@ TEST_CASE("a player grows their own station into a shipyard and refits there; no
     // Docked there, the ship is refitted and paid for; it is no hull-issuing station to wake at.
     EmptyHold(s);
     Beside(s, *t);
+    for (ResourceType g : AllResourceTypes())  // modules are goods (#472): the shelf has them
+        if (Goods::Def(g).IsModule())
+            sim.SystemById(sys)->market.SetStock(g, 4.0);
     const int home = s.homeStationId;
     REQUIRE(sim.StepPlayerDock(s, *sim.SystemOf(s)) == id);
     REQUIRE(sim.RefitShip(s, rearmed));

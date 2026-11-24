@@ -47,6 +47,13 @@ struct GoodDef
     // How much room one unit takes in a hold, a hangar or a can (#472): whole numbers, so the
     // wire and the saves stay exact. A container's capacity is in these.
     int volume = 1;
+    // A module (#472 slice 10): a ship's part, made and traded like any good. `module` is the
+    // part's id in ships.json, `parts` the goods it is made of (what `makes` in an industry
+    // turns into a recipe) and its price is those goods at their base prices times
+    // `MarketRules::moduleMargin`. Empty `module` -- an ordinary good.
+    std::string                                  module;
+    std::vector<std::pair<ResourceType, double>> parts;
+    bool                                         IsModule() const { return !module.empty(); }
 };
 
 // A station turning goods into goods: `rate` cycles an hour, each taking `in` and giving
@@ -86,6 +93,8 @@ struct MarketRules
     double haulEvery = 0.0;
     double haulCargo = 0.0;
     double haulMargin = 0.1;
+    // What a yard asks over the goods a module is made of (#472 slice 10): data, not code.
+    double moduleMargin = 1.3;
 };
 
 std::string  ResourceName(ResourceType type);            // what a player reads
@@ -93,6 +102,8 @@ ResourceType ResourceFromName(const std::string& name);  // by id or name; the f
 
 // Every good, in registry order -- for iterating in loops.
 std::vector<ResourceType> AllResourceTypes();
+// The good that is this ship part (`module` of a goods.json entry), if the registry has one.
+bool ModuleGood(const std::string& moduleId, ResourceType& out);
 
 namespace Goods
 {

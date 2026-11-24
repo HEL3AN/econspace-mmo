@@ -777,6 +777,15 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
             const Ships::SocketGroup& g = groups[fitSel_];
             // What is mirrored comes in pairs (Ships::Validate), so it moves two at a time.
             const int step = g.on == "side" || g.on == "edge" ? 2 : 1;
+            // A module dragged here from the inventory or the market fits this socket
+            // (#472 slice 10): the same draft a "+" makes, applied by the same Apply.
+            if (const Ui::DragPayload* d = L.Dropped("fit", 0, "goods"))
+                if (d->item >= 0 && d->item < Goods::Count())
+                {
+                    const std::string& id = Goods::Def(ResourceType::FromIndex(d->item)).module;
+                    if (std::find(g.modules.begin(), g.modules.end(), id) != g.modules.end())
+                        change(g, id, step);
+                }
             L.Text(TextFormat("%s %s: %d of %d", g.in.c_str(), g.on.c_str(), g.used, g.capacity),
                    TextStyle::Small().Tint(t.colors.dim));
             for (size_t k = 0; k < g.modules.size(); k++)
@@ -850,8 +859,13 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                 share("untyped", 1.0f - typed);
         }
         if (q.changed && !q.design.id.empty())
-            L.Field(q.price >= 0.0 ? "Price here" : "Refund", Credits(std::abs(q.price)) + " cr",
-                    t.colors.money);
+        {
+            L.Field("Modules",
+                    TextFormat("%d from hold and hangar, %d to buy", q.fromHere, q.toBuy),
+                    q.toBuy > 0 ? t.colors.warn : t.colors.text);
+            if (q.toBuy > 0)
+                L.Field("Buy here", Credits(q.price) + " cr", t.colors.money);
+        }
         // The verdict as the fit is edited, the server's own (Obs::QuoteFit): whether the fit
         // is one a ship may fly, and whether this yard would take it now -- but not the
         // "nothing has changed" of a tab just opened.
@@ -872,9 +886,8 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                   if (!draftIsChosen && drafted)
                   {
                       std::string label = "Apply";
-                      if (!q.design.id.empty())
-                          label += q.price >= 0.0 ? "  " + Credits(q.price) + " cr"
-                                                  : "  refund " + Credits(-q.price) + " cr";
+                      if (!q.design.id.empty() && q.toBuy > 0)
+                          label += "  " + Credits(q.price) + " cr";
                       const std::vector<Actions::Action> apply =
                           Actions::ForRefit(fitDraft_, q.ok, q.changed);
                       if (L.Button("apply", label, !apply.empty(), !apply.empty()))
@@ -960,9 +973,9 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                   {
                       std::string label = a.label;
                       if (a.verb == Actions::Verb::ApplyDesign)  // the price, before the click
-                          label += chosen->quote.price >= 0.0
+                          label += chosen->quote.toBuy > 0
                                        ? "  " + Credits(chosen->quote.price) + " cr"
-                                       : "  refund " + Credits(-chosen->quote.price) + " cr";
+                                       : std::string();
                       if (a.verb == Actions::Verb::SaveDesign && lib.typedTaken)
                           label = "Save over";
                       if (L.Button("lib" + std::to_string((int)a.verb), label,

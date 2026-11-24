@@ -198,6 +198,36 @@ double RefitPrice(const Catalogue& c, const Design& from, const Design& to,
     return price;
 }
 
+ModuleMoves RefitMoves(const Design& stock, const Design& now, const Design& to)
+{
+    const std::map<std::string, int> s = Counts(stock.fit), c = Counts(now.fit), t = Counts(to.fit);
+    std::map<std::string, int>       ids;
+    for (const auto* m : { &s, &c, &t })
+        for (const auto& [id, n] : *m)
+            ids[id] = 0;
+    ModuleMoves out;
+    for (const auto& kv : ids)
+    {
+        const std::string& id = kv.first;
+        auto               get = [&](const std::map<std::string, int>& m)
+        {
+            const auto it = m.find(id);
+            return it == m.end() ? 0 : it->second;
+        };
+        const int base = get(s), cur = get(c), want = get(t);
+        if (want > std::max(cur, base))
+            out.take[id] = want - std::max(cur, base);
+        if (cur > std::max(want, base))
+            out.give[id] = cur - std::max(want, base);
+    }
+    return out;
+}
+
+std::map<std::string, int> ModulesBeyond(const Design& stock, const Design& now)
+{
+    return RefitMoves(stock, now, stock).give;
+}
+
 std::vector<FitLine> PlayerLines(const Design& d)
 {
     std::vector<FitLine> fit = Normalized(d.fit);

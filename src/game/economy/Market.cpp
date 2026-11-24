@@ -20,8 +20,13 @@ void Market::Fit()
     const size_t n = (size_t)Goods::Count();
     while (base_.size() < n)
         base_.push_back(Goods::Def(ResourceType::FromIndex((int)base_.size())).price);
+    // A module (#472 slice 10) is not on the shelf until a yard makes it or a hauler brings it:
+    // nothing appears from nothing.
     while (stock_.size() < n)
-        stock_.push_back(Goods::Def(ResourceType::FromIndex((int)stock_.size())).stock * markets_);
+    {
+        const GoodDef& d = Goods::Def(ResourceType::FromIndex((int)stock_.size()));
+        stock_.push_back(d.IsModule() ? 0.0 : d.stock * markets_);
+    }
     base_.resize(n);
     stock_.resize(n);
 }
@@ -36,7 +41,7 @@ double Market::Target(ResourceType type) const
     return Goods::Def(type).stock * markets_;
 }
 
-void Market::SetMarkets(int markets)
+void Market::SetMarkets(int markets, const MarketRates* rates)
 {
     Fit();
     const int was = markets_;
@@ -47,6 +52,12 @@ void Market::SetMarkets(int markets)
     if (fresh_ && was != markets_)
         for (double& s : stock_)
             s = s * markets_ / was;
+    // A yard starts with the modules it makes on the shelf, at the target.
+    if (fresh_ && rates != nullptr)
+        for (const Recipe& r : rates->recipes)
+            for (const auto& out : r.out)
+                if (Goods::Def(out.first).IsModule() && (size_t)out.first.Index() < stock_.size())
+                    stock_[(size_t)out.first.Index()] = Target(out.first);
     fresh_ = false;
 }
 
