@@ -895,6 +895,18 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
             p.upkeep = Simulation::PatrolUpkeep(kv.second);
             v.patrols.push_back(std::move(p));
         }
+        // ...and whom it declared hostile (#466), a faction by its id, a corporation by ticker.
+        for (const std::string& key : c->enemies)
+        {
+            if (key.rfind("f:", 0) == 0)
+            {
+                FactionId f;
+                if (Factions::Find(key.substr(2), f))
+                    v.enemies.push_back({ "faction", Factions::Id(f), FactionName(f) });
+            }
+            else if (const Corps::Corp* other = sim.Corporations().Find(key))
+                v.enemies.push_back({ "corp", other->ticker, other->name });
+        }
     }
     else
         v.licences = sim.PartyLicences(sim.PartyOf(account));  // a pilot's own (#509)

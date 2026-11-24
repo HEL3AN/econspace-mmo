@@ -652,3 +652,152 @@ TEST_CASE("a patrol guards its members' structure while they are offline, hot an
     CHECK(watched.force == doctest::Approx(guarded.force).epsilon(0.05));
     CHECK(watched.patrol == doctest::Approx(guarded.patrol).epsilon(0.05));
 }
+
+namespace
+{
+Corps::Outcome Enemy(Simulation& sim, const std::string& who, const std::string& target,
+                     const std::string& value = std::string())
+{
+    Corps::Act act;
+    act.verb = "enemy";
+    act.name = target;
+    act.value = value;
+    return sim.ApplyCorpAct(who, act, {}, NOW);
+}
+}  // namespace
+
+TEST_CASE("the CEO and directors declare factions and corporations hostile, kept in corps.json "
+          "(#466)")
+{
+    RulesGuard       guard;
+    Held             h;
+    Corps::Registry& r = h.sim.Corporations();
+    REQUIRE(r.InviteTo("anna", "cato", { "cato" }, NOW).Ok());
+    REQUIRE(r.Join("cato", "DH", NOW).Ok());
+    REQUIRE(r.Create("dima", "Free Hands", "FH", NOW).Ok());
+    const FactionId    guild = Fac::TradersGuild();
+    const Corps::Corp* dh = r.Find(h.Corp());
+    REQUIRE(dh != nullptr);
+
+    CHECK_FALSE(Enemy(h.sim, "boris", "Syndicate").Ok());  // a member declares nothing
+    CHECK_FALSE(Enemy(h.sim, "eve", "Syndicate").Ok());    // in no corporation
+    CHECK_FALSE(Enemy(h.sim, "anna", "Pirates").Ok());     // everyone's already
+    CHECK_FALSE(Enemy(h.sim, "anna", "DH").Ok());          // never its own
+    CHECK_FALSE(Enemy(h.sim, "anna", "Nobody At All").Ok());
+    CHECK_FALSE(Enemy(h.sim, "anna", "Syndicate", "maybe").Ok());
+    CHECK(dh->enemies.empty());
+
+    const int rev = r.Rev();
+    CHECK(Enemy(h.sim, "anna", "syndicate").Ok());      // by id, in any case
+    CHECK(Enemy(h.sim, "anna", "Traders Guild").Ok());  // by the name a player reads
+    CHECK(Enemy(h.sim, "anna", "fh", "add").Ok());      // a corporation, by ticker
+    CHECK(r.Rev() > rev);
+    CHECK(dh->HostileTo(Fac::Syndicate()));
+    CHECK(dh->HostileTo(guild));
+    CHECK_FALSE(dh->HostileTo(Fac::Independent()));
+    CHECK(dh->HostileToCorp(r.IdOf("dima")));
+    CHECK_FALSE(dh->HostileToCorp(""));
+    // Said twice, it is told and nothing changes.
+    const int again = r.Rev();
+    CHECK(Enemy(h.sim, "anna", "syndicate").told.find("already") != std::string::npos);
+    CHECK(r.Rev() == again);
+
+    // A director may; the journal and the corporation's channel have it.
+    REQUIRE(r.SetRole("anna", "cato", Corps::Role::Director).Ok());
+    const Corps::Outcome o = Enemy(h.sim, "cato", "Traders Guild", "remove");
+    REQUIRE(o.Ok());
+    CHECK_FALSE(o.announce.empty());
+    CHECK_FALSE(dh->HostileTo(guild));
+    CHECK_FALSE(dh->journal.empty());
+
+    // It survives a save, and is the corporation's offline.
+    Corps::Registry back;
+    std::string     why;
+    REQUIRE(back.FromJson(r.ToJson(), why));
+    const Corps::Corp* kept = back.Find(h.Corp());
+    REQUIRE(kept != nullptr);
+    CHECK(kept->enemies == dh->enemies);
+    CHECK(kept->HostileTo(Fac::Syndicate()));
+
+    // The wire view carries it.
+    Proto::CorpView v;
+    v.id = "c1";
+    v.enemies.push_back({ "faction", "Syndicate", "Syndicate" });
+    v.enemies.push_back({ "corp", "FH", "Free Hands" });
+    Proto::CorpView out;
+    REQUIRE(Proto::DecodeCorpView(Proto::EncodeCorpView(v), out));
+    REQUIRE(out.enemies.size() == 2);
+    CHECK(out.enemies[1].kind == "corp");
+    CHECK(out.enemies[1].id == "FH");
+}
+
+TEST_CASE("a patrol on enemies fires on a declared faction at neutral standing, and on a declared "
+          "corporation's pilots and guards (#466)")
+{
+    RulesGuard       guard;
+    Held             h;
+    Corps::Registry& r = h.sim.Corporations();
+    REQUIRE(r.Create("dima", "Free Hands", "FH", NOW).Ok());
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "enemies").Ok());
+    h.Agg().patrols[h.Corp()] = 2.0f;
+    const Vector2  near{ h.outpost.x + 700.0f, h.outpost.y };
+    ClientSession& dima = h.Pilot("dima", { near.x, near.y - 150.0f });
+    ClientSession& ewa = h.Pilot("ewa", { near.x, near.y + 150.0f });
+    h.sim.Warm(h.St());
+    const std::vector<const NpcShip*> guards = h.Guards();
+    REQUIRE_FALSE(guards.empty());
+    const NpcShip&  g = *guards.front();
+    const FactionId syndicate = Fac::Syndicate();
+    const NpcShip   ship({ near.x + 300.0f, near.y }, syndicate, NpcRole::Trader, {});
+    NpcShip         theirGuard({ near.x + 400.0f, near.y }, Fac::Independent(), NpcRole::Guard, {});
+    theirGuard.SetCorp(r.IdOf("dima"), "[FH] patrol");
+
+    // Nobody is anyone's enemy at standing zero.
+    CHECK_FALSE(h.sim.GuardEngages(h.St(), g, ship));
+    CHECK_FALSE(h.sim.GuardEngages(h.St(), g, theirGuard));
+    CHECK_FALSE(h.sim.NpcHunts(h.St(), dima, g));
+
+    REQUIRE(Enemy(h.sim, "anna", "Syndicate").Ok());
+    REQUIRE(Enemy(h.sim, "anna", "FH").Ok());
+    CHECK(h.sim.GuardEngages(h.St(), g, ship));  // the declaration, with the standing at zero
+    CHECK(h.sim.GuardEngages(h.St(), g, theirGuard));
+    CHECK(h.sim.NpcHunts(h.St(), dima, g));
+    CHECK_FALSE(h.sim.NpcHunts(h.St(), ewa, g));  // a pilot of nobody's is let be
+
+    // Hold fire holds, declared or not.
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "hold").Ok());
+    CHECK_FALSE(h.sim.GuardEngages(h.St(), g, ship));
+    CHECK_FALSE(h.sim.NpcHunts(h.St(), dima, g));
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "enemies").Ok());
+
+    // Withdrawn, it is as it was.
+    REQUIRE(Enemy(h.sim, "anna", "Syndicate", "remove").Ok());
+    REQUIRE(Enemy(h.sim, "anna", "FH", "remove").Ok());
+    CHECK_FALSE(h.sim.GuardEngages(h.St(), g, ship));
+    CHECK_FALSE(h.sim.NpcHunts(h.St(), dima, g));
+}
+
+TEST_CASE("a declaration is not a licence: a guard that fires first on a lawful faction's ship is "
+          "charged as ever (#466)")
+{
+    RulesGuard guard;
+    Held       h;
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "enemies").Ok());
+    h.Agg().patrols[h.Corp()] = 2.0f;
+    const Vector2  near{ h.outpost.x + 700.0f, h.outpost.y };
+    ClientSession& anna = h.Pilot("anna", near);
+    h.sim.Warm(h.St());
+    REQUIRE_FALSE(h.Guards().empty());
+    const Vector2   gpos = h.Guards().front()->GetPosition();
+    const FactionId syndicate = Fac::Syndicate();
+    REQUIRE(Factions::IsLawful(syndicate));
+    REQUIRE(Enemy(h.sim, "anna", "Syndicate").Ok());
+    auto victim = std::make_unique<NpcShip>(Vector2{ gpos.x + 150.0f, gpos.y }, syndicate,
+                                            NpcRole::Trader, std::vector<Vector2>{});
+    h.St().entities.push_back(std::move(victim));
+    std::vector<Simulation::PlayerPresence> players;
+    for (int i = 0; i < 60 * 20; i++)
+        h.sim.StepSystemAgents(h.St(), players, nullptr, 1.0f / 60.0f);
+    // The corporation's CEO answers for it, with the faction whose ship it was.
+    CHECK(anna.account.GetBounty(syndicate) > 0.0);
+}

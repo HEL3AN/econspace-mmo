@@ -742,10 +742,19 @@ Not built and not yet designed in full. Each waits for a talk with the owner.
   with one doctrine design per role. Their fits should come from the world instead: a gang's
   wealth and losses, its faction's doctrine, the region, its security and its market. No balance
   patch in the meantime.
-- **The corporation enemy list (#466).** Today a corporation's hostility to a faction is its
-  members' summed standing. An EVE-style contact list set by the CEO and directors, read by
-  patrols and structures in "enemies" mode, comes with the war declarations that this plan
-  deferred (Decided after the rounds, 7).
+- **The corporation enemy list (#466), built.** A corporation's hostility used to be only its
+  members' summed standing. Now its CEO and directors also declare enemies, an EVE-style contact
+  list: `Corps::Corp::enemies`, in corps.json, set by the `CorpAct` verb `enemy` (name: a faction's
+  id or name, or another corporation's ticker; value: add or remove). Patrols and armed
+  structures on "enemies" read it beside the summed standing, as an OR: a faction is fired on
+  when its standing is below the threshold *or* it is declared. A declared corporation's pilots
+  and guard ships are fired on the same way. It is a declaration by leadership, one-sided and
+  free, and it works while everyone is offline (the pass reads corps.json's list). **A declaration
+  is not a licence:** the first strike is still the owner's act, so firing first on a lawful
+  faction's ship, or on a pilot a lawful system's law protects, is charged as a crime to the
+  structure's owner (a corporation's, its CEO) exactly as before. What remains for the war
+  declarations proper (Decided after the rounds, 7) is a cost, a notice to the other side, a
+  duration, and lifting the crime where both corporations are at war.
 - **Selling charts to players (#473).** A player-to-player exchange of charts; slice 16 sells
   to factions only.
 

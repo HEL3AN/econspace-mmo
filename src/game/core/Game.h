@@ -700,6 +700,7 @@ private:
     // member chosen in its list.
     Proto::CorpView corpView_;
     std::string     corpName_, corpTicker_, corpInvitee_, corpChosen_;
+    std::string     corpEnemy_;    // the enemy field: a faction or a ticker (#466)
     std::string     corpTax_;      // the tax field, in percent (#431 slice 5)
     int             corpTab_ = 0;  // 0 the corporation, 1 its treasury (#509)
     std::string     corpAmount_;   // the treasury tab's amount field

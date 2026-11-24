@@ -318,6 +318,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
     }
     if (verb == "tax" || verb == "docking")
         return SetPolicy(account, verb, act.value, WorldRules::InfluenceRules().taxMax);
+    if (verb == "enemy")  // (#466)
+        return SetEnemy(account, act.name, act.value);
     if (verb == "division")  // (#472 slice 5)
         return SetDivision(account, act.name, act.value, act.right, act.role);
     if (verb == "police")  // whether it holds the system is the world's to say
@@ -594,6 +596,65 @@ Division Corp::DivisionOf(const std::string& id) const
 {
     const auto it = divisions.find(id);
     return it != divisions.end() ? it->second : DefaultDivision(id);
+}
+
+Outcome Registry::SetEnemy(const std::string& by, const std::string& target,
+                           const std::string& value)
+{
+    const Corp* in = Of(by);
+    if (in == nullptr)
+        return Refuse("you are in no corporation");
+    if (in->Find(by)->role == Role::Member)
+        return Refuse("only the CEO or a director declares the corporation's enemies");
+    const std::string v = Lower(value);
+    if (!v.empty() && v != "add" && v != "remove")
+        return Refuse("an enemy is added or removed");
+    const bool        add = v != "remove";
+    const std::string want = Lower(target);
+    if (want.empty())
+        return Refuse("name a faction, or another corporation by its ticker");
+    // A faction by its id or the name a player reads; else a corporation by its ticker.
+    std::string key, label;
+    for (FactionId f : Factions::All())
+        if (Lower(Factions::Id(f)) == want || Lower(FactionName(f)) == want)
+        {
+            if (f == Factions::Pirates())
+                return Refuse(FactionName(f) + " are everyone's enemy already");
+            key = EnemyKeyOf(f);
+            label = FactionName(f);
+            break;
+        }
+    if (key.empty())
+        if (const Corp* other = FindTicker(target))
+        {
+            if (other->id == in->id)
+                return Refuse(Tag(*in) + " is not its own enemy");
+            key = other->id;
+            label = Tag(*other);
+        }
+    if (key.empty())
+        return Refuse("no faction or corporation is called '" + target.substr(0, 24) + "'");
+    const bool had = in->enemies.count(key) != 0;
+    if (add && !had && in->enemies.size() >= ENEMIES_MAX)
+        return Refuse("a corporation names at most " + std::to_string(ENEMIES_MAX) + " enemies");
+    Corp&   c = *Mutable(in->id);
+    Outcome o;
+    o.corp = c.id;
+    if (add == had)
+    {
+        o.told = label + (add ? " is already" : " is not") + " on " + Tag(c) + "'s enemy list";
+        return o;
+    }
+    if (add)
+        c.enemies.insert(key);
+    else
+        c.enemies.erase(key);
+    rev_++;
+    o.told = Tag(c) +
+             (add ? " now holds " + label + " hostile" : " no longer holds " + label + " hostile");
+    o.announce = by + ": " + o.told;
+    Record(by, Ev::Kind::Notice, o.announce);
+    return o;
 }
 
 Outcome Registry::SetDivision(const std::string& by, const std::string& id,
@@ -1086,6 +1147,9 @@ json Registry::ToJson() const
                                   { "take", RoleName(d.second.take) } };
             cj["divisions"] = divs;
         }
+        // Its enemy list (#466): an addition an older build ignores.
+        if (!c.enemies.empty())
+            cj["enemies"] = std::vector<std::string>(c.enemies.begin(), c.enemies.end());
         // Slice 11's addition, which an older build ignores: no CORPS_VERSION bump.
         if (!c.police.empty())
             cj["police"] = c.police;
@@ -1259,6 +1323,14 @@ bool Registry::FromJson(const json& j, std::string& why)
                     role("take", v.take);
                     c.divisions[d.key()] = v;
                 }
+            // Its enemies (#466): a key this process does not know yet is kept, as a faction a
+            // region adds later is not in the registry when the file is read.
+            const auto enemies = cj.find("enemies");
+            if (enemies != cj.end() && enemies->is_array())
+                for (const json& ej : *enemies)
+                    if (ej.is_string() && !ej.get<std::string>().empty() &&
+                        c.enemies.size() < ENEMIES_MAX)
+                        c.enemies.insert(ej.get<std::string>());
             // The ledger (#509): a line this build cannot read is dropped, not the file.
             const auto ledger = cj.find("ledger");
             if (ledger != cj.end() && ledger->is_array())

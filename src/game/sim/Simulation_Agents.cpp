@@ -378,6 +378,10 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         {
             if (f == Factions::Pirates())
                 return true;  // everyone's enemy, as they are to every player
+            // The owner's corporation's declared enemies (#466), whoever's the structure is.
+            const Corps::Corp* ownersCorp = corps_.Of(account);
+            if (ownersCorp != nullptr && ownersCorp->HostileTo(f))
+                return true;
             // A corporation's (#468): its standing is its members' together, as its patrol's.
             std::string corp;
             if (Corps::CorpOwner(account, corp))
@@ -390,9 +394,15 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             if (rules->engage == Engage::Strangers)
                 return !rules->Allows(p.accountName);
             if (rules->engage == Engage::Enemies)
+            {
                 for (FactionId f : Factions::All())
                     if (Factions::IsLawful(f) && p.account.IsWanted(f))
                         return true;  // wanted by the law: fair game
+                // A pilot of a corporation the owner's has declared hostile (#466).
+                const Corps::Corp* ownersCorp = corps_.Of(account);
+                if (ownersCorp != nullptr && ownersCorp->HostileToCorp(corps_.IdOf(p.accountName)))
+                    return true;
+            }
             return false;
         };
         auto strikesFirstAt = [&](FactionId f)
@@ -442,6 +452,15 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
                 consider(n, nullptr, n, false);  // it shot the owner: answering, not first
             else if (rules != nullptr && strikesFirstAt(n->GetFaction()))
                 consider(n, nullptr, n, true);
+            else if (rules != nullptr && rules->engage == Engage::Enemies &&
+                     n->GetRole() == NpcRole::Guard && !n->GetCorp().empty())
+            {
+                // Another corporation's patrol, when the owner's corporation declared it hostile
+                // (#466).
+                const Corps::Corp* ownersCorp = corps_.Of(account);
+                if (ownersCorp != nullptr && ownersCorp->HostileToCorp(n->GetCorp()))
+                    consider(n, nullptr, n, true);
+            }
         }
 
         if (target == nullptr)
