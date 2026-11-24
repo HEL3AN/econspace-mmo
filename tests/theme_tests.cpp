@@ -546,3 +546,34 @@ TEST_CASE("a chosen scale is saved and wins; the automatic one is not saved")
     Ui::SetColourBlindSetting(false);
     Ui::UseAutoUserScale(1.0f);
 }
+
+TEST_CASE(
+    "the paint budgets are a machine's choice: zero is the look's own, a choice is kept (#553)")
+{
+    TempDir           dir;
+    const std::string path = dir.Path("ui_settings.json");
+    std::string       error;
+
+    Ui::SetPaintBudgetSetting(0.0f);
+    Ui::SetBuiltBudgetSetting(0.0f);
+    REQUIRE(Ui::SaveUiSettings(path));
+    {
+        std::ifstream  in(path);
+        nlohmann::json j = nlohmann::json::parse(in);
+        CHECK_FALSE(j.contains("paintBudget"));
+        CHECK_FALSE(j.contains("builtBudget"));
+    }
+    Ui::SetPaintBudgetSetting(2.0f);
+    Ui::SetBuiltBudgetSetting(99.0f);  // kept inside what a screen can use
+    CHECK(Ui::BuiltBudgetSetting() == doctest::Approx(Ui::MAX_PAINT_BUDGET));
+    Ui::SetBuiltBudgetSetting(0.01f);
+    CHECK(Ui::BuiltBudgetSetting() == doctest::Approx(Ui::MIN_PAINT_BUDGET));
+    REQUIRE(Ui::SaveUiSettings(path));
+    Ui::SetPaintBudgetSetting(0.0f);
+    Ui::SetBuiltBudgetSetting(0.0f);
+    REQUIRE(Ui::LoadUiSettings(path, error));
+    CHECK(Ui::PaintBudgetSetting() == doctest::Approx(2.0f));
+    CHECK(Ui::BuiltBudgetSetting() == doctest::Approx(Ui::MIN_PAINT_BUDGET));
+    Ui::SetPaintBudgetSetting(0.0f);
+    Ui::SetBuiltBudgetSetting(0.0f);
+}

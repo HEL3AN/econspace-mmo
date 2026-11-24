@@ -350,7 +350,7 @@ void Game::SetupWindows()
     desk_.AddSurface(sensorSpec, false, sensor);
 
     WindowSpec settings = panel(WIN_SETTINGS, "Settings", "Settings: display, interface, keys",
-                                Anchor::Top, { 0.0f, 100.0f, 360.0f, 330.0f });
+                                Anchor::Top, { 0.0f, 100.0f, 360.0f, 460.0f });
     settings.resizable = true;
     settings.minSize = { 260.0f, 240.0f };
     settings.reopen = false;  // opened for a moment: never found open at the next login (#364)

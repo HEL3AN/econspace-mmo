@@ -289,6 +289,17 @@ void               SetThemeSetting(const std::string& id);
 // two passes over a quarter of it every frame, which a laptop's GPU feels.
 bool BlurSetting();
 void SetBlurSetting(bool on);
+// How many million pixels a painted body (planet, moon, star) and a built thing (station, ship,
+// outpost) may cover before it is painted smaller and scaled up (#553). Zero, the default,
+// means the look's own (look.json's paintBudget and builtBudget, tuned for a weak GPU); a
+// faster machine can ask for more. This machine's choice: saved here, never sent anywhere,
+// and the server never reads it.
+constexpr float MIN_PAINT_BUDGET = 0.25f;
+constexpr float MAX_PAINT_BUDGET = 4.0f;
+float           PaintBudgetSetting();
+void            SetPaintBudgetSetting(float mp);
+float           BuiltBudgetSetting();
+void            SetBuiltBudgetSetting(float mp);
 // "Brackets in space" (#361): standing brackets on the ships in the world view, and the
 // marker on the player's own. On until the player turns them off -- they are how a ship
 // that is three pixels long is found at all.

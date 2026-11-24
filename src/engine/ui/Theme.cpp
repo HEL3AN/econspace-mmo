@@ -24,6 +24,8 @@ bool            g_colourBlind = false;
 Theme::Standing g_themeStanding;  // the theme in use's own, under the palette
 bool            g_goal = true;
 int             g_goalLearned = 0;
+float           g_paintBudget = 0.0f;  // 0: look.json's
+float           g_builtBudget = 0.0f;
 
 int Hex(char c)
 {
@@ -509,6 +511,10 @@ bool LoadUiSettings(const std::string& path, std::string& error)
         g_brackets = j["brackets"].get<bool>();
     if (j.contains("colourBlind") && j["colourBlind"].is_boolean())
         SetColourBlindSetting(j["colourBlind"].get<bool>());
+    if (j.contains("paintBudget") && j["paintBudget"].is_number())
+        SetPaintBudgetSetting(j["paintBudget"].get<float>());
+    if (j.contains("builtBudget") && j["builtBudget"].is_number())
+        SetBuiltBudgetSetting(j["builtBudget"].get<float>());
     if (j.contains("goal") && j["goal"].is_boolean())
         g_goal = j["goal"].get<bool>();
     if (j.contains("goalLearned") && j["goalLearned"].is_number_integer())
@@ -584,6 +590,35 @@ void SetBlurSetting(bool on)
     g_blur = on;
 }
 
+namespace
+{
+// Zero is "the look's own"; anything else is a choice, kept inside what a screen can use.
+float BudgetChoice(float mp)
+{
+    return mp <= 0.0f ? 0.0f : std::min(std::max(mp, MIN_PAINT_BUDGET), MAX_PAINT_BUDGET);
+}
+}  // namespace
+
+float PaintBudgetSetting()
+{
+    return g_paintBudget;
+}
+
+void SetPaintBudgetSetting(float mp)
+{
+    g_paintBudget = BudgetChoice(mp);
+}
+
+float BuiltBudgetSetting()
+{
+    return g_builtBudget;
+}
+
+void SetBuiltBudgetSetting(float mp)
+{
+    g_builtBudget = BudgetChoice(mp);
+}
+
 bool BracketSetting()
 {
     return g_brackets;
@@ -634,6 +669,10 @@ bool SaveUiSettings(const std::string& path)
     j["blur"] = g_blur;
     j["brackets"] = g_brackets;
     j["colourBlind"] = g_colourBlind;
+    if (g_paintBudget > 0.0f)
+        j["paintBudget"] = g_paintBudget;
+    if (g_builtBudget > 0.0f)
+        j["builtBudget"] = g_builtBudget;
     j["goal"] = g_goal;
     j["goalLearned"] = g_goalLearned;
     std::ofstream out(path);
