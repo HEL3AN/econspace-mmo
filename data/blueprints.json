@@ -1,8 +1,8 @@
 {
     "tiers": {
         "minor": { "mend": 0.004, "armour": 0.3 },
-        "outpost": { "mend": 0.015, "armour": 0.6 },
-        "station": { "mend": 0.03, "armour": 0.7 }
+        "outpost": { "mendShips": 2, "armour": 0.6 },
+        "station": { "mendShips": 4, "armour": 0.7 }
     },
     "blueprints": [
         {
@@ -47,7 +47,7 @@
             "builders": ["faction", "player"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
-            "hull": 4000,
+            "holds": 3600,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -59,7 +59,7 @@
             "builders": ["faction", "player"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
-            "hull": 4000,
+            "holds": 3600,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -71,7 +71,7 @@
             "builders": ["faction", "player"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
-            "hull": 3000,
+            "holds": 2700,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -83,7 +83,7 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
-            "hull": 4000,
+            "holds": 3600,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -95,7 +95,7 @@
             "builders": ["faction", "player"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
-            "hull": 3000,
+            "holds": 2700,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -107,7 +107,7 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
-            "hull": 5000,
+            "holds": 4500,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -121,7 +121,7 @@
                      "outpost_salvage"],
             "cost": { "Iron": 48, "Crystal": 12 },
             "buildSeconds": 1200,
-            "hull": 6000,
+            "holds": 5400,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -134,7 +134,7 @@
             "onto": ["outpost_market"],
             "cost": { "Iron": 64, "Crystal": 16 },
             "buildSeconds": 2400,
-            "hull": 12000,
+            "holds": 14400,
             "tier": "station",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -147,7 +147,7 @@
             "onto": ["outpost_market"],
             "cost": { "Iron": 64, "Crystal": 16 },
             "buildSeconds": 2400,
-            "hull": 12000,
+            "holds": 14400,
             "tier": "station",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -160,7 +160,7 @@
             "onto": ["outpost_market", "trade_station", "mining_station"],
             "cost": { "Iron": 80, "Crystal": 20 },
             "buildSeconds": 3000,
-            "hull": 12000,
+            "holds": 14400,
             "tier": "station",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
@@ -172,7 +172,7 @@
             "builders": ["faction", "player"],
             "cost": { "Iron": 60, "Crystal": 15 },
             "buildSeconds": 3000,
-            "hull": 9000,
+            "holds": 8100,
             "tier": "outpost",
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 800, "clearance": 1500, "bodyClearance": 20000, "perSystem": 0,
@@ -183,7 +183,8 @@
     "dismantle": { "refund": 0.5 },
     "destruction": { "siteHull": 0.25, "wreckShare": 0.25, "storageShare": 0.5, "wreckSeconds": 21600 },
     "upkeep": { "share": 0.006, "decay": 0.04 },
-    "siege": { "cost": 0.5, "seconds": 900, "jitter": 120, "commit": 0.5,
+    "siege": { "cost": 0.5, "seconds": 7200, "jitter": 120, "commit": 0.5,
                "defence": 0.15, "attrition": 0.0005, "shock": 0.5,
-               "reach": 3, "hop": 120, "pool": 1.5 }
+               "reach": 3, "hop": 120, "pool": 1.5,
+               "reference": "cruiser", "referenceShips": 6 }
 }

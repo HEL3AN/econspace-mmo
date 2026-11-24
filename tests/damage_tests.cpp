@@ -269,3 +269,48 @@ TEST_CASE("a battery's guns have a damage type (#557)")
     // A name the catalogue lacks is untyped here (the archetype load refuses it earlier).
     CHECK(Ships::MixOf(Archetypes::ShipCatalogue(), "plasma") == Ships::TypeValues{});
 }
+
+TEST_CASE("a wall's hull is derived from the reference fleet's guns, whoever owns it (#568)")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    REQUIRE(Blueprints::Load(DataFile("blueprints.json")));
+    const Blueprints::Siege& rules = Blueprints::SiegeRules();
+    const Ships::Fighter ref = Ships::DesignFighter(Archetypes::ShipCatalogue(), rules.reference);
+    REQUIRE(ref.dps > 0.0f);
+    CHECK(rules.referenceDps == doctest::Approx(ref.dps * (float)rules.referenceShips));
+    const Blueprint* outpost = Blueprints::Find("outpost");
+    REQUIRE(outpost != nullptr);
+    REQUIRE(outpost->holds > 0.0f);
+    // Its tier mends two of the reference ships' fire, and the fleet takes the rest in `holds`.
+    const float mendDps = outpost->mend * outpost->hull;
+    CHECK(mendDps == doctest::Approx(2.0f * ref.dps));
+    CHECK(outpost->hull == doctest::Approx(outpost->holds * (rules.referenceDps - mendDps)));
+    // A buoy is stated in points and keeps them.
+    CHECK(Blueprints::Find("buoy")->holds == 0.0f);
+    CHECK(Blueprints::Find("buoy")->hull == doctest::Approx(60.0f));
+
+    const TempDir tmp;
+    auto          loads = [&](const char* tier, const char* siege)
+    {
+        const std::string path = tmp.Path("bp.json");
+        {
+            std::ofstream f(path);
+            f << "{ \"tiers\": { \"t\": " << tier << " }, \"siege\": " << siege
+              << ", \"blueprints\": [ { \"id\": \"b\", \"name\": \"B\", "
+              << "\"archetype\": \"structure.beacon\", \"cost\": { \"Iron\": 1 }, "
+              << "\"buildSeconds\": 1, \"holds\": 600, \"tier\": \"t\", "
+              << "\"placement\": { \"reach\": 100 } } ] }";
+        }
+        return Blueprints::Load(path);
+    };
+    CHECK(loads("{ \"mendShips\": 2 }", "{ \"reference\": \"cruiser\", \"referenceShips\": 6 }"));
+    // Mending as much as the reference fleet fires: no fleet of that strength takes it.
+    CHECK_FALSE(
+        loads("{ \"mendShips\": 6 }", "{ \"reference\": \"cruiser\", \"referenceShips\": 6 }"));
+    // ...and a `holds` with no reference fleet to be measured in.
+    CHECK_FALSE(loads("{ \"mendShips\": 2 }", "{}"));
+    // A tier mends by one measure or the other.
+    CHECK_FALSE(loads("{ \"mend\": 0.01, \"mendShips\": 2 }",
+                      "{ \"reference\": \"cruiser\", \"referenceShips\": 6 }"));
+    REQUIRE(Blueprints::Load(DataFile("blueprints.json")));  // the shipped file again
+}

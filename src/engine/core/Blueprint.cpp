@@ -1,10 +1,12 @@
 #include "core/Blueprint.h"
 
 #include "core/Archetype.h"
+#include "core/Fitting.h"
 #include "core/JsonKeys.h"
 #include <nlohmann/json.hpp>
 #include <cmath>
 #include <fstream>
+#include <map>
 
 using json = nlohmann::json;
 
@@ -61,7 +63,7 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
     }
     if (!OnlyKnownKeys(j,
                        { "id", "name", "archetype", "cost", "buildSeconds", "lifetime", "hull",
-                         "wreck", "placement", "builders", "onto", "tier" },
+                         "wreck", "placement", "builders", "onto", "tier", "holds" },
                        err))
         return false;
     if (j.contains("builders"))
@@ -154,11 +156,13 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
     }
 
     if (!ReadNumber(j, "buildSeconds", b.buildSeconds, err) ||
-        !ReadNumber(j, "lifetime", b.lifetime, err) || !ReadNumber(j, "hull", b.hull, err))
+        !ReadNumber(j, "lifetime", b.lifetime, err) || !ReadNumber(j, "hull", b.hull, err) ||
+        !ReadNumber(j, "holds", b.holds, err))
         return false;
-    if (b.hull <= 0.0f)
+    if ((b.hull > 0.0f) == (b.holds > 0.0f))
     {
-        err = "'hull' must be more than zero: anything buildable can be destroyed";
+        err = "exactly one of 'hull' (points) and 'holds' (seconds the siege's reference fleet "
+              "needs) is more than zero: anything buildable can be destroyed";
         return false;
     }
     b.tier = j.contains("tier") && j["tier"].is_string() ? j["tier"].get<std::string>() : "";
@@ -238,7 +242,7 @@ bool Load(const std::string& path)
     struct Tier
     {
         std::string       name;
-        float             mend = 0.0f, armour = 0.0f;
+        float             mend = 0.0f, armour = 0.0f, mendShips = 0.0f;
         Ships::LayerTable resist = Ships::NeutralTable();
     };
     std::vector<Tier> tiers;
@@ -255,8 +259,10 @@ bool Load(const std::string& path)
         Tier t;
         t.name = it.key();
         if (!it.value().is_object() ||
-            !OnlyKnownKeys(it.value(), { "mend", "armour", "resist" }, err) ||
-            !it.value().contains("mend") || !ReadShare(it.value(), "mend", t.mend, err) ||
+            !OnlyKnownKeys(it.value(), { "mend", "mendShips", "armour", "resist" }, err) ||
+            it.value().contains("mend") == it.value().contains("mendShips") ||
+            !ReadShare(it.value(), "mend", t.mend, err) ||
+            !ReadNumber(it.value(), "mendShips", t.mendShips, err) ||
             !ReadShare(it.value(), "armour", t.armour, err))
         {
             g_error = path + ": tiers: '" + it.key() +
@@ -320,6 +326,7 @@ bool Load(const std::string& path)
         }
 
     // ...and every blueprint names a tier the file has.
+    std::map<std::string, float> tierShips;  // a blueprint's tier's `mendShips`, 0: a share
     for (Blueprint& b : loaded)
     {
         bool tiered = false;
@@ -327,6 +334,7 @@ bool Load(const std::string& path)
             if (t.name == b.tier)
             {
                 b.mend = t.mend;
+                tierShips[b.id] = t.mendShips;
                 b.armour = t.armour;
                 b.resist = t.resist;
                 tiered = true;
@@ -400,9 +408,19 @@ bool Load(const std::string& path)
         }
     }
     Blueprints::Siege siege;
+    float             referenceShips = 0.0f;
     if (j.contains("siege"))
     {
         const json& s = j["siege"];
+        if (s.is_object() && s.contains("reference"))
+        {
+            if (!s["reference"].is_string())
+            {
+                g_error = path + ": siege: 'reference' is a design id";
+                return false;
+            }
+            siege.reference = s["reference"].get<std::string>();
+        }
         // `dps` was a number standing in for the besiegers' guns; they are the faction's own
         // warship design now (Ships::WarshipDps). Named, so an old file says what to do.
         if (s.is_object() && s.contains("dps"))
@@ -415,7 +433,7 @@ bool Load(const std::string& path)
         if (!s.is_object() ||
             !OnlyKnownKeys(s,
                            { "cost", "seconds", "jitter", "commit", "defence", "attrition", "shock",
-                             "reach", "hop", "pool" },
+                             "reach", "hop", "pool", "reference", "referenceShips" },
                            err) ||
             !ReadNumber(s, "cost", siege.cost, err) ||
             !ReadNumber(s, "seconds", siege.seconds, err) ||
@@ -424,13 +442,60 @@ bool Load(const std::string& path)
             !ReadNumber(s, "defence", siege.defence, err) ||
             !ReadShare(s, "attrition", siege.attrition, err) ||
             !ReadShare(s, "shock", siege.shock, err) || !ReadNumber(s, "reach", siege.reach, err) ||
-            !ReadNumber(s, "hop", siege.hop, err) || !ReadNumber(s, "pool", siege.pool, err))
+            !ReadNumber(s, "hop", siege.hop, err) || !ReadNumber(s, "pool", siege.pool, err) ||
+            !ReadNumber(s, "referenceShips", referenceShips, err))
         {
             g_error = path + ": siege: " + (err.empty() ? "not an object" : err);
             return false;
         }
+        siege.referenceShips = (int)referenceShips;
     }
 
+    // The reference fleet (#568), and what is stated in its units derived into points.
+    {
+        const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+        if (!siege.reference.empty())
+        {
+            const Ships::Fighter ref = Ships::DesignFighter(ships, siege.reference);
+            if (ref.dps <= 0.0f || siege.referenceShips <= 0)
+            {
+                g_error = path + ": siege: 'reference' names no armed design, or 'referenceShips' "
+                                 "is not more than zero";
+                return false;
+            }
+            siege.referenceShip = ref.dps;
+            siege.referenceDps = ref.dps * (float)siege.referenceShips;
+        }
+        for (Blueprint& b : loaded)
+        {
+            const float ships_ = tierShips[b.id];
+            if ((b.holds > 0.0f || ships_ > 0.0f) && siege.referenceDps <= 0.0f)
+            {
+                g_error = path + ": blueprint '" + b.id +
+                          "': 'holds' and a tier's 'mendShips' are in the siege's reference "
+                          "fleet's units: the 'siege' section needs 'reference' and "
+                          "'referenceShips'";
+                return false;
+            }
+            const float mendDps = ships_ * siege.referenceShip;
+            if (b.holds > 0.0f)
+            {
+                if (siege.referenceDps <= mendDps)
+                {
+                    g_error = path + ": blueprint '" + b.id + "': its tier mends " +
+                              std::to_string(mendDps) +
+                              " a second and the reference fleet "
+                              "fires " +
+                              std::to_string(siege.referenceDps) +
+                              ": no fleet of that strength could ever bring it down";
+                    return false;
+                }
+                b.hull = b.holds * (siege.referenceDps - mendDps);
+            }
+            if (ships_ > 0.0f)
+                b.mend = mendDps / b.hull;  // a share of its hull a second, as Structure reads it
+        }
+    }
     g_forPlayers.clear();
     for (const Blueprint& b : loaded)
         if (b.byPlayers)

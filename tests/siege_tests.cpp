@@ -40,11 +40,40 @@ namespace
 {
 const std::string DATA = TEST_DATA_DIR;
 
+// The shipped blueprints with walls of a fixture's size: a wall is measured in the reference
+// fleet's guns (#568), and the real ones take a few holdings' spare ships and an hour -- a
+// scene of one pirate den and an outpost needs the walls scaled to it. Two reference ships,
+// a tier that mends a quarter of one of them's fire, and every `holds` a sixtieth: an outpost of
+// about four thousand points, mending about as much as a frigate fires, falling in a minute or
+// so to a den's few ships -- the scene the tests were written on. The shipped numbers are
+// tested in damage_tests.
+std::string SmallWalls(double divisor = 60.0)
+{
+    static const TempDir tmp;
+    const std::string    path = tmp.Path("small_walls_" + std::to_string((int)divisor) + ".json");
+    nlohmann::json       j;
+    {
+        std::ifstream in(DATA + "blueprints.json");
+        j = nlohmann::json::parse(in);
+    }
+    j["siege"]["referenceShips"] = 2;
+    j["siege"]["seconds"] = 900;
+    for (auto& t : j["tiers"])
+        if (t.contains("mendShips"))
+            t["mendShips"] = t["mendShips"].get<double>() * 0.25;
+    for (auto& b : j["blueprints"])
+        if (b.contains("holds"))
+            b["holds"] = b["holds"].get<double>() / divisor;
+    std::ofstream out(path);
+    out << j.dump();
+    return path;
+}
+
 void LoadRegistries()
 {
     REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
-    REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
+    REQUIRE(Blueprints::Load(SmallWalls()));
 }
 
 std::unique_ptr<Simulation> World(bool allHot = false)
@@ -552,7 +581,7 @@ TEST_CASE("a lighter gun on the warship design makes a slower siege")
         SetRandomSeed(0xC0FFEEu);
         REQUIRE(Factions::Load(DATA + "factions.json"));
         REQUIRE(Archetypes::Load(archetypes));
-        REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
+        REQUIRE(Blueprints::Load(SmallWalls()));
         auto sim = std::make_unique<Simulation>();
         sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
         sim->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
@@ -768,6 +797,55 @@ TEST_CASE("a siege's fire is read against the wall's layers: railguns wear it do
     // ...and on how much: the ratio of what a point of fire takes off is the ratio of the
     // layers' effects, to within the garrison's changing count.
     CHECK(rails.first / lasers.first == doctest::Approx(rails.second / lasers.second).epsilon(0.1));
+}
+
+TEST_CASE("the holder lends relief to a besieged outpost: it sets out when the besiegers arrive, "
+          "and stands with the garrison (#568)")
+{
+    auto sim = World();
+    // Walls a tenth of the shipped length, so the siege outlasts the relief's jump.
+    REQUIRE(Blueprints::Load(SmallWalls(10.0)));
+    const Scene s = GuildOutpostNextToPirates(*sim);
+    const float cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
+    // A Guild holding next door to the outpost, with something to spare.
+    std::string home;
+    for (const std::string& n : sim->Neighbors(s.frontier))
+        if (n != s.den && home.empty())
+            home = n;
+    REQUIRE_FALSE(home.empty());
+    SystemAggregate& guild = sim->SystemById(home)->agg;
+    guild.claimed = true;
+    guild.controller = Fac::TradersGuild();
+    // (well over what it keeps: it fades towards that while the siege sets out)
+    guild.presence[Fac::TradersGuild()] = 4.0f * cap;
+    const Plan plan = *PiratesBesiege(*sim, s);
+    REQUIRE_FALSE(plan.relief.empty());
+    CHECK(plan.reliefForce > 0.0f);
+    CHECK_FALSE(plan.reliefHere);
+    CHECK(plan.reliefAt > sim->Time());
+    // What it lent is missing at home from the moment it sets out, and is nowhere on the road.
+    CHECK(guild.presence[Fac::TradersGuild()] < 4.0f * cap);
+    const float standing = sim->SystemById(s.frontier)->agg.presence[Fac::TradersGuild()];
+    RunUntil(*sim, plan.reliefAt - sim->Time() + 10.0, [&]() { return false; });
+    const Plan* now = SiegeBy(*sim, Fac::Pirates());
+    REQUIRE(now != nullptr);
+    CHECK(now->reliefHere);
+    CHECK(sim->SystemById(s.frontier)->agg.presence[Fac::TradersGuild()] > standing);
+    CHECK(Told(*sim, "siege", s.frontier, "sent relief"));
+    CHECK(Told(*sim, "siege", s.frontier, "Relief reached"));
+    // ...and a plan saved with it keeps it.
+    const TempDir     tmp;
+    const std::string path = tmp.Path("relief.json");
+    sim->SaveWorld(path);
+    Simulation b;
+    b.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    b.AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
+    REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
+    const Plan back = b.Plans().at(plan.id);
+    CHECK(back.relief.size() == plan.relief.size());
+    CHECK(back.reliefForce == doctest::Approx(plan.reliefForce));
+    CHECK(back.reliefHere);
+    CHECK(back.armour == doctest::Approx(plan.armour));
 }
 
 // --- Pooled sieges (#295, the owner's decision of 2026-10-11) ---------------------------------

@@ -102,6 +102,21 @@ struct Plan
     // gun alone). Against the wall's layers it is what decides how fast a siege wears it down.
     // Saved; a siege from before it reads as its faction's doctrine.
     Ships::TypeValues mix{};
+    // ...and what they have to lose to the garrison's fire (#568): the armour that is part of
+    // `hull`, and their hull line's shift on the layers, as `Ships::Fighter` has them. Saved
+    // beside `mix`; an older plan reads them as the doctrine's.
+    float             armour = 0.0f;
+    Ships::LayerTable resist = Ships::NeutralTable();
+    // The defender's answer (#568, #431 D2): when the besiegers stand at the outpost, the
+    // holder lends what its holdings within reach can spare -- the machinery a siege uses, the
+    // other way round -- which sets out then, is counted nowhere on the road, and stands with
+    // the garrison from `reliefAt` until the siege is over, when what is left goes home. The
+    // owner's own ships in the system are the garrison already, tying up besiegers from the
+    // first pass. Saved.
+    std::vector<Lent> relief;
+    float             reliefForce = 0.0f;
+    double            reliefAt = 0.0;
+    bool              reliefHere = false;
     std::string       via;
     double            arrivesAt = 0.0;
     bool              arrived = false;

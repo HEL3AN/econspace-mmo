@@ -226,6 +226,14 @@ Anchor's 135 four; a faction that fields a heavier gun brings walls down sooner.
 the owner's ships in the system, then lends from holdings within reach -- the machinery a
 siege already uses, run the other way. A faction with nothing nearby sends nothing.
 
+*As built (#568):* a siege's relief is built. When the besiegers stand at the outpost, the
+holder lends what its holdings within `siege.reach` can spare (the siege's own `PoolFor`, run for
+the defender), which sets out then, is counted nowhere on the road, stands with the garrison from
+its arrival and goes home with what is left when the siege ends. The owner's own ships there are
+the garrison and tie up besiegers from the first pass. A trespasser's structure (an eviction) has
+no relief. Walls are measured in a reference fleet's guns (`siege.reference`), an outpost an hour
+and a station four, so a siege lasts long enough for relief, jobs, patrols and a pilot to matter.
+
 **D3. The front line.** A system may be besieged only from a held or neutral neighbour: the
 attacker (or an ally) holds a gate-adjacent system, or one of them is nobody's. A faction's
 core -- systems whose every neighbour is its own -- cannot be besieged until a border system
