@@ -513,11 +513,12 @@ TEST_CASE("return fire also answers whoever shoots the owner's ship in its reach
         b.sim.StepNpcCombat(st, b.players, &npcFire);
         REQUIRE_FALSE(npcFire.empty());
         REQUIRE(npcFire.back().targetSessionId == owner.id);
-        const float whole = pirate->GetHull();
+        // Its armour first: the outpost's energy fire does 0.75 of its points to it (#557).
+        const float whole = pirate->GetHull() + pirate->GetArmour();
         b.Defend();
         REQUIRE_FALSE(b.fires.empty());
         CHECK(b.fires.back().targetSessionId == 0);
-        CHECK(pirate->GetHull() < whole);
+        CHECK(pirate->GetHull() + pirate->GetArmour() < whole);
         CHECK(b.sim.OwedStanding("hunter", Fac::Independent()) == 0.0f);
 
         // ...for a while, as for a shot at the battery itself.
