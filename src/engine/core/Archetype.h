@@ -150,18 +150,19 @@ struct Archetype
     // been shorter to write and would have moved the guessing rather than removed it:
     // the point of putting object types in data is that what a thing can do stops being
     // something the reader has to infer.
-    float dockRange = 0.0f;          // Dockable: added to the object's radius
-    float extractRate = 1.0f;        // Mineable: times the ship's mining rate (#193)
-    float extractRange = 0.0f;       // Mineable: added to the object's radius
-    float salvageRange = 0.0f;       // Salvageable: added to the object's radius
-    float jumpRange = 0.0f;          // JumpLink: added to the object's radius
-    float weaponRange = 0.0f;        // Defensive
-    float weaponDamage = 0.0f;       // Defensive: per second
-    float storageCapacity = 0.0f;    // Storage: units a player structure keeps (#438)
-    float hazardRadius = 0.0f;       // Hazard: 0 means "the object's own radius"
-    bool  hazardHidesShips = false;  // Hazard: ships inside are invisible to NPCs
-    float refitMarkup = 1.5f;        // Shipyard: what a module costs over its ore here
-    float signatureStrength = 0.5f;  // Signature: what one scan pass resolves of it, 0..1
+    float       dockRange = 0.0f;          // Dockable: added to the object's radius
+    float       extractRate = 1.0f;        // Mineable: times the ship's mining rate (#193)
+    float       extractRange = 0.0f;       // Mineable: added to the object's radius
+    float       salvageRange = 0.0f;       // Salvageable: added to the object's radius
+    float       jumpRange = 0.0f;          // JumpLink: added to the object's radius
+    float       weaponRange = 0.0f;        // Defensive
+    float       weaponDamage = 0.0f;       // Defensive: per second
+    std::string weaponType;                // Defensive: its damage type (#557); empty -- untyped
+    float       storageCapacity = 0.0f;    // Storage: units a player structure keeps (#438)
+    float       hazardRadius = 0.0f;       // Hazard: 0 means "the object's own radius"
+    bool        hazardHidesShips = false;  // Hazard: ships inside are invisible to NPCs
+    float       refitMarkup = 1.5f;        // Shipyard: what a module costs over its ore here
+    float       signatureStrength = 0.5f;  // Signature: what one scan pass resolves of it, 0..1
 
     bool Has(Component c) const { return components.Has(c); }
 };

@@ -449,7 +449,9 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             cooldown = 0.0f;  // ready the moment something comes into range
             continue;
         }
-        target->TakeDamage(a->weaponDamage * DEFENCE_PERIOD);
+        // Its guns are of the type its archetype gives them, as a ship's are of its fit (#557).
+        target->TakeDamage(a->weaponDamage * DEFENCE_PERIOD,
+                           Ships::MixOf(Archetypes::ShipCatalogue(), a->weaponType));
         cooldown = DEFENCE_PERIOD;
         if (firstStrike)
             ChargeFirstStrike(st, *e, targetPlayer, targetNpc, !target->IsAlive());

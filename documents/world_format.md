@@ -880,7 +880,7 @@ declaring the component, without the pass being edited.
 | `dockable` | `range` | a ship can dock; `range` is added to the object's radius |
 | `mineable` | `extractRate`, `range` | holds a deposit; `extractRate` multiplies the mining ship's own rate (1 is an ordinary belt, and the default) |
 | `market` | — | buys and sells resources |
-| `defensive` | `range`, `damage` | a station fires once a second on the nearest hostile ship within reach; `damage` is per second |
+| `defensive` | `range`, `damage`, `damageType` | a station fires once a second on the nearest hostile ship within reach; `damage` is per second, `damageType` one of ships.json's `damageTypes` (#557; omitted: untyped, 1 on every layer) |
 | `storage` | `capacity` | units of goods a player's structure keeps off any ship (#438) |
 | `jumpLink` | `range` | connects this system to another |
 | `hazard` | `radius`, `hidesShips` | changes conditions inside it; `radius` 0 means the object's own radius |

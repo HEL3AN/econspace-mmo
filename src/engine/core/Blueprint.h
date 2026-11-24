@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ShipDesign.h"
 #include "economy/Resource.h"
 #include <string>
 #include <utility>
@@ -39,6 +40,11 @@ struct Blueprint
     // one pilot, an outpost to a few, a station's frame only to a fleet.
     std::string tier;
     float       mend = 0.0f;
+    // Its layers (#557): the share of `hull` that is armour, the outer layer a hit takes first,
+    // and what its tier's walls shift the damage tables by. A structure has no shield. From the
+    // tier, like `mend`; zero armour is a wall of hull alone, which takes everything at 1.
+    float             armour = 0.0f;
+    Ships::LayerTable resist = Ships::NeutralTable();
     // The wreck it leaves when destroyed: a Derelict archetype, or empty for something too
     // small to leave anything worth searching -- a buoy goes up in a flash.
     std::string wreck;
@@ -73,6 +79,11 @@ namespace Blueprints
 // are left in place -- a blueprint that cannot be read is content the author can fix, and
 // one that silently costs nothing is not.
 bool Load(const std::string& path);
+
+// The one multiplier a volley of `mix` does to a finished `bp` stripped from full: the typed
+// arithmetic of its armour and hull (Ships::PoolEffect), 1 where it has no layers or the
+// catalogue no damage types. What a planner reads where a siege's fire is a rate.
+float WallEffect(const Blueprint& bp, const Ships::TypeValues& mix);
 
 const Blueprint* Find(const std::string& id);  // any blueprint; null for an unknown id
 // The first blueprint that builds this archetype, for a structure that does not say which

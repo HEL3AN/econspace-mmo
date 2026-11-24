@@ -476,3 +476,15 @@ for the owner (on #464): a **structure's** layers (walls armour-heavy, from its 
 **siege's** attrition still fight untyped -- a plan stores two floats, and typing it needs
 the mix in the plan and in the save; and the Fit tab shows the armour row and the guns' make-up
 only through `preview_fit`'s text, not yet as bars.
+
+### As built, #557 (structures)
+
+A structure has layers from its **tier** in `blueprints.json`: `tiers.<name>.armour` (the share of
+its `hull` that is armour, the outer layer; none is a wall of hull alone) and an optional `resist`
+table read as a hull line's is. They are checked at load against the ship catalogue: no weapon
+family may do less than `rules.minEffect` to a wall's armour or hull. `Structure::StrikeWith`
+derives the two pools from the damage a structure has taken (armour goes first, so mending
+restores the hull before the armour) and passes them through `Ships::Strike`, the function
+every ship's hit uses; a player's shot at a structure carries its ship's mix. A station's guns
+stay its archetype's `defensive.damage` and gain `defensive.damageType`. Outposts and stations
+are armour-heavy (0.6, 0.7), so kinetic guns bring a wall down sooner than lasers.

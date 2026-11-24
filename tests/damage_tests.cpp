@@ -1,13 +1,16 @@
 #include <doctest/doctest.h>
 
 #include "core/Archetype.h"
+#include "core/Blueprint.h"
 #include "core/Fitting.h"
 #include "core/ShipDesign.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
+#include "entities/Structure.h"
 #include "entities/ShipType.h"
 #include "factions_named.h"
 #include "sim/Protocol.h"
+#include "temp_dir.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <string>
@@ -187,4 +190,82 @@ TEST_CASE("armour travels: a snapshot's entity and a player's view")
     CHECK(back.entities[0].armourFrac == doctest::Approx(0.25f).epsilon(0.01));
     CHECK(back.player.armour == doctest::Approx(3.0f));
     CHECK(back.player.maxArmour == doctest::Approx(12.0f));
+}
+
+TEST_CASE("a structure's walls have layers: armour first, railguns best against it (#557)")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    REQUIRE(Blueprints::Load(DataFile("blueprints.json")));
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Blueprint*        bp = Blueprints::Find("outpost");
+    REQUIRE(bp != nullptr);
+    REQUIRE(bp->armour > 0.0f);
+
+    auto wall = [&]
+    {
+        Structure s({ 0.0f, 0.0f }, 100.0f, "wall", bp->archetype);
+        s.SetBlueprint("outpost");
+        return s;
+    };
+    // Inside the armour a hit takes its multiplier: a laser 0.75, a railgun 1.25, untyped 1.
+    Structure beam = wall(), slug = wall(), plain = wall();
+    beam.StrikeWith(100.0f, Pure(c, "energy"), 0.0);
+    slug.StrikeWith(100.0f, Pure(c, "kinetic"), 0.0);
+    plain.StrikeWith(100.0f, Ships::TypeValues{}, 0.0);
+    CHECK(beam.GetDamage(0.0) == doctest::Approx(75.0f));
+    CHECK(slug.GetDamage(0.0) == doctest::Approx(125.0f));
+    CHECK(plain.GetDamage(0.0) == doctest::Approx(100.0f));
+
+    // Past the armour the hull takes it at the hull's 1: the carry-over is raw, as a ship's.
+    Structure   broken = wall();
+    const float armour = bp->armour * bp->hull;
+    broken.StrikeWith(armour / 1.25f + 100.0f, Pure(c, "kinetic"), 0.0);
+    CHECK(broken.GetDamage(0.0) == doctest::Approx(armour + 100.0f));
+    // ...and nothing is left of a wall that is shot to pieces.
+    broken.StrikeWith(bp->hull * 10.0f, Pure(c, "energy"), 0.0);
+    CHECK(broken.HullFraction(0.0) == doctest::Approx(0.0f));
+
+    // The planner's one number agrees: kinetic strips a wall faster than energy, untyped is 1.
+    CHECK(Blueprints::WallEffect(*bp, Pure(c, "kinetic")) >
+          Blueprints::WallEffect(*bp, Pure(c, "energy")));
+    CHECK(Blueprints::WallEffect(*bp, Ships::TypeValues{}) == doctest::Approx(1.0f));
+    const float k = Blueprints::WallEffect(*bp, Pure(c, "kinetic"));
+    CHECK(k > 1.0f);
+    CHECK(k < 1.25f);  // the hull's layer is 1 and is part of it
+}
+
+TEST_CASE("a tier that would let a gun fall below minEffect is a load error (#557)")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const TempDir tmp;
+    auto          loads = [&](const char* tiers)
+    {
+        const std::string path = tmp.Path("bp.json");
+        {
+            std::ofstream f(path);
+            f << "{ \"tiers\": { " << tiers << " }, \"blueprints\": [ { \"id\": \"b\", "
+              << "\"name\": \"B\", \"archetype\": \"structure.beacon\", "
+              << "\"cost\": { \"Iron\": 1 }, \"buildSeconds\": 1, \"hull\": 10, "
+              << "\"tier\": \"t\", \"placement\": { \"reach\": 100 } } ] }";
+        }
+        return Blueprints::Load(path);
+    };
+    CHECK(loads("\"t\": { \"mend\": 0.01, \"armour\": 0.5 }"));
+    // Kinetic against armour at 1.25 * 0.4 would be 0.5, under the 0.6 floor.
+    CHECK_FALSE(
+        loads("\"t\": { \"mend\": 0.01, \"resist\": { \"armour\": { \"kinetic\": 0.4 } } }"));
+    CHECK_FALSE(loads("\"t\": { \"mend\": 0.01, \"armour\": 1.5 }"));  // a share, at most 1
+    CHECK_FALSE(loads("\"t\": { \"mend\": 0.01, \"resist\": { \"cloak\": {} } }"));
+}
+
+TEST_CASE("a battery's guns have a damage type (#557)")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const Archetype* station = Archetypes::Find("station.military");
+    REQUIRE(station != nullptr);
+    CHECK(station->weaponType == "energy");
+    const Ships::TypeValues mix = Ships::MixOf(Archetypes::ShipCatalogue(), station->weaponType);
+    CHECK(mix[TypeOf(Archetypes::ShipCatalogue(), "energy")] == doctest::Approx(1.0f));
+    // A name the catalogue lacks is untyped here (the archetype load refuses it earlier).
+    CHECK(Ships::MixOf(Archetypes::ShipCatalogue(), "plasma") == Ships::TypeValues{});
 }

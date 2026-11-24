@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ShipDesign.h"
 #include "economy/Inventory.h"
 #include "economy/Resource.h"
 #include "entities/Defence.h"
@@ -101,6 +102,11 @@ public:
     double GetDamagedAt() const { return damagedAt_; }  // and the save
     void   SetDamage(float d, double at);
     void   TakeDamage(float d, double now) { SetDamage(GetDamage(now) + d, now); }
+    // A hit of `amount` raw damage made of `mix` (Ships::TypeValues; all zero is untyped, 1 on
+    // every layer), through the blueprint's layers -- armour, then hull -- by Ships::Strike,
+    // the function every ship's hit goes through (#557). A structure with no armour takes
+    // `mix`'s hull multiplier; one whose blueprint is unknown takes it untyped.
+    void StrikeWith(float amount, const Ships::TypeValues& mix, double now);
     // Hull a second it mends now: its tier's share of its blueprint's hull (Blueprint::mend)
     // once finished, nothing while a site or while its owner does not supply it.
     float MendRate() const;

@@ -360,7 +360,7 @@
                 "dockable": { "range": 250 },
                 "market": {},
                 "storage": { "capacity": 30000 },
-                "defensive": { "range": 2500, "damage": 12 }
+                "defensive": { "range": 2500, "damage": 12, "damageType": "energy" }
             }
         },
 
@@ -861,7 +861,7 @@
                 "dockable": { "range": 200 },
                 "market": {},
                 "storage": { "capacity": 20000 },
-                "defensive": { "range": 2000, "damage": 8 }
+                "defensive": { "range": 2000, "damage": 8, "damageType": "energy" }
             }
         },
 
@@ -981,7 +981,7 @@
             },
             "components": {
                 "buildable": {},
-                "defensive": { "range": 1200, "damage": 4 }
+                "defensive": { "range": 1200, "damage": 4, "damageType": "kinetic" }
             }
         },
         {
@@ -1012,7 +1012,7 @@
                 "buildable": {},
                 "dockable": { "range": 200 },
                 "storage": { "capacity": 10000 },
-                "defensive": { "range": 2000, "damage": 8 }
+                "defensive": { "range": 2000, "damage": 8, "damageType": "energy" }
             }
         },
         {
@@ -1043,7 +1043,7 @@
                 "buildable": {},
                 "dockable": { "range": 200 },
                 "storage": { "capacity": 10000 },
-                "defensive": { "range": 2000, "damage": 8 }
+                "defensive": { "range": 2000, "damage": 8, "damageType": "energy" }
             }
         },
         {
@@ -1075,7 +1075,7 @@
                 "buildable": {},
                 "dockable": { "range": 200 },
                 "storage": { "capacity": 10000 },
-                "defensive": { "range": 2000, "damage": 8 }
+                "defensive": { "range": 2000, "damage": 8, "damageType": "energy" }
             }
         },
         {
@@ -1103,7 +1103,7 @@
             },
             "components": {
                 "buildable": {},
-                "defensive": { "range": 2000, "damage": 8 }
+                "defensive": { "range": 2000, "damage": 8, "damageType": "energy" }
             }
         },
         {
@@ -1135,7 +1135,7 @@
                 "buildable": {},
                 "dockable": { "range": 200 },
                 "storage": { "capacity": 10000 },
-                "defensive": { "range": 2000, "damage": 8 }
+                "defensive": { "range": 2000, "damage": 8, "damageType": "energy" }
             }
         },
         {
@@ -1163,7 +1163,7 @@
             },
             "components": {
                 "buildable": {},
-                "defensive": { "range": 2000, "damage": 8 },
+                "defensive": { "range": 2000, "damage": 8, "damageType": "energy" },
                 "signature": { "strength": 0.35 }
             }
         },
