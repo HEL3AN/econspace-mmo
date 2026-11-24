@@ -1212,6 +1212,10 @@ bool Simulation::SaveWorld(const std::string& path) const
             {
                 pj["dps"] = p.dps;
                 pj["hull"] = p.hull;
+                json mix = json::array();  // (#557): by the catalogue's damage-type order
+                for (float m : p.mix)
+                    mix.push_back(m);
+                pj["mix"] = std::move(mix);
             }
             pj["via"] = p.via;
             pj["arrivesAt"] = p.arrivesAt;
@@ -1514,6 +1518,21 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             {
                 p.dps = dps;
                 p.hull = hull;
+            }
+            // What its volley is made of (#557). A plan saved before reads as its faction's
+            // doctrine: the warships it flies now, which is what it was sent with unless the
+            // faction has refitted since.
+            if (p.kind == Plan::Kind::Siege)
+            {
+                const json* mix = pj.contains("mix") && pj["mix"].is_array() ? &pj["mix"] : nullptr;
+                if (mix != nullptr && worldVersionRead_ >= 20)
+                    for (size_t t = 0; t < p.mix.size() && t < mix->size(); ++t)
+                    {
+                        const float m = (*mix)[t].is_number() ? (*mix)[t].get<float>() : 0.0f;
+                        p.mix[t] = std::isfinite(m) ? std::clamp(m, 0.0f, 1.0f) : 0.0f;
+                    }
+                else
+                    p.mix = FighterOf(p.faction, NpcRole::Warship).mix;
             }
             // A siege from before pooling (version 7) is already at its outpost, and lent by
             // nobody: what is left of it stays where it is, as it did then.

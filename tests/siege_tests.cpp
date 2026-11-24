@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
@@ -667,6 +669,105 @@ TEST_CASE("a siege fights with the warships its holdings keep, not with a doctri
         REQUIRE(fleet->second.count("cruiser~laser") == 1);
         CHECK(fleet->second.at("cruiser~laser") > 0.95f * all);
     }
+}
+
+TEST_CASE("a siege's volley is made of what its holdings fly, and is saved with it (#557)")
+{
+    const TempDir     tmp;
+    const std::string path = tmp.Path("typed_siege.json");
+    auto              sim = World();
+    const Scene       s = GuildOutpostNextToPirates(*sim);
+    sim->SystemById(s.den)->agg.fleets[Simulation::FleetKey(Fac::Pirates(), NpcRole::Warship)] = {
+        { "cruiser~laser", 5.0f }
+    };
+    const Plan              plan = *PiratesBesiege(*sim, s);
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Ships::Fighter    lasers = Ships::DesignFighter(c, "cruiser~laser");
+    const Ships::Fighter    doctrine = sim->FighterOf(Fac::Pirates(), NpcRole::Warship);
+    size_t                  energy = 0;
+    for (size_t t = 0; t < c.damageTypes.size(); ++t)
+        if (c.damageTypes[t] == "energy")
+            energy = t;
+    REQUIRE(lasers.mix[energy] > 0.0f);
+    // The den's lasers, not the doctrine's railguns.
+    for (size_t t = 0; t < plan.mix.size(); ++t)
+        CHECK(plan.mix[t] == doctest::Approx(lasers.mix[t]));
+    REQUIRE(doctrine.mix[energy] != doctest::Approx(lasers.mix[energy]));
+
+    sim->SaveWorld(path);
+    auto load = [&](const std::string& file)
+    {
+        auto b = std::make_unique<Simulation>();
+        b->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+        b->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
+        REQUIRE(b->LoadWorld(file) == Save::Result::Ok);
+        b->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+        return b;
+    };
+    {
+        auto       b = load(path);
+        const Plan back = b->Plans().at(plan.id);
+        for (size_t t = 0; t < plan.mix.size(); ++t)
+            CHECK(back.mix[t] == doctest::Approx(plan.mix[t]));
+    }
+    // A plan from before the mix was saved (a version 19 file) reads as its faction's doctrine.
+    {
+        nlohmann::json j;
+        {
+            std::ifstream in(path);
+            j = nlohmann::json::parse(in);
+        }
+        j["version"] = 19;
+        for (nlohmann::json& pj : j["plans"])
+            pj.erase("mix");
+        const std::string old = tmp.Path("old_siege.json");
+        {
+            std::ofstream out(old);
+            out << j.dump();
+        }
+        auto       b = load(old);
+        const Plan back = b->Plans().at(plan.id);
+        const auto now = b->FighterOf(Fac::Pirates(), NpcRole::Warship);
+        for (size_t t = 0; t < back.mix.size(); ++t)
+            CHECK(back.mix[t] == doctest::Approx(now.mix[t]));
+        CHECK(back.mix[energy] != doctest::Approx(plan.mix[energy]));
+    }
+}
+
+TEST_CASE("a siege's fire is read against the wall's layers: railguns wear it down faster (#557)")
+{
+    // How much one pass of the siege takes off an outpost that does not mend, per point the
+    // besiegers' guns fire, for the warships `fleet` names.
+    auto perPoint = [](const char* fleet)
+    {
+        auto        sim = World();
+        const Scene s = GuildOutpostNextToPirates(*sim);
+        sim->SystemById(s.den)
+            ->agg.fleets[Simulation::FleetKey(Fac::Pirates(), NpcRole::Warship)] = { { fleet,
+                                                                                       5.0f } };
+        const Plan plan = *PiratesBesiege(*sim, s);
+        Structure* wall = OutpostIn(*sim, s.frontier);
+        REQUIRE(wall != nullptr);
+        wall->SetMends(false, sim->Time());
+        wall->SetDamage(0.0f, sim->Time());
+        Pass(*sim);
+        const Plan* now = SiegeBy(*sim, Fac::Pirates());
+        REQUIRE(now != nullptr);
+        const float taken = wall->GetDamage(sim->Time());
+        // What the siege fired, as its guns say it: the force still standing less what the
+        // garrison ties up, at the plan's dps for a pass.
+        const float firing = std::max(0.0f, now->force - Blueprints::SiegeRules().defence * 1.0f);
+        return std::make_pair(taken / std::max(1e-3f, firing * plan.dps),
+                              Blueprints::WallEffect(*wall->GetBlueprint(), plan.mix));
+    };
+    const auto lasers = perPoint("cruiser~laser");
+    const auto rails = perPoint("cruiser");
+    // The planner's one number and the pass agree on which is better...
+    CHECK(rails.second > lasers.second);
+    CHECK(rails.first > lasers.first);
+    // ...and on how much: the ratio of what a point of fire takes off is the ratio of the
+    // layers' effects, to within the garrison's changing count.
+    CHECK(rails.first / lasers.first == doctest::Approx(rails.second / lasers.second).epsilon(0.1));
 }
 
 // --- Pooled sieges (#295, the owner's decision of 2026-10-11) ---------------------------------

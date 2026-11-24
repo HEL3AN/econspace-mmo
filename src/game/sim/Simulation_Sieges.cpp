@@ -273,6 +273,8 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
         const Ships::Fighter its = FighterIn(*home, f, NpcRole::Warship);
         fighter.dps += its.dps * took.force;
         fighter.hull += its.hull * took.force;
+        for (size_t t = 0; t < fighter.mix.size(); ++t)
+            fighter.mix[t] += its.mix[t] * its.dps * took.force;  // by the fire it brings
         there -= took.force;
         force += took.force;
         hops = std::max(hops, took.hops);
@@ -304,6 +306,8 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     p.lent = sent;
     p.dps = fighter.dps / force;
     p.hull = fighter.hull / force;
+    for (size_t t = 0; t < p.mix.size(); ++t)
+        p.mix[t] = fighter.dps > 0.0f ? fighter.mix[t] / fighter.dps : 0.0f;
     plans_[p.id] = p;
     due_.insert({ p.dueAt, p.id });
     char ships[32];
@@ -504,8 +508,12 @@ void Simulation::StepSieges()
         const float defenders = p.evicting.empty() ? a.presence[gi] : 0.0f;
         // Both as their fleets are (#464): the besiegers what they set out as, the garrison
         // what its side keeps here.
-        const Ships::Fighter besieger =
-            p.dps > 0.0f ? Ships::Fighter{ p.dps, p.hull } : FighterOf(fi, NpcRole::Warship);
+        Ships::Fighter besieger = FighterOf(fi, NpcRole::Warship);
+        if (p.dps > 0.0f)
+        {
+            besieger = Ships::Fighter{ p.dps, p.hull };
+            besieger.mix = p.mix;
+        }
         const Ships::Fighter garrison =
             FighterIn(*st, gi, gi == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
         auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
@@ -551,7 +559,7 @@ void Simulation::StepSieges()
         // What the garrison and the patrol do not tie up fires at the outpost.
         const float firing = std::max(0.0f, p.force - r.defence * standing);
         if (firing > 0.0f && HitStructure(*st, t->GetId(), firing * besieger.dps * PASS_SECONDS,
-                                          nullptr, Loss::Siege, p.faction))
+                                          nullptr, Loss::Siege, p.faction, besieger.mix))
             over.push_back(p.id);
     }
     for (int id : over)

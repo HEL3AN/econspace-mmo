@@ -488,3 +488,12 @@ restores the hull before the armour) and passes them through `Ships::Strike`, th
 every ship's hit uses; a player's shot at a structure carries its ship's mix. A station's guns
 stay its archetype's `defensive.damage` and gain `defensive.damageType`. Outposts and stations
 are armour-heavy (0.6, 0.7), so kinetic guns bring a wall down sooner than lasers.
+
+A siege reads the same layers (#557, 2/3). A `Plan` carries `mix`, the besiegers' volley by damage
+type -- the force-weighted mean of the lending holdings' warship fleets, by the fire each brings
+-- and saves it (WORLD_VERSION 20; a plan from an older file reads as its faction's doctrine, the
+warships it flies now). The coarse pass strikes the wall with it (`HitStructure(..., mix)`), and
+the planner weighs a siege by `Blueprints::WallEffect(blueprint, mix)`: the one multiplier the
+wall's armour and hull give a volley of that make-up (`Ships::PoolEffect`), so a faction of
+railgunners judges an armoured wall easier than a faction of lasers does, and a siege goes
+the way it was judged. `econserver fleetbench` now ends each seed with the sieges' tally.

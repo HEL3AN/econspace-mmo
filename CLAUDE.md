@@ -372,6 +372,8 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   `Ships::WarshipDps` in `core/Fitting`: the volley a player's ship of that hull and fit
   fires, at the player cooldown), never a number in a rules file (owner, 2026-10-22); the
   planner and the pass both read it, so a refit of the doctrine's warship moves every siege.
+  The volley's damage types (`Plan::mix`, saved) meet the wall's layers -- a tier's `armour` in
+  blueprints.json -- through `Structure::StrikeWith` and `Blueprints::WallEffect` (#557).
 - **NPCs and players fight by one model** (owner, 2026-10-22, #186). An NPC's guns and hull
   are its design's as a player's ship of it has them (`Ships::Stats::volley`, `combatHull`),
   fired at `Ships::PLAYER_FIRE_INTERVAL` from `Sim::PLAYER_WEAPON_RANGE`; only the shields are
