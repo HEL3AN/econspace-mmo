@@ -1659,7 +1659,9 @@ TEST_CASE("an outpost keeps goods for its owner's side, through an upgrade and a
         CHECK(back.player.storedByType == snap.player.storedByType);
         Obs::View view;
         view.snapshot = &back;
-        CHECK(Obs::Describe(view, Obs::Detail::Brief).find("STORAGE 30/") != std::string::npos);
+        CHECK(Obs::Describe(view, Obs::Detail::Brief)
+                  .find("STORAGE " + std::to_string(snap.player.storageUsed) + "/") !=
+              std::string::npos);  // volume (#555): 30 Iron take more room than 30
     }
 
     // What it keeps stops it being taken apart: nothing is lost to a dismantle.
