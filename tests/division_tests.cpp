@@ -237,8 +237,8 @@ TEST_CASE("the structure's room is said once and each division says its own use 
     REQUIRE(w.Move(dina, "hold", "hangar", 3) == 3);
     const int used = w.Depot().GetStoredUsed();  // every division and hangar, in volume
 
-    Proto::Snapshot        snap = w.sim.BuildSnapshot(dina, w.sys);
-    Proto::Snapshot        back;
+    Proto::Snapshot snap = w.sim.BuildSnapshot(dina, w.sys);
+    Proto::Snapshot back;
     REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
     CHECK(back.player.storageUsed == used);
     CHECK(back.player.storageCap == w.Depot().GetStorageCapacity());
