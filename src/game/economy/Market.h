@@ -45,7 +45,7 @@ public:
     void   SetStock(ResourceType type, double stock);
     // How many markets this one stands for: its target stock is that many times a good's. A
     // market nothing has happened to yet starts at the new targets.
-    void SetMarkets(int markets);
+    void SetMarkets(int markets, const MarketRates* rates = nullptr);
 
     // Sells `amount` units into the market and returns what they fetch at the bid, unit by
     // unit, each lowering the price of the next. Buy takes them out at the ask, as many as

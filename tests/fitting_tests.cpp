@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <map>
 #include <set>
@@ -15,6 +16,7 @@
 #include "core/Faction.h"
 #include "core/Fitting.h"
 #include "core/ShipDesign.h"
+#include "entities/Derelict.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Station.h"
@@ -23,6 +25,7 @@
 #include "sim/Observation.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
+#include "sim/WorldRules.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
 
@@ -338,6 +341,15 @@ std::vector<Ships::FitLine> Bare(const Ships::Design& d)
     return fit;
 }
 
+// Puts `n` of a module on the shelf of the market the pilot is at: a shipyard's stock is what
+// its recipes made, and a fresh fixture world has stepped none (#472 slice 10).
+void Shelve(Fixture& f, const char* moduleId, int n)
+{
+    ResourceType g;
+    REQUIRE(ModuleGood(moduleId, g));
+    f.sim.SystemOf(f.s)->market.SetStock(g, n);
+}
+
 Ships::FitLine Line(const char* module, const char* in, const char* on, int count)
 {
     Ships::FitLine l;
@@ -458,6 +470,83 @@ TEST_CASE("a refit is priced by the modules it adds and takes out")
     CHECK(Ships::RefitPrice(c, scout, scout, ore, 1.5f) == doctest::Approx(0.0));
 }
 
+TEST_CASE("modules a refit moves: the hull's own fit is free, the pilot's own comes back (#472)")
+{
+    Fixture                 f;
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Ships::Design&    scout = *c.FindDesign("scout");
+    Ships::Design           armed;
+    std::string             why;
+    REQUIRE(Ships::PlayerFit(c, scout, Bare(ArmedScout()), armed, why));
+    // Swapping the hull's tractor for a laser takes a laser and gives nothing: the tractor was
+    // the hull's own.
+    Ships::ModuleMoves m = Ships::RefitMoves(scout, scout, armed);
+    CHECK(m.take.size() == 1);
+    CHECK(m.take["weapons.laser"] == 1);
+    CHECK(m.give.empty());
+    // Back to stock: the laser is the pilot's, and comes out; the tractor is free to restore.
+    m = Ships::RefitMoves(scout, armed, scout);
+    CHECK(m.take.empty());
+    CHECK(m.give["weapons.laser"] == 1);
+    CHECK(Ships::ModulesBeyond(scout, armed)["weapons.laser"] == 1);
+    CHECK(Ships::ModulesBeyond(scout, scout).empty());
+    // Every module of ships.json is a good, and each good's price is its parts' times the margin.
+    for (const Ships::ModulePart& part : c.modules)
+    {
+        ResourceType g;
+        REQUIRE_MESSAGE(ModuleGood(part.id, g), part.id);
+        double sum = 0.0;
+        for (const auto& [r, n] : part.cost)
+            sum += n * Goods::Def(r).price;
+        CHECK(Goods::Def(g).price ==
+              doctest::Approx(std::max(1.0, std::round(sum * Goods::Rules().moduleMargin))));
+        // goods.json says what a module is made of once, and it is what ships.json says.
+        REQUIRE(Goods::Def(g).parts.size() == part.cost.size());
+        for (const auto& [r, n] : part.cost)
+        {
+            bool found = false;
+            for (const auto& [pr, pn] : Goods::Def(g).parts)
+                found = found || (pr == r && pn == n);
+            CHECK_MESSAGE(found, part.id);
+        }
+    }
+}
+
+TEST_CASE("a lost player ship's wreck holds the modules it carried beyond its hull's own (#472)")
+{
+    Fixture f;
+    f.sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+    const Station* yard = StationThat(f, true);
+    REQUIRE(yard != nullptr);
+    f.s.dockedStationId = yard->GetId();
+    f.s.account.SetMoney(5000.0);
+    Shelve(f, "weapons.laser", 3);
+    REQUIRE(f.sim.RefitShip(f.s, Bare(ArmedScout())));
+    ResourceType laser, tractor;
+    REQUIRE(ModuleGood("weapons.laser", laser));
+    REQUIRE(ModuleGood("weapons.tractor", tractor));
+
+    WorldRules::Wrecks saved = WorldRules::WreckRules();
+    WorldRules::Wrecks all;
+    all.moduleShare = 1.0;
+    WorldRules::SetWreckRules(all);
+    f.s.dockedStationId = 0;
+    f.sim.ServerRespawnPlayer(f.s);
+    WorldRules::SetWreckRules(saved);
+
+    // The laser the pilot fitted is in the wreck; the hull's own tractor is not a good.
+    int lasers = 0, tractors = 0;
+    for (const auto& kv : f.sim.Systems())
+        for (const auto& e : kv.second.entities)
+            if (e->GetKind() == EntityKind::Derelict)
+            {
+                lasers += static_cast<const Derelict&>(*e).Contents().Amount(laser);
+                tractors += static_cast<const Derelict&>(*e).Contents().Amount(tractor);
+            }
+    CHECK(lasers == 1);
+    CHECK(tractors == 0);
+}
+
 TEST_CASE("the server refits only at a shipyard, charges for it, and the ship flies the fit")
 {
     Fixture f;
@@ -488,6 +577,7 @@ TEST_CASE("the server refits only at a shipyard, charges for it, and the ship fl
     SUBCASE("at a yard it is paid for, filed, flown, and predicted with the same numbers")
     {
         f.s.dockedStationId = yard->GetId();
+        Shelve(f, "weapons.laser", 3);
         const float speedBefore = f.s.ship->GetStats().maxSpeed;
         REQUIRE(f.sim.RefitShip(f.s, armed));
         CHECK(f.sim.TakeDesignsChanged());
@@ -518,11 +608,31 @@ TEST_CASE("the server refits only at a shipyard, charges for it, and the ship fl
         REQUIRE(f.sim.RefitShip(f.s, Bare(*Archetypes::ShipCatalogue().FindDesign("scout"))));
         CHECK(f.s.DesignOf(0) == "scout");
         CHECK(f.s.ship->GetStats().design == "scout");
-        CHECK(f.s.account.GetMoney() < before);  // the tractor costs more than the laser returns
+        // The tractor is the hull's own, so it comes back free, and the laser the pilot fitted
+        // is theirs again: in the hold or the hangar, never lost.
+        CHECK(f.s.account.GetMoney() == doctest::Approx(before));
+        ResourceType laser;
+        REQUIRE(ModuleGood("weapons.laser", laser));
+        CHECK(f.s.ship->Hold().Amount(laser) >= 1);
+    }
+    SUBCASE("modules come from the hold before the market, and nothing is bought twice")
+    {
+        f.s.dockedStationId = yard->GetId();
+        ResourceType laser;
+        REQUIRE(ModuleGood("weapons.laser", laser));
+        Shelve(f, "weapons.laser", 0);
+        CHECK_FALSE(f.sim.RefitShip(f.s, armed));  // none on the shelf, none carried
+        CHECK(f.s.account.GetMoney() == doctest::Approx(5000.0));
+        CHECK(f.s.DesignOf(0) == "scout");
+        f.s.ship->Hold().Add(laser, 1);
+        REQUIRE(f.sim.RefitShip(f.s, armed));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(5000.0));  // from the hold: free
+        CHECK(f.s.ship->Hold().Amount(laser) == 0);
     }
     SUBCASE("a refit the money does not cover is refused and costs nothing")
     {
         f.s.dockedStationId = yard->GetId();
+        Shelve(f, "weapons.laser", 3);
         f.s.account.SetMoney(1.0);
         CHECK_FALSE(f.sim.RefitShip(f.s, armed));
         CHECK(f.s.account.GetMoney() == doctest::Approx(1.0));
@@ -574,6 +684,7 @@ TEST_CASE("the Fit tab's quote is the server's verdict, price and all")
 
     SUBCASE("a legal fit: lit, and charged what it says")
     {
+        Shelve(f, "weapons.laser", 3);
         look();
         const Obs::FitQuote q = Obs::QuoteFit(view, armed);
         REQUIRE_MESSAGE(q.ok, q.problem);
@@ -583,6 +694,7 @@ TEST_CASE("the Fit tab's quote is the server's verdict, price and all")
     SUBCASE("short of money: refused by both")
     {
         f.s.account.SetMoney(1.0);
+        Shelve(f, "weapons.laser", 3);
         look();
         const Obs::FitQuote q = Obs::QuoteFit(view, armed);
         CHECK_FALSE(q.ok);
@@ -747,11 +859,13 @@ TEST_CASE("a saved design is applied at a shipyard for what the same refit costs
             f.sim.CreateSession(f.s.systemId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
         other.account.SetMoney(5000.0);
         other.dockedStationId = yard->GetId();
+        Shelve(f, "weapons.laser", 3);
         REQUIRE(f.sim.RefitShip(other, armed));
         const double byHand = 5000.0 - other.account.GetMoney();
         CHECK(byHand > 0.0);
 
         f.s.dockedStationId = yard->GetId();
+        Shelve(f, "weapons.laser", 3);  // the shelf as the first refit found it
         REQUIRE(f.sim.ApplyDesign(f.s, "Laser scout"));
         CHECK(5000.0 - f.s.account.GetMoney() == doctest::Approx(byHand));
         CHECK(f.s.DesignOf(0) == f.s.designLibrary.at("Laser scout"));

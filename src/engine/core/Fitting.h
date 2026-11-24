@@ -2,6 +2,7 @@
 
 #include "core/ShipDesign.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,19 @@ bool PlayerFit(const Catalogue& c, const Design& hull, const std::vector<FitLine
 double                 RefitPrice(const Catalogue& c, const Design& from, const Design& to,
                                   const std::vector<float>& orePrices, float markup);
 inline constexpr float REFIT_REFUND = 0.5f;
+
+// What a refit moves in modules as goods (#472 slice 10). The hull's own fit (`stock`) comes
+// with the hull and is free to restore, and what it holds is never handed back as goods; only
+// what a pilot fitted beyond it is theirs. `take` is what the new fit needs that the ship does
+// not already carry, as module id -> count: to come from the hangar, the hold or the market.
+// `give` is what leaves the ship for the hangar. Neither is priced here: it is a count.
+struct ModuleMoves
+{
+    std::map<std::string, int> take, give;
+};
+ModuleMoves RefitMoves(const Design& stock, const Design& now, const Design& to);
+// The modules a design carries beyond its hull's own fit, id -> count: what a wreck may drop.
+std::map<std::string, int> ModulesBeyond(const Design& stock, const Design& now);
 
 // A design's fit as a player writes it: in one order and with no scale. What applying a
 // saved design sends, and what the Fit tab draws up from the design a ship flies.

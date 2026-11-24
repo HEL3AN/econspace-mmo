@@ -430,9 +430,12 @@ rejected.
   second table to keep right) and 30 extra goods carried alike everywhere.
 - **Refit.** Each module a fit adds is taken from the hangar here, then the ship's hold, then
   bought at the local market's ask. If none is anywhere, the quote says so and the refit is
-  refused: there is no build-to-order at the old ore price. `Ships::RefitPrice` becomes the cost
-  of the modules that have to be bought, at the market's prices times the yard's `markup`; it
-  and the server share `Obs::QuoteFit`, as now.
+  refused: there is no build-to-order at the old ore price. The hull's own fit comes with the
+  hull and is free to restore (`Ships::RefitMoves`); only what a pilot fitted beyond it is theirs
+  to take out. What a refit costs is the modules bought, at the market's ask plus its fee, one
+  unit at a time; the Fit tab and econagent quote it with `Obs::QuoteFit` at the shelf's ask a
+  unit (exact for one module, a little under for several). `Ships::RefitPrice` stays only to
+  value a ship; the yard's `refitMarkup` and the half-ore refund are gone.
 - **Removed modules** go to the hangar here (the hold if it is full; a refit is refused when
   neither has room, and the quote says so). The half-ore refund (`REFIT_REFUND`) goes: the
   module itself is the value and can be sold.

@@ -1468,7 +1468,7 @@ void Simulation::StepMarket(SystemState& st, float seconds)
     const double crew = std::clamp((double)st.agg.miners / 2.0, 0.0, 1.0);
     const bool   trades = st.profile.markets > 0;
     if (trades)
-        st.market.SetMarkets(st.profile.markets);
+        st.market.SetMarkets(st.profile.markets, &st.profile.rates);
     // A hidden belt (#346) grows back like any other, but no crew works one nobody has found:
     // it is not in the profile, so it is looked at whether or not the profile has belts.
     for (auto& e : st.entities)

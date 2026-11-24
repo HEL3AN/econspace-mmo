@@ -3,6 +3,8 @@
 #include "core/JsonKeys.h"
 
 #include <nlohmann/json.hpp>
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <map>
 #include <utility>
@@ -96,9 +98,10 @@ bool Amounts(const Registry& r, const json& j, std::vector<std::pair<ResourceTyp
 
 bool ParseGood(const json& j, GoodDef& d, std::string& why)
 {
-    if (!j.is_object() ||
-        !OnlyKnownKeys(j, { "id", "name", "tier", "price", "stock", "supply", "mined", "volume" },
-                       why))
+    if (!j.is_object() || !OnlyKnownKeys(j,
+                                         { "id", "name", "tier", "price", "stock", "supply",
+                                           "mined", "volume", "module", "parts" },
+                                         why))
     {
         if (why.empty())
             why = "a good is an object";
@@ -127,6 +130,24 @@ bool ParseGood(const json& j, GoodDef& d, std::string& why)
         return false;
     }
     d.supply = supply == "local" ? Supply::Local : Supply::Imported;
+    if (j.contains("module"))
+    {
+        if (!j["module"].is_string() || j["module"].get<std::string>().empty() ||
+            !j.contains("parts") || j.contains("price"))
+        {
+            why = "good '" + d.id +
+                  "': a module names its part in 'module', its 'parts' and no price";
+            return false;
+        }
+        d.module = j["module"].get<std::string>();
+        d.supply = Supply::Imported;
+        d.price = 1.0;  // set once every good is read: the parts at their prices
+    }
+    else if (j.contains("parts"))
+    {
+        why = "good '" + d.id + "': only a module has parts";
+        return false;
+    }
     if (!Number(j, "price", d.price, why) || !Number(j, "stock", d.stock, why) || d.price <= 0.0 ||
         d.stock < 1.0)
     {
@@ -138,8 +159,33 @@ bool ParseGood(const json& j, GoodDef& d, std::string& why)
 
 bool ParseIndustry(const Registry& r, const json& j, Industry& ind, std::string& why)
 {
-    if (!j.is_object() || !OnlyKnownKeys(j, { "recipes", "uses" }, why))
+    if (!j.is_object() || !OnlyKnownKeys(j, { "recipes", "uses", "makes" }, why))
         return false;
+    // A yard's modules (#472 slice 10): {"Mod.Laser": 3} is a recipe from the module's parts,
+    // three an hour, so the parts are written once, with the good.
+    if (j.contains("makes"))
+    {
+        if (!j["makes"].is_object())
+        {
+            why = "makes is an object of module: rate";
+            return false;
+        }
+        for (auto it = j["makes"].begin(); it != j["makes"].end(); ++it)
+        {
+            const int g = IndexOf(r, it.key());
+            if (g < 0 || !r.goods[(size_t)g].IsModule() || !it.value().is_number() ||
+                it.value().get<double>() <= 0.0)
+            {
+                why = "makes '" + it.key() + "': a module of the registry, at a positive rate";
+                return false;
+            }
+            Recipe rec;
+            rec.in = r.goods[(size_t)g].parts;
+            rec.out.push_back({ ResourceType::FromIndex(g), 1.0 });
+            rec.rate = it.value().get<double>();
+            ind.recipes.push_back(rec);
+        }
+    }
     if (j.contains("uses") && !Amounts(r, j["uses"], ind.uses, why))
         return false;
     if (!j.contains("recipes"))
@@ -204,7 +250,7 @@ bool Parse(const json& data, Registry& r, std::string& why)
         if (!m.is_object() ||
             !OnlyKnownKeys(m,
                            { "fee", "spread", "elasticity", "floor", "ceiling", "beltMined",
-                             "beltRegrow", "haulEvery", "haulCargo", "haulMargin" },
+                             "beltRegrow", "haulEvery", "haulCargo", "haulMargin", "moduleMargin" },
                            why) ||
             !Number(m, "fee", k.fee, why) || !Number(m, "spread", k.spread, why) ||
             !Number(m, "elasticity", k.elasticity, why) || !Number(m, "floor", k.floor, why) ||
@@ -212,7 +258,8 @@ bool Parse(const json& data, Registry& r, std::string& why)
             !Number(m, "beltRegrow", k.beltRegrow, why) ||
             !Number(m, "haulEvery", k.haulEvery, why) ||
             !Number(m, "haulCargo", k.haulCargo, why) ||
-            !Number(m, "haulMargin", k.haulMargin, why))
+            !Number(m, "haulMargin", k.haulMargin, why) ||
+            !Number(m, "moduleMargin", k.moduleMargin, why))
         {
             why = "market: " + (why.empty() ? std::string("not an object") : why);
             return false;
@@ -223,6 +270,33 @@ bool Parse(const json& data, Registry& r, std::string& why)
             return false;
         }
     }
+    // A module's parts are goods of the registry, and its price follows theirs.
+    for (const json& gj : data["goods"])
+    {
+        if (!gj.contains("parts"))
+            continue;
+        GoodDef& d = r.goods[(size_t)IndexOf(r, gj["id"].get<std::string>())];
+        if (!Amounts(r, gj["parts"], d.parts, why) || d.parts.empty())
+        {
+            why = "good '" + d.id +
+                  "': parts: " + (why.empty() ? "a module is made of something" : why);
+            return false;
+        }
+        for (const auto& p : d.parts)
+            if (r.goods[(size_t)p.first.Index()].IsModule())
+            {
+                why = "good '" + d.id + "': a module is made of goods, not of modules";
+                return false;
+            }
+    }
+    for (GoodDef& d : r.goods)
+        if (d.IsModule())
+        {
+            double sum = 0.0;
+            for (const auto& p : d.parts)
+                sum += p.second * r.goods[(size_t)p.first.Index()].price;
+            d.price = std::max(1.0, std::round(sum * r.rules.moduleMargin));
+        }
     if (data.contains("industries"))
     {
         if (!data["industries"].is_object())
@@ -269,6 +343,17 @@ ResourceType ResourceFromName(const std::string& name)
     ResourceType g;
     Goods::Find(name, g);
     return g;
+}
+
+bool ModuleGood(const std::string& moduleId, ResourceType& out)
+{
+    for (int i = 0; i < Goods::Count(); i++)
+        if (Goods::Def(ResourceType::FromIndex(i)).module == moduleId)
+        {
+            out = ResourceType::FromIndex(i);
+            return true;
+        }
+    return false;
 }
 
 std::vector<ResourceType> AllResourceTypes()

@@ -97,7 +97,9 @@ struct FitQuote
     std::string   hull;             // the hull's name
     Ships::Design design;           // what it makes
     ShipStats     before, after;
-    double        price = 0.0;  // credits; negative pays the pilot back
+    double        price = 0.0;   // credits: the modules it buys here, fee included
+    int           fromHere = 0;  // modules drawn from the hangar and the hold
+    int           toBuy = 0;     // modules bought at this market
 };
 FitQuote QuoteFit(const View& view, const std::vector<Ships::FitLine>& fit);
 

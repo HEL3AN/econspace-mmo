@@ -305,7 +305,7 @@ What a fit would make of the ship you fly, without paying: speed, turn, cargo, m
 
 ### `refit`
 
-Refit the ship you fly to a fit, docked at a station with a shipyard, paid in credits: modules added cost their ore here times the yard's markup, modules taken out refund half their ore. Only the fit changes, never the hull; side and edge sockets take pairs, drives go in the stern, and a ship keeps a drive. Pass the whole fit; preview_fit first says what it does and costs.
+Refit the ship you fly to a fit, docked at a station with a shipyard. Modules are goods: each one added is taken from your hangar here, then your hold, then bought at this market (credits, at its ask); each one taken out goes to your hangar, then your hold, and can be sold or fitted again. The hull's own modules come with it. Only the fit changes, never the hull; side and edge sockets take pairs, drives go in the stern, and a ship keeps a drive. Pass the whole fit; preview_fit first says what it does and costs.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
