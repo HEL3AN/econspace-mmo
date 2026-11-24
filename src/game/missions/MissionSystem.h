@@ -3,7 +3,7 @@
 #include "missions/Mission.h"
 #include <vector>
 
-class Station;
+#include "entities/Station.h"
 
 // Mission log: the current station's offers and the accepted active missions.
 // Reward and completion logic lives in Game (it needs Player/Ship); this system
@@ -19,6 +19,10 @@ public:
     // delivery, at the base reward. The station's board keeps it for a while (#425,
     // Simulation::StationWork); the reputation multiplier is applied where it is shown.
     static Mission MakeOffer(Station* giver, const std::vector<Station*>& allStations);
+    // ...and of a board that is no Station's (#438): a player's station-tier structure, which is
+    // an id, the faction its board is posted for, and the role its archetype names.
+    static Mission MakeOffer(int giverId, FactionId faction, StationRole role,
+                             const std::vector<Station*>& allStations);
 
     // Accepts an offer by index: moves it into the active list. false -- no such offer, or
     // MAX_ACTIVE missions are already active.
@@ -57,7 +61,7 @@ public:
     }
 
 private:
-    static Mission Generate(MissionType type, Station* giver,
+    static Mission Generate(MissionType type, int giverId, FactionId faction,
                             const std::vector<Station*>& allStations);
 
     std::vector<Mission> offers_;

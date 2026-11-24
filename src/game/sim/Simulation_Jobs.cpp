@@ -125,6 +125,61 @@ bool FlyingIn(const ClientSession& s, const std::string& systemId)
 }
 }  // namespace
 
+bool Simulation::HasBoard(const Structure& t)
+{
+    const Blueprint* bp = t.GetBlueprint();
+    return !t.IsBuilding() && bp != nullptr && bp->tier == "station" && IsStationBlueprint(bp) &&
+           t.Has(Component::Dockable);
+}
+
+FactionId Simulation::BoardFaction(const SystemState& st) const
+{
+    if (st.agg.claimed && Factions::IsLawful(st.agg.controller))
+        return st.agg.controller;
+    // Nobody lawful holds it: the nearest holding of a lawful faction within reach. Nearest,
+    // then by system id -- the same answer whenever it is asked.
+    std::vector<std::pair<int, std::string>> ring;
+    for (const auto& kv : JumpsFrom(*this, st.id, WorldRules::JobRules().reach))
+        ring.push_back({ kv.second, kv.first });
+    std::sort(ring.begin(), ring.end());
+    for (const auto& at : ring)
+    {
+        const SystemState* other = SystemById(at.second);
+        if (other != nullptr && other->agg.claimed && Factions::IsLawful(other->agg.controller))
+            return other->agg.controller;
+    }
+    return Factions::Unaffiliated();
+}
+
+bool Simulation::BoardGiverOf(const SystemState& st, int id, BoardGiver& out) const
+{
+    for (const auto& e : st.entities)
+    {
+        if (e->GetId() != id)
+            continue;
+        out.id = id;
+        if (e->GetKind() == EntityKind::Station)
+        {
+            const Station& s = static_cast<const Station&>(*e);
+            out.faction = s.GetFaction();
+            out.role = s.GetRole();
+            out.station = &s;
+            return true;
+        }
+        if (e->GetKind() == EntityKind::Structure && HasBoard(static_cast<const Structure&>(*e)))
+        {
+            out.faction = BoardFaction(st);
+            out.role = StationRole::TradeHub;
+            if (e->GetArchetype() != nullptr)
+                ParseStationRole(e->GetArchetype()->worldSubType, out.role);
+            out.station = nullptr;
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
 const Structure* Simulation::JobSite(const Plan& p) const
 {
     if (!Sited(p))
@@ -139,15 +194,10 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
     std::vector<Mission>    out;
     const WorldRules::Jobs& r = WorldRules::JobRules();
     const SystemState*      here = SystemOf(s);
-    const Station*          giver = nullptr;
-    if (here == nullptr || r.perBoard <= 0)
+    BoardGiver              giver;
+    if (here == nullptr || r.perBoard <= 0 || !BoardGiverOf(*here, stationId, giver))
         return out;
-    for (const auto& e : here->entities)
-        if (e->GetId() == stationId && e->GetKind() == EntityKind::Station)
-            giver = static_cast<const Station*>(e.get());
-    if (giver == nullptr)
-        return out;
-    const FactionId                  f = giver->GetFaction();
+    const FactionId                  f = giver.faction;
     const std::map<std::string, int> near = JumpsFrom(*this, here->id, r.reach);
     const float repMul = MissionRewardMultiplier(Factions::TierOf(s.account.GetReputation(f)));
     // What the faction can still pay for, in credits: a board shows nothing it could not.
@@ -314,7 +364,9 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
         out.push_back(std::move(kv.second));
     }
     // And the contracts its markets near have posted (#343, #407): paid out of the treasury.
-    ContractsPostedAt(s, *giver, near, out);
+    // (A market's contract is handed in at a station of the faction's: not on a player's board.)
+    if (giver.station != nullptr)
+        ContractsPostedAt(s, *giver.station, near, out);
     return out;
 }
 

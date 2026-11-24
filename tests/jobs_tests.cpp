@@ -1442,3 +1442,97 @@ TEST_CASE("a pilot who raids first is paid, and the patrol does not come (#345)"
     CHECK(PlanOf(sim, u.plan) != nullptr);  // the pilot has it
     CHECK(JobLines(sim, "patrols brought down") == 0);
 }
+
+// --- A player's station: its board and the region's cap (#438) ---
+
+namespace
+{
+// A finished structure of `blueprint`, `owner`'s, beside the holding's station.
+int PlantStructure(Simulation& sim, const Holding& h, const std::string& blueprint,
+                   const std::string& owner, float dy)
+{
+    const Blueprint& bp = *Blueprints::Find(blueprint);
+    auto             t = std::make_unique<Structure>(Vector2{ h.at.x - 6000.0f, h.at.y - dy }, 0.0f,
+                                                     "Pilot " + bp.name, bp.archetype);
+    t->SetBlueprint(bp.id);
+    const int id = sim.AddStatic(h.system, std::move(t), owner);
+    REQUIRE(id != 0);
+    return id;
+}
+}  // namespace
+
+TEST_CASE("a player's station has a board: the holder's jobs and work of its own (#438)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = Fac::TradersGuild();
+    Simulation      sim;
+    Make(sim, 7);
+    const Surveying u = SurveyPlanned(sim, f);
+    const int       yard = PlantStructure(sim, u.h, "trade_station", "pilot", 0.0f);
+    const Vector2   at = PosOf(sim, u.h.system, yard);
+    ClientSession&  s =
+        sim.CreateSession(u.h.system, { at.x + 350.0f, at.y }, GetShipCatalog()[0].stats);
+    s.accountName = "pilot";
+    REQUIRE(sim.StepPlayerDock(s, *sim.SystemById(u.h.system)) == yard);
+
+    // What the holding faction's plans want done, as at its own station...
+    const int offer = OfferOf(s, MissionType::Survey, u.plan);
+    REQUIRE(offer >= 0);
+    CHECK(s.missions.Offers()[(size_t)offer].faction == f);
+    // ...and the station's own work, given by the structure, which is where it is handed in.
+    int own = 0;
+    for (const Mission& m : s.missions.Offers())
+        if (!IsPlanJob(m.type))
+        {
+            own++;
+            CHECK(m.giverStationId == yard);
+            CHECK(m.faction == f);
+        }
+    CHECK(own == WorldRules::JobRules().stationOffers);
+    // The same board again, not a new one.
+    const int first = s.missions.Offers().back().offerId;
+    sim.StepPlayerUndock(s);
+    sim.StepPlayerDock(s, *sim.SystemById(u.h.system));
+    CHECK(s.missions.Offers().back().offerId == first);
+
+    // A system nobody holds: the nearest lawful holding posts there.
+    SystemState* st = sim.SystemById(u.h.system);
+    st->agg.claimed = false;
+    CHECK(sim.BoardFaction(*st) != Factions::Unaffiliated());
+}
+
+TEST_CASE("a player's stations count against the region's cap, and no more are let past it (#438)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = Fac::TradersGuild();
+    Simulation      sim;
+    Make(sim, 7);
+    const Holding h = PlantOutpost(sim, f);
+    const int     slot = Gen::SlotOf(h.system);
+    const int     before = sim.StationsIn(slot);
+    const int     market = PlantStructure(sim, h, "outpost_market", "pilot", 0.0f);
+    CHECK(sim.StationsIn(slot) == before);  // a market is not a station
+    sim.SystemById(h.system)->profile = Simulation::ProfileOf(*sim.SystemById(h.system));
+
+    // At the cap, an upgrade to a station is refused, and below it, not for that.
+    sim.GrantLicence("pilot", h.system);
+    const Vector2  at = PosOf(sim, h.system, market);
+    ClientSession& s =
+        sim.CreateSession(h.system, { at.x + 400.0f, at.y }, GetShipCatalog()[0].stats);
+    s.accountName = "pilot";
+    s.ship->Teleport({ at.x + 400.0f, at.y });
+    const Blueprint&   bp = *Blueprints::Find("trade_station");
+    WorldRules::Growth g = WorldRules::GrowthRules();
+    g.stationsPerRegion = before;
+    WorldRules::SetGrowthRules(g);
+    CHECK(sim.PlacementProblem(s, bp, at).find("stations already") != std::string::npos);
+    g.stationsPerRegion = before + 1;
+    WorldRules::SetGrowthRules(g);
+    CHECK(sim.PlacementProblem(s, bp, at).find("stations already") == std::string::npos);
+
+    // And one standing -- finished -- takes a place of its own.
+    PlantStructure(sim, h, "trade_station", "pilot", 5000.0f);
+    CHECK(sim.StationsIn(slot) == before + 1);
+}

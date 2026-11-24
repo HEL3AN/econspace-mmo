@@ -5,7 +5,17 @@
 
 Mission MissionSystem::MakeOffer(Station* giver, const std::vector<Station*>& allStations)
 {
-    bool canDeliver = allStations.size() >= 2;
+    return MakeOffer(giver->GetId(), giver->GetFaction(), giver->GetRole(), allStations);
+}
+
+Mission MissionSystem::MakeOffer(int giverId, FactionId faction, StationRole role,
+                                 const std::vector<Station*>& allStations)
+{
+    // A delivery needs another station than the giver to go to.
+    int others = 0;
+    for (const Station* s : allStations)
+        others += s->GetId() != giverId ? 1 : 0;
+    bool canDeliver = others >= 1;
 
     // Weighted type pool biased by the station's role — each has its own character.
     std::vector<MissionType> pool;
@@ -19,7 +29,7 @@ Mission MissionSystem::MakeOffer(Station* giver, const std::vector<Station*>& al
     if (canDeliver)
         add(MissionType::Delivery, 1);
 
-    switch (giver->GetRole())
+    switch (role)
     {
         case StationRole::TradeHub:
             if (canDeliver)
@@ -29,7 +39,7 @@ Mission MissionSystem::MakeOffer(Station* giver, const std::vector<Station*>& al
         case StationRole::Military: add(MissionType::Bounty, 3); break;
         case StationRole::Shipyard: break;  // shipyard — no bias, a bit of everything
     }
-    return Generate(pool[GetRandomValue(0, (int)pool.size() - 1)], giver, allStations);
+    return Generate(pool[GetRandomValue(0, (int)pool.size() - 1)], giverId, faction, allStations);
 }
 
 bool MissionSystem::Accept(int offerIndex)
@@ -51,13 +61,13 @@ void MissionSystem::OnPirateKilled()
             m.progress++;
 }
 
-Mission MissionSystem::Generate(MissionType type, Station* giver,
+Mission MissionSystem::Generate(MissionType type, int giverId, FactionId faction,
                                 const std::vector<Station*>& allStations)
 {
     Mission m;
     m.type = type;
-    m.giverStationId = giver->GetId();
-    m.faction = giver->GetFaction();
+    m.giverStationId = giverId;
+    m.faction = faction;
 
     switch (type)
     {
@@ -86,7 +96,7 @@ Mission MissionSystem::Generate(MissionType type, Station* giver,
         {
             std::vector<Station*> others;
             for (Station* s : allStations)
-                if (s != giver)
+                if (s->GetId() != giverId)
                     others.push_back(s);
 
             Station* dest = others[GetRandomValue(0, (int)others.size() - 1)];
