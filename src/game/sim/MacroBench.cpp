@@ -16,6 +16,7 @@
 #include "core/Faction.h"
 #include "core/ShipDesign.h"
 #include "economy/Resource.h"
+#include "gen/Region.h"
 #include "entities/Combatant.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
@@ -30,8 +31,10 @@
 #include <cmath>
 #include <chrono>
 #include <cstdio>
+#include <set>
 #include <fstream>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -550,6 +553,48 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                 }
                 printf("goods at hour %.0f:%s\n", pass / 1800.0, line.c_str());
             }
+            if (pass == 0 || pass == passes)
+            {
+                int yards = 0;
+                for (const auto& kv : sim.Systems())
+                    yards += kv.second.profile.shipyards > 0 ? 1 : 0;
+                printf("systems with a shipyard at hour %.0f: %d\n", pass / 1800.0, yards);
+            }
+            // How far from a yard the modules have got: trading markets by jumps from the
+            // nearest yard, and how many of them have any module on the shelf (#566).
+            if (pass == passes)
+            {
+                std::map<std::string, int> dist;
+                std::vector<std::string>   ring;
+                for (const auto& kv : sim.Systems())
+                    if (kv.second.profile.shipyards > 0)
+                    {
+                        dist[kv.first] = 0;
+                        ring.push_back(kv.first);
+                    }
+                for (size_t i = 0; i < ring.size(); i++)
+                    for (const std::string& n : sim.Neighbors(ring[i]))
+                        if (dist.emplace(n, dist[ring[i]] + 1).second)
+                            ring.push_back(n);
+                std::map<int, std::pair<int, int>> by;  // jumps -> markets, with modules
+                for (const auto& kv : sim.Systems())
+                {
+                    if (kv.second.profile.markets <= 0)
+                        continue;
+                    const auto d = dist.find(kv.first);
+                    const int  j = d == dist.end() ? -1 : std::min(d->second, 12);
+                    bool       any = false;
+                    for (ResourceType g : AllResourceTypes())
+                        any = any || (Goods::Def(g).IsModule() && kv.second.market.Stock(g) >= 1.0);
+                    by[j].first++;
+                    by[j].second += any ? 1 : 0;
+                }
+                printf("modules on the shelf, by jumps from the nearest yard (12 = 12 or more, "
+                       "-1 = no road):");
+                for (const auto& [j, c] : by)
+                    printf(" %d: %d/%d", j, c.second, c.first);
+                printf("\n");
+            }
             for (FactionId f : Factions::All())
             {
                 float ships = 0.0f;
@@ -602,6 +647,38 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                                     };
                                     show(sim.PartsCost(design));
                                     show(Simulation::GunCost(design));
+                                }
+                                // Where the nearest yard is, and whether this region has one at
+                                // all.
+                                {
+                                    int  jumps = -1;
+                                    bool regionYard = false;
+                                    for (const auto& y : sim.Systems())
+                                        if (y.second.profile.shipyards > 0 &&
+                                            Gen::SlotOf(y.first) == Gen::SlotOf(kv.first))
+                                            regionYard = true;
+                                    std::set<std::string>    seen = { kv.first };
+                                    std::vector<std::string> ring = { kv.first };
+                                    for (int d = 0; d < 60 && jumps < 0 && !ring.empty(); d++)
+                                    {
+                                        std::vector<std::string> next;
+                                        for (const std::string& id : ring)
+                                        {
+                                            const SystemState* y = sim.SystemById(id);
+                                            if (y != nullptr && y->profile.shipyards > 0)
+                                                jumps = d;
+                                            for (const std::string& n : sim.Neighbors(id))
+                                                if (seen.insert(n).second)
+                                                    next.push_back(n);
+                                        }
+                                        ring = std::move(next);
+                                    }
+                                    printf(" [nearest yard %d jumps; region has a yard: %s; "
+                                           "prosperity %.2f, belts %d, stations in region %d]",
+                                           jumps, regionYard ? "yes" : "no",
+                                           (double)kv.second.agg.prosperity,
+                                           kv.second.profile.belts,
+                                           sim.StationsIn(Gen::SlotOf(kv.first)));
                                 }
                                 printf("\n");
                                 break;

@@ -53,6 +53,12 @@ void Make(Simulation& sim, uint64_t seed, const std::string& seal = std::string(
     REQUIRE(sim.OpenGalaxy(Params(seed), DATA, log));
     sim.InitGalaxy();
     sim.MaterializeAllSystems(DATA + "systems/");
+    // A ship is bought from the shelves now (#566), and these cases are about what factions
+    // do with the ships they have, not about whether the markets can build them: every shelf
+    // is full of everything.
+    for (const auto& kv : sim.Systems())
+        for (ResourceType g : AllResourceTypes())
+            sim.SystemById(kv.first)->market.SetStock(g, 1.0e5);
 }
 
 void RunMinutes(Simulation& sim, double minutes)

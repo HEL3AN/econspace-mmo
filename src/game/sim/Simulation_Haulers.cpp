@@ -95,7 +95,11 @@ void Simulation::StepHauls()
     {
         const Population& flags = passTargets_[nth++];
         SystemState&      st = kv.second;
-        if (st.profile.markets <= 0 || st.agg.traders < WHOLE)
+        // A system keeps its traders: a hauler goes only if the system is left with at least
+        // half of what it keeps, so a yard that others buy from is not emptied of the people
+        // who run it while the migration that brings them back takes its time (#566).
+        if (st.profile.markets <= 0 || st.agg.traders < WHOLE ||
+            st.agg.traders - 1.0f < 0.5f * (float)flags.traders)
             continue;
         // One moment in each stretch of the clock, drawn from what is decided -- this system,
         // this stretch -- never from what came before.

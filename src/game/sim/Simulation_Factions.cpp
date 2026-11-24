@@ -649,7 +649,13 @@ void Simulation::StepFactions()
                 // 2026-10-23). What it has above what it keeps leaves as before. Pirates buy
                 // too, at the markets that deal with them, and take what they beat (slice 6):
                 // a gang does not breed where it holds, so it cannot spread past its ships.
-                const float step = t.growth * (keep - p);
+                // Ships it bought elsewhere and that are still on their way count as its own
+                // (#566): a holding does not order again what is already coming.
+                float coming = 0.0f;
+                for (const FleetOrder& o : fleetOrders_)
+                    if (o.faction == f && o.system == kv.first)
+                        coming += o.n;
+                const float step = t.growth * (keep - p - coming);
                 if (step > 0.0f)
                 {
                     orders.push_back({ keep > 0.0f ? p / keep : 1.0f, &kv.second, f, step });
@@ -670,6 +676,7 @@ void Simulation::StepFactions()
     // thinnest holdings before topping up the full ones. Ties by system id, the map's order.
     std::stable_sort(orders.begin(), orders.end(),
                      [](const Order& x, const Order& y) { return x.held < y.held; });
+    StepFleetOrders();  // ships bought away from home that have come in (#566)
     for (const Order& o : orders)
         o.st->agg.presence[o.f] += BuyShips(*o.st, o.f, o.want);
 

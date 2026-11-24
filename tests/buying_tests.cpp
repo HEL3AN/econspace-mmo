@@ -17,8 +17,10 @@
 #include "sim/Overview.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
+#include "sim/SaveSchema.h"
 #include "sim/WorldRules.h"
 #include "factions_named.h"
+#include "temp_dir.h"
 
 // Buying (#464, slice 4): a holding grows by the ships it buys -- at its market, from its
 // faction's treasury, in its region's style -- so money limits how many ships, not only how
@@ -462,9 +464,8 @@ TEST_CASE(
     auto         sim = BuyingWorld();
     SystemState* st = LawfulHoldingWithMarket(*sim);
     REQUIRE(st != nullptr);
-    const FactionId    f = st->agg.controller;
-    const ResourceType laser = Good::Named("weapons.laser"), rail = Good::Named("weapons.railgun");
-    const std::string  design = Archetypes::ShipCatalogue().Pick(Factions::Id(f), "warship", 0);
+    const FactionId   f = st->agg.controller;
+    const std::string design = Archetypes::ShipCatalogue().Pick(Factions::Id(f), "warship", 0);
     REQUIRE_FALSE(design.empty());
     // Everything the ship is made of, parts and guns, is on the bill.
     const Ships::Cost parts = sim->PartsCost(design);
@@ -475,33 +476,36 @@ TEST_CASE(
     for (const auto& [good, n] : guns)
         CHECK(Goods::Def(good).IsModule());
 
-    // No guns on the shelf, whatever the fortune: no ships.
+    // No guns on any shelf within reach, whatever the fortune: no ships.
     sim->MindOf(f).treasury = 1e9;
     st->agg.fleets.clear();
-    for (const auto& [good, n] : guns)
-        st->market.SetStock(good, 0.0);
-    CHECK(sim->BuyShips(*st, f, 1.0f) == doctest::Approx(0.0f));
-
-    // Guns for two ships at a price that is not dear: no more than two, and they are gone.
-    for (const auto& [good, n] : guns)
-        st->market.SetStock(good, (double)n * 2.0);
-    // The market's own target is what a "not dear" shelf is, so find how many it takes.
-    double ships = 1e9;
-    for (const auto& [good, n] : guns)
-        ships = std::min(ships, st->market.Stock(good) / (double)n);
-    std::map<int, double> before;
-    for (const auto& [good, n] : parts)
-        before[good.Index()] = st->market.Stock(good);
-    const float bought = sim->BuyShips(*st, f, 100.0f);
-    CHECK(bought <= (float)ships + 1e-3f);
-    if (bought > 0.0f)
+    for (auto& kv : sim->Systems())
     {
-        for (const auto& [good, n] : parts)
-            CHECK(st->market.Stock(good) ==
-                  doctest::Approx(before[good.Index()] - n * bought).epsilon(1e-3));
-        for (const auto& [good, n] : guns)
-            CHECK(st->market.Stock(good) == doctest::Approx(n * 2.0 - n * bought).epsilon(1e-3));
+        StockShelf(kv.second);
+        for (ResourceType g : AllResourceTypes())
+            if (Goods::Def(g).IsModule())
+                kv.second.market.SetStock(g, 0.0);
     }
+    CHECK(sim->BuyShips(*st, f, 1.0f) == doctest::Approx(0.0f));
+    CHECK(sim->FleetOrders().empty());
+
+    // Guns on the shelf here at a price that is not dear: ships, and the goods are gone.
+    for (ResourceType g : AllResourceTypes())
+        if (Goods::Def(g).IsModule())
+            st->market.SetStock(g, 4.0 * st->profile.markets);
+    double gunsBefore = 0.0, partsBefore = 0.0;
+    for (ResourceType g : AllResourceTypes())
+        gunsBefore += Goods::Def(g).IsModule() ? st->market.Stock(g) : 0.0;
+    const ResourceType iron = Good::Named("Iron");
+    partsBefore = st->market.Stock(iron);
+    const float bought = sim->BuyShips(*st, f, 100.0f);
+    CHECK(bought > 0.0f);
+    CHECK(bought < 100.0f);  // the guns on the shelf limit it
+    double gunsAfter = 0.0;
+    for (ResourceType g : AllResourceTypes())
+        gunsAfter += Goods::Def(g).IsModule() ? st->market.Stock(g) : 0.0;
+    CHECK(gunsAfter < gunsBefore);
+    CHECK(st->market.Stock(iron) < partsBefore);
 
     // A ship's guns survive in its wreck at the share, and are the same every time.
     const Inventory a = Simulation::WreckModules(design, 1.0, 7);
@@ -515,4 +519,67 @@ TEST_CASE(
     }
     CHECK(Simulation::WreckModules(design, 0.0, 7).Amount(guns.front().first) <= 1);
     CHECK(units > 0);
+}
+
+TEST_CASE("a holding shops within reach: what is not here is bought next door, and the ships come "
+          "home later, counted nowhere on the road (#566)")
+{
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const FactionId f = st->agg.controller;
+    // A neighbour with a market that deals with it.
+    std::vector<std::pair<SystemState*, int>> shops = sim->MarketsWithin(st->id, false);
+    SystemState*                              next = nullptr;
+    for (const auto& [s, jumps] : shops)
+        if (jumps > 0 && next == nullptr)
+            next = s;
+    if (next == nullptr)
+        return;  // a world with nobody next door has nothing to shop at
+    for (auto& kv : sim->Systems())
+        StockShelf(kv.second);
+    const std::string design = Archetypes::ShipCatalogue().Pick(Factions::Id(f), "warship", 0);
+    const Ships::Cost guns = Simulation::GunCost(design);
+    REQUIRE_FALSE(guns.empty());
+    // No guns here; plenty next door.
+    for (ResourceType g : AllResourceTypes())
+        if (Goods::Def(g).IsModule())
+        {
+            st->market.SetStock(g, 0.0);
+            next->market.SetStock(g, 40.0);
+        }
+    sim->MindOf(f).treasury = 1e9;
+    st->agg.fleets.clear();
+    const float  presence = st->agg.presence[f];
+    const double nextGuns = next->market.Stock(guns.front().first);
+    const float  here = sim->BuyShips(*st, f, 0.2f);
+    CHECK(here == doctest::Approx(0.0f));                      // none arrived yet
+    REQUIRE_FALSE(sim->FleetOrders().empty());                 // they are on their way
+    CHECK(next->market.Stock(guns.front().first) < nextGuns);  // bought there
+    CHECK(st->agg.presence[f] == doctest::Approx(presence));   // counted nowhere meanwhile
+    // Ships on the road are in the save: lost otherwise, being counted nowhere else.
+    {
+        const TempDir     tmp;
+        const std::string path = tmp.Path("world.json");
+        REQUIRE(sim->SaveWorld(path));
+        // The registries are loaded already: only the world is made again.
+        auto again = std::make_unique<Simulation>();
+        again->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+        again->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
+        again->Seed(1234u);
+        again->InitGalaxy();
+        again->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+        REQUIRE(again->LoadWorld(path) == Save::Result::Ok);
+        REQUIRE(again->FleetOrders().size() == sim->FleetOrders().size());
+        CHECK(again->FleetOrders().front().design == sim->FleetOrders().front().design);
+        CHECK(again->FleetOrders().front().n == doctest::Approx(sim->FleetOrders().front().n));
+    }
+    // They come home when their time is up.
+    float coming = 0.0f;
+    for (const auto& o : sim->FleetOrders())
+        coming += o.n;
+    for (int i = 0; i < 200; i++)
+        sim->MaintainWorld(2.0f);
+    CHECK(coming > 0.0f);
+    CHECK(st->agg.presence[f] > presence);  // they are home, and counted again
 }

@@ -1286,6 +1286,17 @@ bool Simulation::SaveWorld(const std::string& path) const
             migrants.back()["cargo"] = { { Goods::Id(m.good), m.cargo } };
     }
     j["migrants"] = std::move(migrants);
+    // Ships a holding bought away from home, on their way (#566): counted nowhere else.
+    json orders = json::array();
+    for (const FleetOrder& o : fleetOrders_)
+        orders.push_back({ { "system", o.system },
+                           { "faction", Factions::Id(o.faction) },
+                           { "design", o.design },
+                           { "war", o.war },
+                           { "n", o.n },
+                           { "arrivesAt", o.arrivesAt } });
+    if (!orders.empty())
+        j["fleetOrders"] = std::move(orders);
     // What each faction's markets have taken in fees (#343), by faction id: only what is not
     // nothing. An older file has none, and its factions start with empty treasuries.
     json treasuries = json::object();
@@ -1683,6 +1694,22 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             m.id = nextMigrant_++;
             migrants_[m.id] = m;
             arrivals_.insert({ m.arrivesAt, m.id });
+        }
+    fleetOrders_.clear();
+    if (j.contains("fleetOrders") && j["fleetOrders"].is_array())
+        for (const json& oj : j["fleetOrders"])
+        {
+            FleetOrder o;
+            if (!oj.is_object() || !oj.contains("faction") ||
+                !FactionByName(oj["faction"], o.faction))
+                continue;
+            o.system = oj.value("system", std::string());
+            o.design = oj.value("design", std::string());
+            o.war = oj.value("war", std::string());
+            o.n = std::max(0.0f, oj.value("n", 0.0f));
+            o.arrivesAt = oj.value("arrivesAt", 0.0);
+            if (HasSystem(o.system) && o.n > 0.0f && !o.design.empty())
+                fleetOrders_.push_back(o);
         }
     for (const auto& kv : plans_)
         nextPlanId_ = std::max(nextPlanId_, kv.first + 1);
