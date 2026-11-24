@@ -67,6 +67,11 @@ struct Item
     float intensity = 1.0f;  // 0..1 — ore left in a belt, hull left on a ship, a looted wreck
     float ring = 0.0f;       // guide circle radius (a planet's orbit); 0 draws none
     bool  thrusting = false;
+
+    // How settled a body is, 0..1 (#515): what a material may light its night side by. One
+    // for anything nobody has said otherwise of -- the gallery, the editor -- so a card shows
+    // what the material can do; the game sets it from the world (MarkSettled).
+    float settled = 1.0f;
 };
 
 // Turns items into pixels, characters or lines of text. A backend may ignore any field
@@ -111,6 +116,12 @@ Item FromArchetype(const Archetype& a, Vector2 pos, float size);
 // End. Sorting here rather than in each backend is what makes `layer` mean the same
 // thing in all of them.
 void Present(std::vector<Item> items, IBackend& backend);
+
+// Where the world says people live (#515): a planet with a station in its reach -- eight of
+// its radii, which holds every orbit the generator gives a satellite -- is settled, more so
+// for each further station, and a planet with none shows a dark night side. Read from the
+// scene alone, so what a client draws and what the layout it was sent says cannot differ.
+void MarkSettled(std::vector<Item>& items);
 
 // The same, lit. Separate from the plain overload rather than a defaulted argument so the
 // callers that genuinely have no lights -- the tests, the agent -- say so by calling the

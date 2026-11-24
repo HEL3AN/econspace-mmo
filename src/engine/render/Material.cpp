@@ -33,6 +33,7 @@ const NamedSource SOURCES[] = {
     { Source::ItemAngle, "item.angle" },
     { Source::ItemPartShape, "item.partShape" },
     { Source::ItemFrame, "item.frame" },
+    { Source::ItemSettled, "item.settled" },
     { Source::LightDir, "light.dir" },
     { Source::LightTint, "light.tint" },
     { Source::LightSurface, "light.surface" },
@@ -188,6 +189,7 @@ UniformValue Resolve(const Binding& b, const MaterialInputs& in)
         case Source::ItemAngle: return One(in.angle);
         case Source::ItemPartShape: return FourOf(in.partShape);
         case Source::ItemFrame: return FourOf(in.frame);
+        case Source::ItemSettled: return One(haveItem ? in.item->settled : 0.0f);
 
         case Source::LightDir: return Two(in.light.dir.x, in.light.dir.y);
         case Source::LightTint: return Four(in.light.tint);

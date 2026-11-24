@@ -126,6 +126,26 @@ void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& 
     backend.End();
 }
 
+void MarkSettled(std::vector<Item>& items)
+{
+    for (Item& it : items)
+    {
+        if (it.kind != EntityKind::Planet)
+            continue;
+        int         stations = 0;
+        const float reach = it.size * 8.0f;
+        for (const Item& o : items)
+        {
+            if (o.kind != EntityKind::Station)
+                continue;
+            const float dx = o.pos.x - it.pos.x, dy = o.pos.y - it.pos.y;
+            if (dx * dx + dy * dy <= reach * reach)
+                stations++;
+        }
+        it.settled = stations == 0 ? 0.0f : std::fmin(1.0f, 0.6f + 0.2f * (float)stations);
+    }
+}
+
 static double g_frozen = -1.0;
 
 double LocalClock()

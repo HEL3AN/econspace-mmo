@@ -32,6 +32,7 @@ uniform float sea;           // sea level, 0..1 of the height noise: more is mor
 uniform float caps;          // sine of the latitude polar ice begins at
 uniform float cloud;         // 0..1, how much of the sky is cloud
 uniform float cities;        // 0..1, how bright the night side's cities are
+uniform float settled;       // item.settled -- 0..1, how much of the world's people live here (#515)
 uniform vec3  deep;          // open ocean
 uniform vec3  shallow;       // the shelf
 uniform vec3  lowland;       // wet, low land
@@ -65,6 +66,11 @@ void main()
     vec3 n = bNormal(local);
     vec3 b = bToBody(n, radians(tilt), turn);
     int  oct = bOctaves(radius, 7);
+    // Detail for a body that fills the screen (#515): finer than the fractal's own octaves,
+    // which halve in strength until nothing is left to see. It fades in from 120 px of radius
+    // to full at 520, and costs nothing for a body that is not close. `radius` is the painted
+    // radius, so a paint budget that shrinks the picture shrinks this with it.
+    float fine = smoothstep(120.0, 520.0, radius);
 
     // Where this world is in noise space: its own place, far from every other's.
     vec3 off = vec3(seed * 517.0, seed * 211.0 + 13.0, seed * 389.0 + 7.0);
@@ -97,6 +103,10 @@ void main()
     if (h > seaLevel - edgeWidth * 2.0)
     {
         grain = bNoise(p * 17.0) * 0.6 + bNoise(p * 41.0) * 0.4;
+        // Close up: stone, scrub and field at a scale a pixel can show.
+        if (fine > 0.0)
+            grain = mix(grain, grain * 0.55 + bNoise(p * 93.0) * 0.3 + bNoise(p * 211.0) * 0.15,
+                        fine);
         float rise = clamp((h - seaLevel) / 0.22, 0.0, 1.0);
         // Dry where the descending air of the subtropics is, and wherever the noise says.
         float moisture = bNoise(p * 2.2 + 5.0) + 0.3 * (grain - 0.5) + 0.25 -
@@ -112,6 +122,10 @@ void main()
         land = mix(land, ice, smoothstep(snowLine - 0.03, snowLine + 0.03, rise + 0.08 * grain));
     }
 
+    // A coast is ragged at the scale of a pixel too: the fractal ran out of octaves a long
+    // way before the picture did.
+    if (fine > 0.0)
+        h += (bNoise(p * 70.0) - 0.5) * 0.012 * fine;
     float isLand = smoothstep(seaLevel - edgeWidth, seaLevel + edgeWidth, h);
     vec3  albedo = mix(water, land, isLand);
     float wet = 1.0 - isLand;  // how much of the glint the surface takes: the sea, not the land
@@ -140,6 +154,8 @@ void main()
         float day = smoothstep(0.0, 0.35, dot(n, l));
         diffuse *= clamp(1.0 + (dot(relief, l) - dot(n, l)) * 1.5 * day, 0.55, 1.35);
     }
+    // Close up, the grain is also shade: small rises and hollows, on land, in the light.
+    diffuse *= 1.0 + (grain - 0.5) * 0.7 * fine * isLand;
     vec3  col = bTint(albedo, lightSurface, lightAmount) * diffuse;
 
     // The sun on the sea: a soft glint where the surface mirrors the light to the viewer.
@@ -147,13 +163,36 @@ void main()
     float glint = pow(max(dot(n, hv), 0.0), 140.0) * wet * lightAmount;
     col += lightTint.rgb * glint * 0.55;
 
-    // Cities, on land, where it is night.
+    // Cities (#515), where it is night and people live (`settled`: the world says so, the
+    // material does not guess). A network rather than a smear: where the land is low and near
+    // the sea, and neither frozen nor at the equator's edge, towns cluster; between clusters
+    // run faint roads; and each town is a point a pixel or two wide once the pixels are small
+    // enough to show one. Far off, only the glow of where they are density is left.
     float night = 1.0 - smoothstep(-0.2, 0.08, dot(n, l));
-    if (cities > 0.0 && wet < 0.5 && night > 0.0 && radius > 24.0)
+    if (cities * settled > 0.0 && wet < 0.5 && night > 0.0 && radius > 24.0)
     {
-        float town = bNoise(p * 38.0) * bNoise(p * 9.0 + 2.0);
-        float lit = smoothstep(0.42, 0.62, town) * (1.0 - capMask);
-        col += vec3(1.0, 0.72, 0.38) * lit * night * cities;
+        float above = max(h - seaLevel, 0.0);
+        float plain = exp(-above / 0.09);                         // coasts and plains
+        float climate = exp(-pow((abs(lat) - 0.38) / 0.4, 2.0));  // temperate, not polar
+        float field = bNoise(p * 4.5 + 31.0) * 0.7 + bNoise(p * 11.0 + 5.0) * 0.5;
+        float dens = smoothstep(0.36, 0.8, field * plain * (0.5 + climate)) * (1.0 - capMask);
+        // Joined by roads: the contours of a noise field, thin whatever the zoom.
+        float rf = bNoise(p * 14.0 + 77.0);
+        float road = 1.0 - smoothstep(0.0, max(fwidth(rf) * 1.2, 0.01), abs(rf - 0.5));
+        float roads = road * smoothstep(0.1, 0.5, dens) * 0.22;
+        // Towns: one point to a cell of a lattice, kept inside it, in the dense parts.
+        vec3  q = p * 24.0;
+        vec3  cellId = floor(q);
+        vec3  hh = bHash3(cellId + 9.0);
+        vec3  at = 0.25 + 0.5 * bHash3(cellId * 1.3 + 2.0);
+        float cellPx = radius * 2.0 / (3.1 * 24.0);
+        float dotR = 0.2 + 0.15 * hh.y;
+        float town = (1.0 - smoothstep(dotR * 0.4, dotR, length(fract(q) - at))) *
+                     step(1.0 - dens * 0.9, hh.x) * smoothstep(1.5, 3.5, cellPx);
+        float glow = smoothstep(0.5, 1.0, dens) * 0.1;
+        vec3  warm = mix(vec3(1.0, 0.62, 0.28), vec3(1.0, 0.9, 0.7), hh.z);
+        col += (warm * (town * (0.6 + 0.6 * hh.y) + roads * 0.8) + vec3(1.0, 0.7, 0.35) * glow) *
+               night * cities * settled;
     }
 
     // Cloud: its own fractal, warped harder and banded by latitude -- a belt over the
@@ -171,7 +210,12 @@ void main()
                      0.45 * exp(-pow((abs(lat) - 0.62) / 0.16, 2.0)) - 0.25 * exp(-pow((abs(lat) - 0.38) / 0.1, 2.0));
         float cover = clamp(cloud + (fract(seed * 5.13) - 0.5) * 0.15 + belt * 0.25, 0.0, 1.0);
         float cut = 1.0 - cover;
-        float a = smoothstep(cut - 0.02, cut + 0.14, c);
+        // Close up the edge is torn: erosion at the scale of a pixel, and a front that is
+        // sharp on its outside however large the picture, a soft heart inside.
+        if (fine > 0.0)
+            c += (bNoise(cp * 23.0) - 0.5) * 0.06 * fine;
+        float edge = mix(0.14, max(fwidth(c) * 2.0, 0.035), fine);
+        float a = smoothstep(cut - 0.02, cut + edge, c);
         // Thinner and greyer toward their own edges, thicker and whiter in their hearts.
         vec3 cloudCol = mix(vec3(0.78, 0.8, 0.84), vec3(0.97), smoothstep(cut, cut + 0.3, c));
         float cloudLight = bDiffuse(n, l, 0.18, lightAmount, ambient);

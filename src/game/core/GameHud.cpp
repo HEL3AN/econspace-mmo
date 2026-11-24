@@ -112,6 +112,7 @@ void Game::DrawWorld()
         scene.reserve(clientWorld_.size());
         for (const auto& e : clientWorld_)
             scene.push_back(e->Describe());
+        Render::MarkSettled(scene);  // a planet with a station near it shows cities (#515)
         // The system lights itself (#119): the stars are already in the scene, because
         // they are in the layout the server sent on entry, so nothing new crosses the
         // wire. A system with two of them is lit by two of them.
