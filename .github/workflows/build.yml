@@ -10,6 +10,13 @@ permissions:
   contents: read
 
 jobs:
+  # What runs when (owner, 2026-11-24). A pull request runs the quick gate: Formatting and
+  # Linux (GCC), which builds, runs every test and the agent bots, in about a quarter of an
+  # hour; agents build and test on Windows locally before they push. The slow jobs --
+  # Windows, macOS and the sanitizers, up to an hour -- run on every push to main, on
+  # workflow_dispatch and in release.yml, so a platform-only break shows up right after the
+  # merge without holding every pull request. The required check is Linux (GCC).
+  #
   # Whether anything but documentation changed (#475). Every other job needs it and is
   # skipped when the answer is no. A skipped job counts as passed for branch protection,
   # which `paths-ignore` on the trigger would not: it leaves a required check pending
@@ -86,7 +93,7 @@ jobs:
   build:
     name: Windows (MinGW / MSYS2)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
     runs-on: windows-latest
     defaults:
       run:
@@ -304,7 +311,7 @@ jobs:
   sanitizers:
     name: Linux (ASan + UBSan)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
@@ -347,7 +354,7 @@ jobs:
   macos:
     name: macOS (Apple Clang)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
