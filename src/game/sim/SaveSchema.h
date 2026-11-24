@@ -130,7 +130,9 @@ inline constexpr int WORLD_VERSION = 21;
 //    the account had. An older file's ships are wherever the pilot docks, with empty holds.
 // 11: a mission may be a survey job (#345): fly to a system a faction means to reach and scan
 //    it. A version 10 build knows no such mission and would keep one it could never hand in.
-inline constexpr int ACCOUNT_VERSION = 11;
+// 12: a mission may be a raid job (#345): a bounty on a lawless faction's base going up. A
+//    version 11 build knows no such mission and would keep one it could never hand in.
+inline constexpr int ACCOUNT_VERSION = 12;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 // corps.json, the players' corporations (#347). 1: the first.

@@ -1155,3 +1155,103 @@ TEST_CASE("a survey job that is not done in time fails with a penalty; one taken
     CHECK_FALSE(sim.AcceptMission(t, stale));
     CHECK(ActiveOf(t, MissionType::Survey) < 0);
 }
+
+// --- Raid bounties (#345) ---
+
+namespace
+{
+// A Guild holding with a station, and a pirate base going up in a system beside it.
+struct Raiding
+{
+    Holding     h;
+    std::string target;
+    int         plan = 0;
+    int         site = 0;
+};
+Raiding BaseGoingUp(Simulation& sim)
+{
+    Raiding u;
+    u.h = PlantOutpost(sim, Fac::TradersGuild());
+    sim.MindOf(Fac::TradersGuild()).stock = 4.0f * Simulation::OutpostCost();
+    sim.MindOf(Fac::Pirates()).stock = 4.0f * Simulation::OutpostCost();
+    for (const std::string& n : sim.Neighbors(u.h.system))
+    {
+        const SystemState* st = sim.SystemById(n);
+        if (u.plan == 0 && st != nullptr && !st->agg.claimed && !st->profile.outpostSite &&
+            sim.Settle(Fac::Pirates(), u.h.system, n))
+        {
+            u.target = n;
+            for (const auto& kv : sim.Plans())
+                if (kv.second.kind == Plan::Kind::Settle && kv.second.target == n)
+                    u.plan = kv.first;
+        }
+    }
+    REQUIRE(u.plan != 0);
+    const SystemState* st = sim.SystemById(u.target);
+    for (const auto& kv : st->keys)
+        if (kv.second == PlanOf(sim, u.plan)->site)
+            u.site = kv.first;
+    REQUIRE(u.site != 0);
+    return u;
+}
+}  // namespace
+
+TEST_CASE("a lawful faction pays a bounty on a pirate base going up, to the pilot who destroys it "
+          "(#345)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    const Raiding  u = BaseGoingUp(sim);
+    ClientSession& s = DockedAt(sim, u.h);
+
+    const int offer = OfferOf(s, MissionType::Raid, u.plan);
+    REQUIRE(offer >= 0);
+    const Mission job = s.missions.Offers()[(size_t)offer];
+    CHECK(job.faction == Fac::TradersGuild());
+    CHECK(job.against == Fac::Pirates());
+    CHECK(job.systemId == u.target);
+    CHECK(job.rewardMoney > 0.0);
+    CHECK(IsPlanJob(job.type));
+    REQUIRE(sim.AcceptMission(s, job.offerId));
+    CHECK(OfferOf(s, MissionType::Raid, u.plan) < 0);
+
+    // Somebody else's fire does not count; the pilot's does.
+    SystemState& st = *sim.SystemById(u.target);
+    REQUIRE(s.missions.Active()[0].progress == 0);
+    sim.StepPlayerUndock(s);
+    sim.ServerEnterSystem(s, u.target, s.systemId);
+    CHECK(sim.DamageStructure(st, u.site, 1.0e9f, &s));
+    const Mission& done = s.missions.Active()[0];
+    CHECK(done.progress == done.targetCount);
+    CHECK(sim.MissionCompletableNow(s, done));
+    sim.MaintainWorld(2.0f);
+    CHECK(PlanOf(sim, u.plan) == nullptr);  // "lost the outpost it was building"
+
+    const float  stock = sim.MindOf(Fac::TradersGuild()).stock;
+    const double money = s.account.GetMoney();
+    const double reward = done.rewardMoney;
+    REQUIRE(sim.CompleteMission(s, 0));
+    CHECK(s.account.GetMoney() == doctest::Approx(money + reward));
+    CHECK(sim.MindOf(Fac::TradersGuild()).stock ==
+          doctest::Approx(std::max(0.0, stock - reward / WorldRules::JobRules().creditsPerStock)));
+}
+
+TEST_CASE("a raid job whose base is brought down by somebody else closes with no penalty (#345)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    const Raiding  u = BaseGoingUp(sim);
+    ClientSession& s = DockedAt(sim, u.h);
+    const int      offer = OfferOf(s, MissionType::Raid, u.plan);
+    REQUIRE(offer >= 0);
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
+    const float standing = s.account.GetReputation(Fac::TradersGuild());
+    sim.DamageStructure(*sim.SystemById(u.target), u.site, 1.0e9f, nullptr);
+    sim.MaintainWorld(2.0f);
+    CHECK(ActiveOf(s, MissionType::Raid) < 0);
+    CHECK(s.account.GetReputation(Fac::TradersGuild()) == doctest::Approx(standing));
+}

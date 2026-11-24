@@ -1524,7 +1524,8 @@ bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m)
         case MissionType::Escort:
         case MissionType::Siege:
         case MissionType::Besiege:
-        case MissionType::Survey: break;  // a plan's, above
+        case MissionType::Survey:
+        case MissionType::Raid: break;  // a plan's, above
     }
     return false;
 }
