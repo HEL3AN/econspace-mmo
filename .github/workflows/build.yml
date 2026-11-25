@@ -9,13 +9,14 @@ on:
 permissions:
   contents: read
 
-# A newer push cancels the run still going for an older one on the same ref: merges to main
-# come in bursts, and each full run takes an hour, so they queued behind each other. The
-# latest commit carries every earlier one, so its run still catches what they broke. A pull
-# request's run is cancelled by its own next push the same way.
+# On a pull request a newer push cancels the run still going for an older one. On main a run is
+# never cancelled: merges come in bursts, and cancelling there meant the full matrix (Windows,
+# macOS, the sanitizers) never finished across a run of merges. Instead the group keeps
+# one run going and one waiting; a newer merge replaces the waiting one, so main still runs at
+# most twice per burst and the latest commit, which carries every earlier one, is always tested.
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # What runs when (owner, 2026-11-24). A pull request runs the quick gate: Formatting and
