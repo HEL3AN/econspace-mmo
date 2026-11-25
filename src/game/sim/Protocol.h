@@ -36,7 +36,8 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    82;  // 82: each market line carries a fifth number, whether the market makes or uses the
+    83;  // 83: a livery is a spec (#552): an id, or `id/` and a pilot's paint;
+         // 82: each market line carries a fifth number, whether the market makes or uses the
          // good, so an empty module row is listed only where a yard could fill it (#572);
          // 81: ships are told apart by a key (#572): `ships`, `ship`, `insure` and the switch
          // command name a ship's key -- its hull's catalog index, plus 1000 for each earlier
@@ -296,7 +297,8 @@ struct Command
     // -1: not this command. A refusal is a Notice saying why.
     int rentHangar = -1;
     // Paint the pilot's ships in a livery of the palette (#516): a livery id from
-    // materials.json marked `palette`; empty -- not this command. Art, never allegiance (#117).
+    // materials.json marked `palette`, or such an id with a pilot's own paint (core/Paint.h,
+    // #552); empty -- not this command. Art, never allegiance (#117).
     std::string setLivery;
     // A purchase (#343): as much of the good as the stock, the hold and the money allow, up
     // to the amount.

@@ -5,6 +5,7 @@
 // per-connection session would own is collected here first, instead of being scattered
 // through the same file as the world and the NPCs.
 
+#include "core/Paint.h"
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
@@ -1349,6 +1350,28 @@ static bool ValidLiveryId(const std::string& id)
     return true;
 }
 
+// A livery spec (#552): a palette id, plus a pilot's paint after a '/'. The paint is snapped
+// into the rules of core/Paint.h and written back in its one canonical form, so what is kept
+// and sent is always what the rules allow. False: the spec is not well formed; `palette` is
+// then its palette part when that is sound, else empty.
+static bool CanonicalLivery(const std::string& spec, std::string& out, std::string& palette)
+{
+    palette.clear();
+    out.clear();
+    if (spec.size() > 48)
+        return false;
+    bool         painted = false;
+    Paint::Paint paint;
+    std::string  id;
+    const bool   parsed = Paint::Split(spec, id, painted, paint);
+    if (ValidLiveryId(id))
+        palette = id;
+    if (!parsed || palette.empty())
+        return false;
+    out = painted ? Paint::Format(id, Paint::Snap(paint)) : id;
+    return true;
+}
+
 bool Simulation::SetLivery(ClientSession& s, const std::string& id)
 {
     if (id.empty() || id == "default")
@@ -1356,12 +1379,13 @@ bool Simulation::SetLivery(ClientSession& s, const std::string& id)
         s.livery.clear();
         return true;
     }
-    if (!ValidLiveryId(id))
+    std::string canonical, palette;
+    if (!CanonicalLivery(id, canonical, palette))
     {
-        s.RecordEvent(Ev::Kind::Notice, "Unknown livery '" + id + "'");
+        s.RecordEvent(Ev::Kind::Notice, "Unknown livery '" + id.substr(0, 48) + "'");
         return false;
     }
-    s.livery = id;
+    s.livery = canonical;
     return true;
 }
 
@@ -2485,8 +2509,14 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     if (j.contains("livery") && j["livery"].is_string())
     {
         const std::string id = j["livery"].get<std::string>();
-        if (ValidLiveryId(id))
-            s.livery = id;
+        std::string       canonical, palette;
+        if (CanonicalLivery(id, canonical, palette))
+            s.livery = canonical;
+        else if (!palette.empty())  // a damaged paint costs the paint, not the palette (#552)
+        {
+            s.livery = palette;
+            s.RecordEvent(Ev::Kind::Notice, "Your livery paint was damaged and was reset");
+        }
     }
 
     // Insurance and home (#344). A policy on a hull the account no longer has is dropped; a

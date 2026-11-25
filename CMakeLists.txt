@@ -185,6 +185,7 @@ add_library(engine STATIC
     src/engine/core/DataDir.cpp     # where data/ is, found at runtime (#399)
     src/engine/core/AdminChannel.cpp  # commands to a running server through its world folder (#400)
     src/engine/core/Faction.cpp
+    src/engine/core/Paint.cpp        # a pilot's own paint on a palette livery, within limits (#552)
     src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
     src/engine/core/Orbits.cpp       # planets and their satellites, as a function of time (#210)
@@ -628,6 +629,7 @@ add_executable(tests
     tests/ownership_tests.cpp      # whose a structure is, and handing it over (#468)
     tests/division_tests.cpp       # a corporation storage in divisions, a hangar each (#472)
     tests/delivery_tests.cpp       # NPC delivery quotes and freight, what a destroyed structure drops (#472)
+    tests/paint_tests.cpp          # a pilot's own paint on a livery, within limits (#552)
     tests/berth_tests.cpp          # ships have places and holds of their own (#472)
     tests/assets_tests.cpp         # the assets view, place by place (#472)
     tests/chart_sales_tests.cpp    # charts sold to factions, priced by what they lack (#431 slice 16)

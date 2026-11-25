@@ -21,7 +21,7 @@ windows) stays the palette livery's. The pilot repaints four things:
 
 - `base` -- the hull plating's tint;
 - `band` -- the accent, used for the stripes, bands and spine the pattern draws;
-- `pattern` -- which stripe layout: 1 end bands, 2 spine, 3 both (0, flat, is not offered);
+- `pattern` -- which stripe layout: 1 end bands, 2 spine, 3 chevrons (0, flat, is not offered);
 - `light` -- the window warmth, 0..3 in four steps (cold, white, warm, amber).
 
 Not offered: wear, grime, panel scale. They are craft, not taste, and a clean hull in a
@@ -46,9 +46,10 @@ through `Materials::ResolveLivery(spec)` into a `Livery` (palette entry with the
 fields replaced), cached by spec, so `Item::livery` stays an id string and nothing in the
 backends changes shape.
 
-**4. Where the limits live.** `data/world_rules.json` -> `paint`, a rule the server and the
-client both read (so the Fit tab painter and the server's clamp are one rule, never a
-copy). Colours are *quantised*, not free RGB: a curated grid of hue (24 steps) x lightness
+**4. Where the limits live.** `core/Paint.h`, in the engine both the server and the client
+link, so the Fit tab painter and the server's snap are one rule, never a copy. (They are not
+in `world_rules.json`: the client does not read it, and a rule the two sides could disagree on
+would be a bug, not a setting.) Colours are *quantised*, not free RGB: a curated grid of hue (24 steps) x lightness
 (5) x saturation (3), like a hand-picked swatch set, so every combination is one the art
 direction has seen. The grid is what the Fit tab shows; the string stores the exact value
 the grid yields, and the server snaps any colour to the nearest grid cell.
@@ -96,3 +97,10 @@ asset question), per-hull paint (one livery per pilot, as today), a paint market
    buttons, a preview of the hull as it will be drawn, over the existing `livery_*` row.
 3. **econagent.** `set_livery` accepts the paint (`base`, `band`, `pattern`, `light`),
    `observe` reports the pilot's livery spec and the allowed ranges.
+
+## Failure rules
+
+A spec from a client that parses is snapped; one that does not is refused with a notice and
+the pilot's livery is left as it was. A spec in a save that does not parse costs the paint,
+not the palette, with a notice on login. The renderer resolves specs into a ring of 512
+slots, so a crowd of distinct paints never grows the cache.
