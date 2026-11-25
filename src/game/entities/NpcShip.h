@@ -146,13 +146,13 @@ public:
         cargoAmount_ = amount > 0 ? amount : 0;
         cargoDue_ = due;
     }
+    ResourceType GetCargo() const { return cargo_; }
+    int          GetCargoAmount() const { return cargoAmount_; }
+    double       GetCargoDue() const { return cargoDue_; }
     // A hauler is its home's ship on loan (#584): the system it set out from, which is short of
     // it while it is away and has it back when it has unloaded. Empty for any other ship.
     void               SetLoanHome(std::string home) { loanHome_ = std::move(home); }
     const std::string& GetLoanHome() const { return loanHome_; }
-    ResourceType       GetCargo() const { return cargo_; }
-    int                GetCargoAmount() const { return cargoAmount_; }
-    double             GetCargoDue() const { return cargoDue_; }
     // Where it flies from now on, picking among them as it always does.
     void SetRoute(std::vector<Vector2> waypoints)
     {

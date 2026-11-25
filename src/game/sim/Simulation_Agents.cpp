@@ -1067,7 +1067,8 @@ void Simulation::RecallResponse(const Plan& p)
     SystemState* st = SystemById(p.target);
     if (st != nullptr && IsHot(*st))
         st->entities.erase(std::remove_if(st->entities.begin(), st->entities.end(),
-                                          [&](const std::unique_ptr<Entity>& e) {
+                                          [&](const std::unique_ptr<Entity>& e)
+                                          {
                                               return e->GetKind() == EntityKind::Npc &&
                                                      static_cast<const NpcShip&>(*e).GetTask() ==
                                                          p.id;

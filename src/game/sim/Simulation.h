@@ -1977,8 +1977,8 @@ public:
     // system, and (through heading, when given) facing away from it. Without such a gate,
     // SafeArrival.
     static constexpr float ARRIVAL_CLEARANCE = 200.0f;
-    Vector2                ArrivalFrom(const std::string& destId, const std::string& fromId,
-                                       const ClientSession* who = nullptr, float* heading = nullptr) const;
+    Vector2 ArrivalFrom(const std::string& destId, const std::string& fromId,
+                        const ClientSession* who = nullptr, float* heading = nullptr) const;
 
     // How close a body must be for a saved ship to be kept beside it rather than at a point
     // in space (#258): within this of its surface.
@@ -2137,9 +2137,7 @@ private:
     Population  PopulationOf(const SystemState& st, const Room& room) const;
 
     // Ships leaving (#295): those on their way, by id and by when they arrive. Saved.
-    std::map<long long, Migrant> migrants_;
-    // Traders each system has out on loan as haulers, rebuilt from migrants_ every pass.
-    std::map<std::string, int>             loans_;
+    std::map<long long, Migrant>           migrants_;
     std::set<std::pair<double, long long>> arrivals_;
     long long                              nextMigrant_ = 1;
     // What the director keeps in each system this pass, in the order of systems_: worked out
@@ -2166,6 +2164,8 @@ private:
     int       passSpread_ = 0;
     // One unit of the pass, or all of them when it is not spread; true when the pass is done.
     bool StepPass(MaintainCost* cost, std::chrono::steady_clock::time_point& lap);
+    // Traders each system has out on loan as haulers (#584), rebuilt from migrants_ every pass.
+    std::map<std::string, int> loans_;
     // Once a pass, before the director: who leaves, who has gone, who has arrived.
     void StepMigration();
     // A migrant has come: a number in a cold system, a ship at the gate in a hot one.
@@ -2759,7 +2759,7 @@ private:
     // Turned back with what is left: the escort and the freight go home, another sets out later.
     void TurnBackConvoy(Plan& p, const std::string& where, const std::string& why);
     // A convoy's end, counted for the report.
-    void                       TallyConvoy(const Plan& p, long long ConvoyTally::*what);
+    void                       TallyConvoy(const Plan& p, long long ConvoyTally::* what);
     ConvoyTally                convoyTally_;
     std::map<int, ConvoyTally> convoyRegions_;
     // Its ships, where the system it is in is hot: the hauler and the escort, on their way
