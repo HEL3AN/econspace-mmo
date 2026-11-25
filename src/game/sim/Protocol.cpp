@@ -1475,7 +1475,8 @@ json MarketJson(const Proto::Snapshot& s)
     json m = json::array();
     for (size_t i = 0; i < s.marketPrices.size(); i++)
         m.push_back({ s.marketPrices[i], i < s.marketAsk.size() ? s.marketAsk[i] : 0.0f,
-                      i < s.marketStock.size() ? s.marketStock[i] : 0 });
+                      i < s.marketStock.size() ? s.marketStock[i] : 0,
+                      i < s.marketTarget.size() ? s.marketTarget[i] : 0 });
     return m;
 }
 
@@ -1500,12 +1501,14 @@ void ReadMarket(const json& m, Proto::Snapshot& out)
 {
     for (const json& line : m)
     {
-        if (!line.is_array() || line.size() != 3 || !line[0].is_number() || !line[1].is_number() ||
-            !line[2].is_number())
+        if (!line.is_array() || (line.size() != 3 && line.size() != 4) || !line[0].is_number() ||
+            !line[1].is_number() || !line[2].is_number())
             continue;
         out.marketPrices.push_back(line[0].get<float>());
         out.marketAsk.push_back(line[1].get<float>());
         out.marketStock.push_back(line[2].get<int>());
+        out.marketTarget.push_back(line.size() == 4 && line[3].is_number() ? line[3].get<int>()
+                                                                           : 0);
     }
 }
 

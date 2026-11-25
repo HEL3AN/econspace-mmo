@@ -210,6 +210,19 @@ TEST_CASE("a market's price follows its stock, and its recipes run on what is in
     CHECK(HaulAmount(Market(), Market(), iron, cap) == 0);
 }
 
+TEST_CASE("a client's quote of several units is the market's own (#572)")
+{
+    GoodsFile          file;
+    const ResourceType iron = Good::Named("Iron");
+    Market             m;
+    // A thin shelf, where every unit moves the price: what a client rebuilds from the shelf and
+    // the target the snapshot carries is what the market quotes.
+    m.SetStock(iron, m.TargetOf(iron) * 0.6);
+    for (int n : { 1, 3, 6, 9 })
+        CHECK(Goods::QuoteBuyOn(m.GetBasePrice(iron), m.TargetOf(iron), m.Stock(iron), n) ==
+              doctest::Approx(m.QuoteBuy(iron, n)));
+}
+
 TEST_CASE("buying at a station: the stock, the hold and the money decide, and the fee is paid "
           "(#343, #348)")
 {
@@ -376,6 +389,7 @@ TEST_CASE("the wire carries a purchase and the market's bid, ask and stock (#343
     s.marketPrices = { 9.5f, 14.25f };
     s.marketAsk = { 10.5f, 15.75f };
     s.marketStock = { 400, 0 };
+    s.marketTarget = { 500, 60 };
     s.tradeAcks.push_back(Proto::TradeAck{ 1, 0, 0.0, 0.0, 5, 80.0, 1.6 });
     Proto::Snapshot r;
     REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), r));
@@ -383,6 +397,8 @@ TEST_CASE("the wire carries a purchase and the market's bid, ask and stock (#343
     CHECK(r.marketAsk[1] == doctest::Approx(15.75f));
     CHECK(r.marketStock[0] == 400);
     CHECK(r.marketStock[1] == 0);
+    REQUIRE(r.marketTarget.size() == 2);
+    CHECK(r.marketTarget[0] == 500);
     REQUIRE(r.tradeAcks.size() == 1);
     CHECK(r.tradeAcks[0].bought == 5);
     CHECK(r.tradeAcks[0].cost == doctest::Approx(80.0));

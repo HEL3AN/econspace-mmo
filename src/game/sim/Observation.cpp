@@ -3,6 +3,7 @@
 #include "core/Archetype.h"
 #include "core/Fitting.h"
 #include "core/Faction.h"
+#include "economy/Market.h"
 #include "economy/Resource.h"
 #include "entities/ShipType.h"
 #include "entities/Structure.h"
@@ -480,9 +481,15 @@ FitQuote QuoteFit(const View& view, const std::vector<Ships::FitLine>& fit)
     const bool yard = AtShipyard(view, &markup);
     // Modules are goods (#472 slice 10): what the fit adds comes from the hangar here, then
     // the hold, then this market's shelf; what it takes out goes to the hangar, else the hold.
-    // The market's part is priced at its ask a unit, which is what the server's next unit
-    // costs and a little less than the whole, so the server may say no to a close call.
+    // The market's part is priced as the server prices it: the same curve, a unit at a time
+    // (Market::QuoteBuyOn, from the shelf and the target the snapshot carries), at the
+    // pilot's standing here, and the fee on top.
     const Proto::PlayerView& p = view.snapshot->player;
+    // A station that thinks badly of a pilot charges more (the server's rule).
+    const FactionId seller = DockedFaction(view);
+    const float     rep =
+        (size_t)seller.Index() < p.reputation.size() ? p.reputation[(size_t)seller.Index()] : 0.0f;
+    const double standing = 1.0 / std::min(1.0f, SellPriceMultiplier(Factions::TierOf(rep)));
     const Ships::ModuleMoves moves = Ships::RefitMoves(*hull, *now, q.design);
     const std::vector<int>&  hangar = p.hangar.capacity > 0 ? p.hangar.goods : p.storedByType;
     auto                     at = [](const std::vector<int>& v, int i)
@@ -495,12 +502,16 @@ FitQuote QuoteFit(const View& view, const std::vector<Ships::FitLine>& fit)
         const int   have = at(hangar, g.Index()) + at(p.cargoByType, g.Index());
         const int   buy = std::max(0, n - have);
         const int   shelf = at(view.snapshot->marketStock, g.Index());
+        const int   target = at(view.snapshot->marketTarget, g.Index());
         const float ask = g.Index() < (int)view.snapshot->marketAsk.size()
                               ? view.snapshot->marketAsk[(size_t)g.Index()]
                               : 0.0f;
         q.fromHere += n - buy;
         q.toBuy += buy;
-        q.price += buy * ask;
+        // (A server that did not send the target is priced at the ask a unit, as before.)
+        q.price += target > 0
+                       ? Goods::QuoteBuyOn(Goods::Def(g).price, target, shelf, buy) * standing
+                       : buy * ask;
         if (buy > shelf && q.problem.empty())
             q.problem = Fmt("%d more %s needed: you have %d and this market has %d", buy - shelf,
                             ResourceName(g).c_str(), have, shelf);

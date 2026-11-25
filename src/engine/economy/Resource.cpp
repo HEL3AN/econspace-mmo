@@ -441,6 +441,24 @@ std::vector<ResourceType> Mined()
     return out;
 }
 
+double PriceOnShelf(double base, double target, double stock)
+{
+    const MarketRules& k = Rules();
+    // Server-side and never compared across machines (the snapshot carries the result), so pow
+    // is fine here.
+    const double short_ = target / std::max(stock, 0.5);
+    return base * std::clamp(std::pow(short_, k.elasticity), k.floor, k.ceiling);
+}
+
+double QuoteBuyOn(double base, double target, double stock, int amount)
+{
+    const double spread = 1.0 + Rules().spread * 0.5;
+    double       s = stock, sum = 0.0;
+    for (int i = 0; i < amount && s >= 1.0; i++, s -= 1.0)
+        sum += PriceOnShelf(base, target, s) * spread;
+    return sum;
+}
+
 const MarketRules& Rules()
 {
     return g_registry.rules;
