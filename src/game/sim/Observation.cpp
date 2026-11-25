@@ -1101,6 +1101,44 @@ std::string DescribeTrade(const Proto::TradeView& t)
     return out;
 }
 
+std::string DescribeBoard(const std::vector<Proto::DealView>& board, double now)
+{
+    std::string out;
+    for (const Proto::DealView& d : board)
+    {
+        auto bundle = [](const std::vector<Exchange::GoodLine>& goods, long long credits,
+                         const std::vector<std::string>& charts)
+        {
+            std::string items;
+            auto        add = [&](const std::string& part)
+            { items += (items.empty() ? "" : ", ") + part; };
+            for (const Exchange::GoodLine& g : goods)
+                add(Fmt("%d %s", g.amount, ResourceName(ResourceType::FromIndex(g.type)).c_str()));
+            if (credits > 0)
+                add(Fmt("%lld cr", credits));
+            for (const std::string& c : charts)
+                add("a chart (" + c + ")");
+            return items.empty() ? std::string("nothing") : items;
+        };
+        out += Fmt("#%d  %s%s at %s%s: gives %s, for %s; ", d.id, d.issuer.c_str(),
+                   d.to.empty() ? "" : (" -> " + d.to).c_str(), d.place.c_str(),
+                   d.here ? " (here)" : "", bundle(d.give, d.giveCredits, d.giveCharts).c_str(),
+                   bundle(d.ask, d.askCredits, {}).c_str());
+        out += Fmt("%.1f days left; market fee to take it %.0f cr", (d.deadline - now) / 86400.0,
+                   d.fee);
+        if (d.mine)
+            out += "  [yours: deal_act cancel with id]";
+        else if (d.canAccept)
+            out += "  [you can take it: deal_act accept with id]";
+        else if (!d.why.empty())
+            out += "  [not now: " + d.why + "]";
+        if (!d.note.empty())
+            out += "  WARNING: " + d.note;
+        out += "\n";
+    }
+    return out;
+}
+
 std::string DescribeHangar(const View& view)
 {
     if (view.snapshot == nullptr)
@@ -1457,6 +1495,10 @@ std::string Describe(const View& view, Detail detail)
                p.stabilizer ? "on" : "off", p.weaponOn ? "ARMED" : "off", p.mining ? "on" : "off",
                p.autopilot ? "  autopilot engaged" : "");
     out += "       livery " + DescribeLivery(p.livery) + "\n";
+    out += DescribeTrade(p.trade);  // (#473)
+    if (!p.board.empty())
+        out += Fmt("CONTRACTS  %d exchange contract%s here or yours: the deals tool lists them\n",
+                   (int)p.board.size(), p.board.size() == 1 ? "" : "s");
     // Under the law (#431 slice 10), once there is anything to say.
     if (p.criminalLeft > 0.0)
     {

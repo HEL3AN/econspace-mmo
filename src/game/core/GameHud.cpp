@@ -326,6 +326,14 @@ void Game::SetupWindows()
     trade.context = CTX_DOCKED;
     trade.reopen = false;
     desk_.AddWindow(trade, "TRADE", false, [this](Ui::Frame& f) { DrawTradeContent(f); });
+    // The exchange contracts (#473): a tab of the station's market, like the missions.
+    WindowSpec board = panel(WIN_BOARD, "Contracts", "Contracts: what pilots put up here",
+                             Anchor::TopLeft, DOCKED_STACK);
+    board.resizable = true;
+    board.minSize = { 300.0f, 300.0f };
+    board.tabOf = WIN_MARKET;
+    board.reopen = false;
+    desk_.AddWindow(board, "CONTRACTS", false, [this](Ui::Frame& f) { DrawBoardContent(f); });
     // The inventory (#472): the hold and whatever else holds goods here. In space and docked
     // alike, in the bottom right corner, which nothing else takes in either: beside the
     // station's stack docked, so a good can be dragged from it onto the market. It is opened

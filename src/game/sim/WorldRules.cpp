@@ -23,6 +23,7 @@ WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
 WorldRules::Hangars     g_hangars;
 WorldRules::Offices     g_offices;
+WorldRules::Exchange    g_exchange;
 WorldRules::Wrecks      g_wrecks;
 WorldRules::Deliveries  g_deliveries;
 WorldRules::Security    g_security;
@@ -94,8 +95,8 @@ bool Load(const std::string& path)
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
             it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
-            it.key() != "hangars" && it.key() != "offices" && it.key() != "deliveries" &&
-            it.key() != "wrecks" && it.key() != "ore")
+            it.key() != "hangars" && it.key() != "offices" && it.key() != "exchange" &&
+            it.key() != "deliveries" && it.key() != "wrecks" && it.key() != "ore")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -438,6 +439,22 @@ bool Load(const std::string& path)
         g_error = path + ": offices: periodDays and units must be more than zero, rent not below";
         return false;
     }
+    // Exchange between pilots (#473).
+    Exchange ex;
+    if (j.contains("exchange") && !ReadSection(j["exchange"], path + ": exchange",
+                                               { { "postingFee", &ex.postingFee },
+                                                 { "defaultDays", &ex.defaultDays },
+                                                 { "maxDays", &ex.maxDays },
+                                                 { "warnRatio", &ex.warnRatio } },
+                                               { { "maxOpen", &ex.maxOpen } }, {}, g_error))
+        return false;
+    if (ex.postingFee < 0.0 || ex.maxOpen < 1 || ex.defaultDays <= 0.0 ||
+        ex.maxDays < ex.defaultDays || ex.warnRatio <= 1.0)
+    {
+        g_error = path + ": exchange: a fee not below zero, maxOpen at least 1, defaultDays "
+                         "above zero and no more than maxDays, warnRatio above 1";
+        return false;
+    }
     // What a lost ship's wreck keeps of its fitted modules (#472 slice 10).
     Wrecks wr;
     if (j.contains("wrecks") &&
@@ -597,6 +614,7 @@ bool Load(const std::string& path)
     g_licences = lc;
     g_hangars = hg;
     g_offices = of;
+    g_exchange = ex;
     g_wrecks = wr;
     g_deliveries = dl;
     g_security = sec;
@@ -754,6 +772,16 @@ const Hangars& HangarRules()
 void SetHangarRules(const Hangars& h)
 {
     g_hangars = h;
+}
+
+const Exchange& ExchangeRules()
+{
+    return g_exchange;
+}
+
+void SetExchangeRules(const Exchange& e)
+{
+    g_exchange = e;
 }
 
 const Offices& OfficeRules()

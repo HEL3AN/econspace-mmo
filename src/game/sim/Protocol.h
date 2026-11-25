@@ -38,7 +38,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    88;  // 88: a direct trade between two docked pilots (#473): the action `deal` and a
+    89;  // 89: exchange contracts (#473): the action `board` (post, accept, cancel) and a
+         // PlayerView's `board`, the contracts a pilot may take here or has posted;
+         // 88: a direct trade between two docked pilots (#473): the action `deal` and a
          // PlayerView's `trade`, each side's bundle as the server describes it; 87: a ship is named
          // by its id (#356) -- `ship` of the buy, switch and insure verbs and the view's `ships`
          // and `ship` -- the hull's stock design, `<design>#<n>` for the n-th more, never a catalog
@@ -481,6 +483,20 @@ struct SetDefence
 // (with the named pilot; both opening toward each other starts it), "put" or "withdraw" (this
 // bundle, in or out of the pilot's side of it), "confirm" (at the revision `rev` it was seen
 // at) or "cancel". Any change by either side un-confirms both.
+// An exchange contract at the station docked at (#473): `action` is "post" (a giving bundle
+// held until someone docked here takes it for the asking bundle, `days` of world time, `to`
+// open when empty, else a pilot's name or a corporation's ticker; `corp`: as the pilot's
+// corporation, from its office and treasury), "accept" (contract `id`; `corp`: for the
+// corporation, from and into its office and treasury) or "cancel" (contract `id`, from anywhere).
+struct Board
+{
+    std::string      action;
+    int              id = 0;
+    Exchange::Bundle giving, asking;
+    std::string      to;
+    int              days = 0;
+    bool             corp = false;
+};
 struct Deal
 {
     std::string      action;
@@ -497,7 +513,7 @@ using Action =
                  Act::RequestAssets, Act::Deliver, Act::SwitchShip, Act::BuyShip, Act::InsureShip,
                  Act::PayBounty, Act::AcceptOffer, Act::CompleteMission, Act::GiveOrder,
                  Act::AbortOrder, Act::Jump, Act::Loot, Act::Scan, Act::Deploy, Act::Dismantle,
-                 Act::SetDefence, Act::Deal>;
+                 Act::SetDefence, Act::Deal, Act::Board>;
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
 // no translation between "what the world says an object is" and "what the snapshot says",
@@ -694,6 +710,28 @@ struct TradeView
     bool Empty() const { return with.empty() && asking.empty() && invites.empty(); }
 };
 
+// One exchange contract as the server describes it to the pilot reading it (#473): who gives
+// what for what, where, until when, and whether this pilot may take it. A chart in the giving
+// bundle is told as what is new to this pilot, never by name.
+struct DealView
+{
+    int                             id = 0;
+    std::string                     issuer;  // a pilot's name, or a corporation's name and ticker
+    std::string                     to;      // empty: open; else who may take it
+    std::string                     place;   // the station and its system
+    std::string                     system;
+    bool                            here = false;  // at the station this pilot is docked at
+    bool                            mine = false;  // posted by this pilot, or their corporation
+    double                          deadline = 0.0;
+    std::vector<Exchange::GoodLine> give, ask;
+    long long                       giveCredits = 0, askCredits = 0;
+    std::vector<std::string>        giveCharts;
+    double      fee = 0.0;  // what taking it costs the taker in the market's fee
+    bool        canAccept = false;
+    std::string why;   // when it cannot be taken now
+    std::string note;  // a price far from the market's, said
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -769,6 +807,7 @@ struct PlayerView
     std::vector<LockedHangarView> locked;     // hangars out of reach, with the price to fetch them
     std::vector<ShipmentView>     shipments;  // goods on their way (#472 slice 6)
     TradeView                     trade;      // a direct trade, or the invitations to one (#473)
+    std::vector<DealView>         board;      // exchange contracts here and the pilot's own (#473)
     // Everything the pilot owns, by place, in the one snapshot that follows a request for it
     // (#472 slice 9): `hasAssets` says this is that one.
     bool                   hasAssets = false;

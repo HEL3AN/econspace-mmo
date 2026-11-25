@@ -2262,15 +2262,39 @@ std::vector<Tool> BuildTools()
           "is a copy: you keep yours, and the buyer is shown only what is new to them until "
           "the trade is done. A chart you buy is second-hand, may be resold to a pilot, and is "
           "never bought by a faction. What goods and modules a hold has no room for goes to "
-          "your hangar there.",
-          Obj({ { "action", Str("open, put, withdraw, confirm or cancel") },
+          "your hangar there. EXCHANGE CONTRACTS, held at a station until somebody takes them "
+          "(the deals tool lists them): 'post' puts up give_resource and give_amount (from a "
+          "container if not the hold), give_credits and give_chart, held by the server from "
+          "that moment, for ask_resource and ask_amount and ask_credits (never a chart), to "
+          "anyone docked there -- or to a pilot's name, or 'corp:TICKER' -- for days (at most "
+          "fourteen); 'accept' takes contract id; 'cancel' with id takes yours back from "
+          "anywhere. Posting costs a flat fee and a pilot keeps only a few open; taking pays "
+          "the market's fee. as_corp posts or takes for your corporation, from its office and "
+          "treasury (the CEO or a director). What is not taken by its deadline goes back to "
+          "whoever posted it, and you are told in your journal even when you were away.",
+          Obj({ { "action", Str("open, put, withdraw, confirm, cancel (a trade, or a contract "
+                                "with id), post or accept (contracts)") },
                 { "with", Str("open: the pilot's name") },
                 { "resource", Str("put/withdraw: a good by name, e.g. 'Iron'") },
                 { "amount", Num("put/withdraw: how many of it") },
                 { "from", Str("put: the container the goods are in (default 'hold')") },
                 { "credits", Num("put/withdraw: whole credits") },
                 { "chart", Str("put/withdraw: a system's id or name from your own charts") },
-                { "rev", Num("confirm: the revision observe showed for the trade") } },
+                { "rev", Num("confirm: the revision observe showed for the trade") },
+                { "id", Num("accept/cancel: the contract's number, from deals") },
+                { "give_resource", Str("post: a good to put up, by name") },
+                { "give_amount", Num("post: how many of it") },
+                { "give_from", Str("post: the container it is in (default 'hold', or 'storage' "
+                                   "as_corp)") },
+                { "give_credits", Num("post: whole credits to put up") },
+                { "give_chart", Str("post: a system you charted, to put up as a copy") },
+                { "ask_resource", Str("post: a good wanted in return, by name") },
+                { "ask_amount", Num("post: how many of it") },
+                { "ask_credits", Num("post: whole credits wanted") },
+                { "to", Str("post: a pilot's name, or corp:TICKER; empty: anyone docked there") },
+                { "days", Num("post: how long it stays up (default 7, at most 14)") },
+                { "as_corp", Bool("post/accept: for your corporation, from its office and "
+                                  "treasury") } },
               { "action" }),
           [](const Rpc::Json& args)
           {
@@ -2281,9 +2305,65 @@ std::vector<Tool> BuildTools()
               Proto::Act::Deal c;
               c.action = args["action"].get<std::string>();
               if (c.action != "open" && c.action != "put" && c.action != "withdraw" &&
-                  c.action != "confirm" && c.action != "cancel")
-                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is one of open, put, withdraw, "
-                                                         "confirm, cancel" };
+                  c.action != "confirm" && c.action != "cancel" && c.action != "post" &&
+                  c.action != "accept")
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "action is one of open, put, withdraw, confirm, cancel, post, "
+                                    "accept" };
+              // A contract: posting, taking, or cancelling one by its number.
+              if (c.action == "post" || c.action == "accept" ||
+                  (c.action == "cancel" && args.contains("id")))
+              {
+                  Proto::Act::Board b;
+                  b.action = c.action;
+                  b.id = (int)NumberOr(args, "id", 0);
+                  b.corp = args.contains("as_corp") && args["as_corp"].is_boolean() &&
+                           args["as_corp"].get<bool>();
+                  if (c.action != "post" && b.id <= 0)
+                      throw Rpc::Error{ Rpc::INVALID_PARAMS, c.action + " needs id: the contract's "
+                                                                        "number from deals" };
+                  if (c.action == "post")
+                  {
+                      auto side = [&](const char* prefix, Exchange::Bundle& out, bool give)
+                      {
+                          const std::string p = prefix;
+                          if (args.contains(p + "_resource"))
+                          {
+                              Rpc::Json r = Rpc::Json::object();
+                              r["resource"] = args[p + "_resource"];
+                              Exchange::GoodLine g;
+                              g.type = ResourceArg(r);
+                              g.amount = (int)NumberOr(args, (p + "_amount").c_str(), 0);
+                              if (g.amount <= 0)
+                                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                                    p + "_amount is how many, at least 1" };
+                              if (give)
+                                  g.from = args.value("give_from", std::string());
+                              out.goods.push_back(std::move(g));
+                          }
+                          out.credits = (long long)NumberOr(args, (p + "_credits").c_str(), 0);
+                          if (give && args.contains("give_chart") && args["give_chart"].is_string())
+                              out.charts.push_back(args["give_chart"].get<std::string>());
+                      };
+                      side("give", b.giving, true);
+                      side("ask", b.asking, false);
+                      b.to = args.value("to", std::string());
+                      b.days = (int)NumberOr(args, "days", 0);
+                      if (b.giving.Empty())
+                          throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                            "post puts something up: give_resource and "
+                                            "give_amount, give_credits or give_chart" };
+                  }
+                  const int   seq = g_session.LastEventSeq();
+                  std::string why;
+                  if (!Confirm(b, why))
+                      return "deal_act: " + why;
+                  std::string said;
+                  for (const Ev::Event& e : g_session.EventsSince(seq))
+                      if (e.kind == Ev::Kind::Notice)
+                          said += (said.empty() ? "" : "\n") + e.text;
+                  return "deal_act " + c.action + ": " + (said.empty() ? "sent" : said);
+              }
               if (c.action == "open")
               {
                   if (!args.contains("with") || !args["with"].is_string())
@@ -2329,6 +2409,24 @@ std::vector<Tool> BuildTools()
               const std::string now = Obs::DescribeTrade(g_session.Snapshot().player.trade);
               return "deal_act " + c.action + ": " + (said.empty() ? "sent" : said) + "\n" +
                      (now.empty() ? "no trade open" : now);
+          } });
+
+    tools.push_back(
+        { "deals",
+          "The exchange contracts you may read (#473): those open to anyone docked at this "
+          "station, those offered to you or your corporation, and your own and your "
+          "corporation's wherever they are. Each says who posts it, what it gives and what it "
+          "asks -- a chart only as what is new to you, never where -- until when, the market's "
+          "fee to take it, and whether you may take it now or why not. A price far from the "
+          "market's is marked WARNING. Take one with deal_act accept and its number.",
+          Obj({}), [](const Rpc::Json&)
+          {
+              RequireLive();
+              const Proto::Snapshot& snap = g_session.Snapshot();
+              const std::string      text = Obs::DescribeBoard(snap.player.board, snap.time);
+              return text.empty() ? std::string("No contracts here or yours. deal_act post puts "
+                                                "one up.")
+                                  : text;
           } });
 
     tools.push_back(
@@ -3166,6 +3264,11 @@ int Selftest(const std::vector<Tool>& tools)
     note("deal_act", (noPilot.find("no pilot of that name") != std::string::npos ||
                       noPilot.find("dock at a station first") != std::string::npos) &&
                          noRev.find("rev") != std::string::npos);
+    // ...and a board with nothing on it says so, and a contract needs its number to be taken.
+    note("deals",
+         RunTool(tools, "deals", Rpc::Json::object()).find("No contracts") != std::string::npos &&
+             RunTool(tools, "deal_act", Rpc::Json{ { "action", "accept" } }).find("needs id") !=
+                 std::string::npos);
 
     // 7) Salvage (#297): a wreck that is not there is named as such, and one that is gets
     // searched or approached -- whichever its distance calls for. Which wrecks a system has

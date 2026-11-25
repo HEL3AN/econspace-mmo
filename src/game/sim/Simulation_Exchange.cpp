@@ -185,25 +185,45 @@ Proto::TradeView Simulation::TradeViewFor(const ClientSession& s) const
 
 // --- What a chart given to another pilot is ---------------------------------------------------
 
-Simulation::ChartGift Simulation::ChartGiftFor(const ClientSession& from, const ClientSession& to,
-                                               const std::string& systemId) const
+ChartCopy Simulation::MakeChartCopy(const ClientSession& from, const std::string& systemId) const
+{
+    ChartCopy c;
+    c.system = systemId;
+    const ChartReport r = ReportOf(from, systemId, false);
+    c.charted = r.charted;
+    if (!r.charted)
+        return c;
+    c.observed = r.observed;
+    c.at = r.at;
+    c.stations = r.stations;
+    c.structures = r.structures;
+    c.finds = r.finds;
+    const auto look = from.sightings.find(systemId);
+    if (r.observed && look != from.sightings.end())
+        c.seen = look->second;
+    const auto how = from.secondHand.find(systemId);
+    c.hops = how == from.secondHand.end() ? 0 : how->second.hops;
+    c.from = from.accountName;
+    return c;
+}
+
+Simulation::ChartGift Simulation::ChartGiftOfCopy(const ChartCopy& c, const ClientSession& to) const
 {
     ChartGift g;
-    g.system = systemId;
-    const ChartReport r = ReportOf(from, systemId, false);
-    g.charted = r.charted;
-    if (!r.charted)
+    g.system = c.system;
+    g.charted = c.charted;
+    if (!c.charted)
         return g;
-    g.geography = !Knows(to, systemId);
-    if (r.observed)
+    g.geography = !Knows(to, c.system);
+    if (c.observed)
     {
-        const WorldLoader::Sighting theirs = LastSeen(to, systemId);
-        g.fresher = !theirs.Observed() || r.at > theirs.at || theirs.outdated;
-        g.seenAt = r.at;
-        g.stations = r.stations;
-        g.structures = r.structures;
+        const WorldLoader::Sighting theirs = LastSeen(to, c.system);
+        g.fresher = !theirs.Observed() || c.at > theirs.at || theirs.outdated;
+        g.seenAt = c.at;
+        g.stations = c.stations;
+        g.structures = c.structures;
     }
-    for (const std::string& key : r.finds)
+    for (const std::string& key : c.finds)
         if (to.known.count(key) == 0)
         {
             g.finds.push_back(key);
@@ -212,8 +232,14 @@ Simulation::ChartGift Simulation::ChartGiftFor(const ClientSession& from, const 
                 (g.closing < 0.0 || h->closesAt - time_ < g.closing))
                 g.closing = h->closesAt - time_;
         }
-    const auto how = from.secondHand.find(systemId);
-    g.hops = how == from.secondHand.end() ? 0 : how->second.hops;
+    g.hops = c.hops;
+    return g;
+}
+
+Simulation::ChartGift Simulation::ChartGiftFor(const ClientSession& from, const ClientSession& to,
+                                               const std::string& systemId) const
+{
+    ChartGift  g = ChartGiftOfCopy(MakeChartCopy(from, systemId), to);
     const auto sold = from.chartSales.find(systemId);
     g.sold = sold == from.chartSales.end() ? 0 : sold->second;
     return g;
@@ -479,34 +505,35 @@ void Simulation::TradeLog(const ClientSession& a, const ClientSession& b, const 
 
 void Simulation::GrantChart(ClientSession& from, ClientSession& to, const std::string& systemId)
 {
-    const ChartGift g = ChartGiftFor(from, to, systemId);
     // The seller keeps theirs; it is only counted, so the next buyer is told how common it is.
     from.chartSales[systemId]++;
-    if (!OnPublicCharts(systemId))
+    ApplyChartCopy(to, MakeChartCopy(from, systemId));
+}
+
+void Simulation::ApplyChartCopy(ClientSession& to, const ChartCopy& c)
+{
+    const ChartGift g = ChartGiftOfCopy(c, to);
+    if (!OnPublicCharts(c.system))
     {
         // Written the way a visit would write it -- never ChartBy: no first contact is made by a
         // sale -- and marked as a copy unless the buyer already had it from their own eyes.
-        if (to.known.insert(ChartKey(systemId)).second)
+        if (to.known.insert(ChartKey(c.system)).second)
         {
             ClientSession::Provenance how;
-            how.from = from.accountName;
+            how.from = c.from;
             how.at = time_;
-            how.hops = g.hops + 1;
-            to.secondHand[systemId] = std::move(how);
+            how.hops = c.hops + 1;
+            to.secondHand[c.system] = std::move(how);
         }
-        corps_.AddCharts(to.accountName, { systemId });
+        corps_.AddCharts(to.accountName, { c.system });
     }
     for (const std::string& key : g.finds)
         to.known.insert(key);
     // The newer look wins; what the buyer saw more recently is never overwritten.
-    if (g.fresher)
+    if (g.fresher && c.observed)
     {
-        const auto look = from.sightings.find(systemId);
-        if (look != from.sightings.end())
-        {
-            to.sightings[systemId] = look->second;
-            to.sightings[systemId].outdated = false;
-        }
+        to.sightings[c.system] = c.seen;
+        to.sightings[c.system].outdated = false;
     }
     TouchKnown(to);
 }

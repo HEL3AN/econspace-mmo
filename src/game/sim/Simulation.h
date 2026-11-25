@@ -59,6 +59,28 @@ enum class NpcRole;
 // A short market's delivery contract (#343, #407): bring `amount` of `good` to the station a
 // save knows as `station` in `system` by `deadline`, for `reward` -- which `faction` set aside
 // from its treasury when it posted it. On the boards until a pilot takes it. Saved.
+//
+// The same record is an exchange between pilots (#473, documents/player_exchange.md) when `kind`
+// is "exchange": a pilot, or a corporation, put up `giveGoods`, `giveCredits` and `giveCharts` --
+// held here, at the station, until somebody docked there takes them for what `asking` names, or
+// the time is up and they go back. What the market has is not in it: the faction fields are the
+// market's, the escrow is the issuer's.
+//
+// A chart in an escrow is a copy made when it was posted -- what the poster had of the system
+// then -- so a deal can be taken while the poster is away.
+struct ChartCopy
+{
+    std::string              system;
+    bool                     charted = false;
+    bool                     observed = false;
+    double                   at = -1.0;
+    int                      stations = 0, structures = 0;
+    std::vector<std::string> finds;  // hidden things the poster had resolved there, by key
+    WorldLoader::Sighting    seen;   // what they saw standing there
+    int                      hops = 0;
+    std::string              from;
+};
+
 struct Contract
 {
     int          id = 0;
@@ -70,6 +92,19 @@ struct Contract
     double       reward = 0.0;
     double       postedAt = 0.0, deadline = 0.0;  // world time
     bool         taken = false;
+
+    // Exchange (#473). Empty `kind`: a market's, above.
+    std::string            kind;       // "exchange"
+    std::string            issuer;     // an account, or "corp:<id>"
+    std::string            poster;     // the pilot who posted it: told, and may cancel
+    std::string            to;         // empty: anyone; an account; "corp:<id>"
+    std::string            place;      // the station by Simulation::HangarKey
+    std::string            placeName;  // "Station, System", for a reader
+    Inventory              giveGoods;  // the escrow
+    long long              giveCredits = 0;
+    std::vector<ChartCopy> giveCharts;
+    Exchange::Bundle       asking;  // goods and credits, never charts
+    bool                   IsExchange() const { return kind == "exchange"; }
 };
 
 class Simulation
@@ -185,6 +220,20 @@ public:
     // "new to you: 1 system, 3 stations, 1 find; observed 20 h ago; ..." -- what the receiver is
     // told before they accept; no name and no place, which are the goods themselves.
     std::string ChartGiftText(const ChartGift& g) const;
+    // The copy of what `from` has of a system, now (a direct trade's, or an exchange contract's
+    // escrow); and what it would be worth to `to`.
+    ChartCopy MakeChartCopy(const ClientSession& from, const std::string& systemId) const;
+    ChartGift ChartGiftOfCopy(const ChartCopy& copy, const ClientSession& to) const;
+    // Written into `to`'s own record, the way a visit would write it; marked second-hand.
+    void ApplyChartCopy(ClientSession& to, const ChartCopy& copy);
+    // --- Exchange contracts (#473; Simulation_Board.cpp) ---
+    // post, accept, cancel (Act::Board). Answers in the journal.
+    void ApplyBoard(ClientSession& s, const Proto::Act::Board& a);
+    // What the pilot may read on the board: contracts here they may take, their own and their
+    // corporation's anywhere, and those addressed to them.
+    std::vector<Proto::DealView> BoardFor(const ClientSession& s) const;
+    // The deadlines: an exchange contract past its time goes back to its issuer.
+    void StepBoard();
     // A direct trade (Act::Deal): open, put, withdraw, confirm, cancel. Answers in the journal.
     void ApplyDeal(ClientSession& s, const Proto::Act::Deal& a);
     // The trade `s` is in as the server describes it to them, or who asks to trade with them.
@@ -2730,10 +2779,27 @@ private:
     bool CompleteContract(ClientSession& s, int index);
     // A contract ends undone: what was set aside for it is its owner's again.
     void EndContract(int id);
+    // --- Exchange contracts (#473; Simulation_Board.cpp) ---
+    bool PostDeal(ClientSession& s, const Proto::Act::Board& a);
+    bool AcceptDeal(ClientSession& s, int id, bool forCorp);
+    bool CancelDeal(ClientSession& s, int id);
+    // Over: the escrow back to its issuer, who is told why; the contract is gone.
+    void EndDeal(int id, const std::string& why);
+    // Whether `s` may take `c` now, and why not -- the cheap checks, for the board's lines.
+    std::string DealProblem(const ClientSession& s, const Contract& c, bool forCorp) const;
+    // Money to an account, on or off: the book of owners pays it when they are next on.
+    void PayAccount(const std::string& account, double amount);
+    // Goods to an issuer, at a station: a pilot's hangar there, or a corporation's office.
+    void GiveToIssuer(const Contract& c, const Inventory& goods, long long credits);
+    // What an exchange contract is worth at its station's market, goods at mid price.
+    double        DealValue(const SystemState& st, const Inventory& goods, long long credits) const;
+    static double GoodsValue(const SystemState& st, const std::vector<Exchange::GoodLine>& g);
     // A trade's fee, to the owner of `st`'s market (#343, #348): a hauler's, as a pilot's.
-    void PayFee(const SystemState& st, double fee);
-    void SaveContracts(nlohmann::json& j) const;
-    void ReadContracts(const nlohmann::json& j);
+    void                  PayFee(const SystemState& st, double fee);
+    static nlohmann::json ExchangeJson(const Contract& c);
+    bool                  ExchangeFrom(const nlohmann::json& j, Contract& c) const;
+    void                  SaveContracts(nlohmann::json& j) const;
+    void                  ReadContracts(const nlohmann::json& j);
     // --- Expeditions, growing stations and the builder convoy (#342 S6; Simulation_Growth.cpp) ---
     // A mouth into `slot` opened: the factions within the expedition rules' reach of it hear
     // what is beyond -- intel on the entry system -- and are drawn that way for a while.

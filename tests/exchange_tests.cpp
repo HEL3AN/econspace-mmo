@@ -10,6 +10,7 @@
 #include "gen/Galaxy.h"
 #include "gen/Region.h"
 #include "sim/Corporation.h"
+#include "sim/Observation.h"
 #include "sim/FactionMind.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
@@ -23,6 +24,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -477,4 +479,404 @@ TEST_CASE("nothing is made or lost across any run of trades (#473)")
         CHECK(money() == doctest::Approx(cash));
     }
     CHECK(done > 20);  // the walk is not all refusals
+}
+
+// --- Exchange contracts (#473, slice 2): goods, credits and charts held at a station ---------
+
+namespace
+{
+struct Desk : World
+{
+    // A contract through the verb.
+    void Board(ClientSession& s, const std::string& action, Exchange::Bundle giving = {},
+               Exchange::Bundle asking = {}, int id = 0, const std::string& to = "",
+               bool corp = false, int days = 0)
+    {
+        Proto::Act::Board b;
+        b.action = action;
+        b.id = id;
+        b.giving = std::move(giving);
+        b.asking = std::move(asking);
+        b.to = to;
+        b.corp = corp;
+        b.days = days;
+        std::vector<Proto::TradeAck> acks;
+        sim.ApplyAction(s, b, acks);
+    }
+    int OpenId() const
+    {
+        int id = 0;
+        for (const auto& kv : sim.Contracts())
+            if (kv.second.IsExchange())
+                id = std::max(id, kv.first);
+        return id;
+    }
+    int Hangar(const ClientSession& s, ResourceType t) const
+    {
+        return sim.HangarViewFor(s).goods[(size_t)t.Index()];
+    }
+};
+}  // namespace
+
+TEST_CASE("a pilot posts goods for credits and another takes them, the server holding both "
+          "between (#473)")
+{
+    Desk           w;
+    ClientSession& ann = w.Pilot("ann");
+    ClientSession& bob = w.Pilot("bob");
+    w.Dock(ann);
+    w.Dock(bob);
+    REQUIRE(ann.ship->AddCargo(Good::Iron(), 40));
+    const WorldRules::Exchange& rules = WorldRules::ExchangeRules();
+    const double annMoney = ann.account.GetMoney(), bobMoney = bob.account.GetMoney();
+    const double treasury = w.sim.MindOf(Fac::TradersGuild()).treasury;
+
+    w.Board(ann, "post", w.Of(Good::Iron(), 30), w.Credits(600));
+    const int id = w.OpenId();
+    REQUIRE(id != 0);
+    // Held: out of the hold, the posting fee paid to the station's owner.
+    CHECK(ann.ship->GetCargoAmount(Good::Iron()) == 10);
+    CHECK(ann.account.GetMoney() == doctest::Approx(annMoney - rules.postingFee));
+    CHECK(w.sim.Contracts().at(id).giveGoods.Amount(Good::Iron()) == 30);
+    CHECK(w.sim.MindOf(Fac::TradersGuild()).treasury ==
+          doctest::Approx(treasury + rules.postingFee));
+
+    // Bob reads it, as the server describes it, and over the wire.
+    Proto::Snapshot snap = w.sim.BuildSnapshot(bob, bob.systemId);
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+    REQUIRE(back.player.board.size() == 1);
+    const Proto::DealView& d = back.player.board[0];
+    CHECK(d.issuer == "ann");
+    CHECK(d.askCredits == 600);
+    REQUIRE(d.give.size() == 1);
+    CHECK(d.give[0].amount == 30);
+    CHECK(d.canAccept);
+    CHECK(d.fee > 0.0);
+
+    // Ann may not take her own; bob takes it.
+    w.Board(ann, "accept", {}, {}, id);
+    CHECK(Told(ann, "yours: cancel it"));
+    w.Board(bob, "accept", {}, {}, id);
+    CHECK(w.sim.Contracts().count(id) == 0);
+    CHECK(bob.ship->GetCargoAmount(Good::Iron()) + w.Hangar(bob, Good::Iron()) == 30);
+    // Whatever the market took of it went to the holder, and nothing else was lost.
+    const double feePaid = w.sim.MindOf(Fac::TradersGuild()).treasury - treasury;
+    CHECK(ann.account.GetMoney() + bob.account.GetMoney() + feePaid ==
+          doctest::Approx(annMoney + bobMoney));
+    CHECK(ann.account.GetMoney() == doctest::Approx(annMoney - rules.postingFee + 600.0));
+    CHECK(Told(ann, "was taken by bob"));
+    CHECK(Told(bob, "Took contract"));
+}
+
+TEST_CASE("an offline issuer is paid: goods into their hangar (#473)")
+{
+    Desk           w;
+    ClientSession& ann = w.Pilot("ann");
+    ClientSession& bob = w.Pilot("bob");
+    w.Dock(ann);
+    w.Dock(bob);
+    REQUIRE(ann.ship->AddCargo(Good::Iron(), 30));
+    REQUIRE(bob.ship->AddCargo(Good::Ice(), 5));
+    // Ann gives Iron and asks for Ice; she then goes away.
+    w.Board(ann, "post", w.Of(Good::Iron(), 30), w.Of(Good::Ice(), 5));
+    const int id = w.OpenId();
+    REQUIRE(id != 0);
+    w.sim.DestroySession(ann.id);
+    w.Board(bob, "accept", {}, {}, id);
+    CHECK(w.sim.Contracts().count(id) == 0);
+    int ice = 0;
+    for (const auto& place : w.sim.Hangars())
+    {
+        const auto h = place.second.find("ann");
+        if (h != place.second.end())
+            ice += h->second.goods.Amount(Good::Ice());
+    }
+    CHECK(ice == 5);
+    CHECK(bob.ship->GetCargoAmount(Good::Iron()) + w.Hangar(bob, Good::Iron()) == 30);
+}
+
+TEST_CASE("a contract can be cancelled or can run out, and what it held goes back; audiences "
+          "and the cap hold (#473)")
+{
+    Desk           w;
+    ClientSession& ann = w.Pilot("ann");
+    ClientSession& bob = w.Pilot("bob");
+    ClientSession& cy = w.Pilot("cy");
+    for (ClientSession* p : { &ann, &bob, &cy })
+        w.Dock(*p);
+    REQUIRE(ann.ship->AddCargo(Good::Iron(), 40));
+    const double annMoney = ann.account.GetMoney();
+    const auto&  rules = WorldRules::ExchangeRules();
+
+    // Cancelled: the goods and credits come back, the posting fee does not.
+    Exchange::Bundle give = w.Of(Good::Iron(), 20);
+    give.credits = 100;
+    w.Board(ann, "post", give, w.Credits(50));
+    const int first = w.OpenId();
+    REQUIRE(first != 0);
+    w.Board(bob, "cancel", {}, {}, first);
+    CHECK(w.sim.Contracts().count(first) == 1);  // not bob's
+    w.Board(ann, "cancel", {}, {}, first);
+    CHECK(w.sim.Contracts().count(first) == 0);
+    CHECK(ann.ship->GetCargoAmount(Good::Iron()) + w.Hangar(ann, Good::Iron()) == 40);
+    CHECK(ann.account.GetMoney() == doctest::Approx(annMoney - rules.postingFee));
+
+    // To a pilot: only that pilot takes it.
+    w.Board(ann, "post", w.Of(Good::Iron(), 10), w.Credits(10), 0, "bob");
+    const int second = w.OpenId();
+    REQUIRE(second != 0);
+    CHECK(w.sim.BoardFor(cy).empty());
+    w.Board(cy, "accept", {}, {}, second);
+    CHECK(Told(cy, "not offered to you"));
+    CHECK(w.sim.BoardFor(bob).size() == 1);
+
+    // Out of time: back to the poster, who is told.
+    w.sim.SetTime(w.sim.Time() + (rules.defaultDays + 1.0) * 86400.0);
+    w.sim.StepBoard();
+    CHECK(w.sim.Contracts().count(second) == 0);
+    CHECK(Told(ann, "ran out of time"));
+    CHECK(ann.ship->GetCargoAmount(Good::Iron()) + w.Hangar(ann, Good::Iron()) == 40);
+
+    // The cap on what one pilot keeps open.
+    for (int i = 0; i < rules.maxOpen + 2; ++i)
+        w.Board(ann, "post", w.Of(Good::Iron(), 1), w.Credits(5));
+    int open = 0;
+    for (const auto& kv : w.sim.Contracts())
+        open += kv.second.IsExchange() ? 1 : 0;
+    CHECK(open == rules.maxOpen);
+    CHECK(Told(ann, "the most there may be"));
+}
+
+TEST_CASE("a contract's chart is a copy frozen when it was posted, and it is saved (#473)")
+{
+    Desk           w;
+    ClientSession& ann = w.Pilot("ann");
+    ClientSession& bob = w.Pilot("bob");
+    w.Visit(ann, w.deeper);
+    w.Dock(ann);
+    w.Dock(bob);
+    Exchange::Bundle give;
+    give.charts.push_back(w.deeper);
+    give.goods.push_back({ Good::Iron().Index(), 1, "" });
+    REQUIRE(ann.ship->AddCargo(Good::Iron(), 1));
+    w.Board(ann, "post", give, w.Credits(200));
+    const int id = w.OpenId();
+    REQUIRE(id != 0);
+    // Bob is told what is new to him, not where.
+    const auto board = w.sim.BoardFor(bob);
+    REQUIRE(board.size() == 1);
+    REQUIRE(board[0].giveCharts.size() == 1);
+    CHECK(board[0].giveCharts[0].find("new to you") != std::string::npos);
+    CHECK(board[0].giveCharts[0].find(w.sim.SystemName(w.deeper)) == std::string::npos);
+
+    // A restart loses nothing: what is held and what it asks come back as they were.
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_exchange.json");
+    REQUIRE(w.sim.SaveWorld(path));
+    Simulation b;
+    b.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    b.AttachRegion(7, SYSTEMS);
+    b.Seed(1234u);
+    REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
+    b.MaterializeAllSystems(SYSTEMS);
+    REQUIRE(b.Contracts().count(id) == 1);
+    const Contract& c = b.Contracts().at(id);
+    CHECK(c.IsExchange());
+    CHECK(c.poster == "ann");
+    CHECK(c.giveGoods.Amount(Good::Iron()) == 1);
+    CHECK(c.asking.credits == 200);
+    REQUIRE(c.giveCharts.size() == 1);
+    CHECK(c.giveCharts[0].system == w.deeper);
+
+    // Bob, on the restarted server, takes it.
+    ClientSession& bob2 = b.CreateSession(w.home, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    bob2.accountName = "bob";
+    bob2.account.SetMoney(1000.0);
+    bob2.dockedStationId = w.GuildStation();
+    Proto::Act::Board take;
+    take.action = "accept";
+    take.id = id;
+    std::vector<Proto::TradeAck> acks;
+    b.ApplyAction(bob2, take, acks);
+    CHECK(b.Contracts().count(id) == 0);
+    CHECK(b.Knows(bob2, w.deeper));
+    CHECK(bob2.secondHand.count(w.deeper) == 1);
+}
+
+TEST_CASE("a corporation posts from its office and treasury, and what it is paid goes back into "
+          "them; one may be offered to a corporation (#473 slice 3)")
+{
+    Desk           w;
+    ClientSession& ann = w.Pilot("ann");
+    ClientSession& bob = w.Pilot("bob");
+    ClientSession& cy = w.Pilot("cy");
+    ClientSession& di = w.Pilot("di");
+    for (ClientSession* p : { &ann, &bob, &cy, &di })
+        w.Dock(*p);
+    Corps::Registry& corps = w.sim.Corporations();
+    REQUIRE(corps.Create("ann", "Ann Works", "ANN", 1000.0).Ok());
+    const std::string id = corps.IdOf("ann");
+    corps.Credit(id, 20000.0);
+    Corps::Act open;
+    open.verb = "office";
+    REQUIRE(w.sim.ApplyOfficeAct("ann", open).Ok());
+    REQUIRE(w.sim.OfficeHere(ann) != nullptr);
+    // A member who is not an officer cannot post for it.
+    corps.InviteTo("ann", "bob", { "bob" }, 1000.0);
+    REQUIRE(corps.Join("bob", "ANN", 1001.0).Ok());
+
+    // Its goods in the office, its credits in the treasury.
+    REQUIRE(ann.ship->AddCargo(Good::Iron(), 40));
+    REQUIRE(w.sim.MoveGoods(ann, "hold", "storage", Good::Iron().Index(), 40) == 40);
+    w.Board(bob, "post", w.Of(Good::Iron(), 1), {}, 0, "", true);
+    CHECK(Told(bob, "only a corporation's CEO or a director"));
+
+    const double     treasury = corps.Find(id)->treasury;
+    Exchange::Bundle give;
+    give.goods.push_back({ Good::Iron().Index(), 25, "storage" });
+    w.Board(ann, "post", give, w.Credits(900), 0, "", true);
+    const int deal = w.OpenId();
+    REQUIRE(deal != 0);
+    const Contract& c = w.sim.Contracts().at(deal);
+    CHECK(c.issuer == Corps::OwnerOf(id));
+    CHECK(c.poster == "ann");
+    CHECK(corps.Find(id)->offices.begin()->second.goods.at("shared").Amount(Good::Iron()) == 15);
+    CHECK(corps.Find(id)->treasury ==
+          doctest::Approx(treasury - WorldRules::ExchangeRules().postingFee));
+    // Anyone docked here reads it as the corporation's.
+    REQUIRE(w.sim.BoardFor(cy).size() == 1);
+    CHECK(w.sim.BoardFor(cy)[0].issuer == "Ann Works [ANN]");
+    CHECK(w.sim.BoardFor(ann)[0].mine);
+
+    // Taken by an outsider: the treasury is paid.
+    w.Board(cy, "accept", {}, {}, deal);
+    CHECK(w.sim.Contracts().count(deal) == 0);
+    CHECK(cy.ship->GetCargoAmount(Good::Iron()) + w.Hangar(cy, Good::Iron()) == 25);
+    CHECK(corps.Find(id)->treasury > treasury);
+    CHECK(Told(ann, "was taken by cy"));
+
+    // Offered to the corporation: its members only; paid by it, from its office.
+    ClientSession& di2 = di;
+    REQUIRE(di2.ship->AddCargo(Good::Ice(), 10));
+    w.Board(di2, "post", w.Of(Good::Ice(), 10), w.Credits(300), 0, "corp:ANN");
+    const int offered = w.OpenId();
+    REQUIRE(offered != 0);
+    CHECK(w.sim.BoardFor(cy).empty());
+    w.Board(cy, "accept", {}, {}, offered);
+    CHECK(Told(cy, "not offered to you"));
+    // An officer takes it for the corporation: the treasury pays, the office receives.
+    w.Board(ann, "accept", {}, {}, offered, "", true);
+    CHECK(w.sim.Contracts().count(offered) == 0);
+    CHECK(corps.Find(id)->offices.begin()->second.goods.at("shared").Amount(Good::Ice()) == 10);
+}
+
+TEST_CASE("nothing is made or lost across any run of contracts, escrow counted (#473)")
+{
+    Desk                        w;
+    std::vector<ClientSession*> pilots = { &w.Pilot("ann", 10000.0), &w.Pilot("bob", 10000.0),
+                                           &w.Pilot("cy", 10000.0) };
+    for (ClientSession* p : pilots)
+    {
+        w.Dock(*p);
+        REQUIRE(p->ship->AddCargo(Good::Iron(), 30));
+        REQUIRE(p->ship->AddCargo(Good::Ice(), 10));
+    }
+    const FactionId guild = Fac::TradersGuild();
+    auto            goods = [&](ResourceType t)
+    {
+        long long n = 0;
+        for (ClientSession* p : pilots)
+            n += p->ship->GetCargoAmount(t) + w.Hangar(*p, t);
+        for (const auto& kv : w.sim.Contracts())
+            n += kv.second.giveGoods.Amount(t);
+        return n;
+    };
+    auto money = [&]()
+    {
+        double m = w.sim.MindOf(guild).treasury;
+        for (ClientSession* p : pilots)
+            m += p->account.GetMoney();
+        for (const auto& kv : w.sim.Contracts())
+            m += (double)kv.second.giveCredits;
+        return m;
+    };
+    const long long iron = goods(Good::Iron()), ice = goods(Good::Ice());
+    // The posting fee goes to the Guild, which the sum counts; the escrow is counted in place.
+    const double cash = money();
+
+    std::uint32_t rng = 777u;
+    auto          next = [&](std::uint32_t n)
+    {
+        rng = rng * 1664525u + 1013904223u;
+        return (rng >> 8) % n;
+    };
+    int taken = 0;
+    for (int i = 0; i < 400; ++i)
+    {
+        ClientSession& who = *pilots[next(3)];
+        switch (next(4))
+        {
+            case 0:
+            {
+                Exchange::Bundle give = next(2) ? w.Of(Good::Iron(), (int)next(20) + 1)
+                                                : w.Of(Good::Ice(), (int)next(8) + 1);
+                if (next(3) == 0)
+                    give.credits = (long long)next(400) + 1;
+                Exchange::Bundle ask = next(2) ? w.Credits((long long)next(500) + 1)
+                                               : w.Of(Good::Ice(), (int)next(5) + 1);
+                w.Board(who, "post", give, ask);
+                break;
+            }
+            case 1:
+            case 2:
+            {
+                const int before = (int)w.sim.Contracts().size();
+                w.Board(who, "accept", {}, {}, w.OpenId());
+                taken += (int)w.sim.Contracts().size() < before ? 1 : 0;
+                break;
+            }
+            default: w.Board(who, "cancel", {}, {}, w.OpenId()); break;
+        }
+        if (i % 100 == 99)
+        {
+            w.sim.SetTime(w.sim.Time() + 20.0 * 86400.0);  // all that is left runs out
+            w.sim.StepBoard();
+        }
+        CHECK(goods(Good::Iron()) == iron);
+        CHECK(goods(Good::Ice()) == ice);
+        CHECK(money() == doctest::Approx(cash));
+    }
+    CHECK(taken > 5);
+}
+
+TEST_CASE("what a pilot sees of a trade and of the board reaches an agent too (#473)")
+{
+    Desk           w;
+    ClientSession& ann = w.Pilot("ann");
+    ClientSession& bob = w.Pilot("bob");
+    w.Dock(ann);
+    w.Dock(bob);
+    REQUIRE(ann.ship->AddCargo(Good::Iron(), 30));
+    w.Open(ann, bob);
+    w.Act(ann, "put", "", w.Of(Good::Iron(), 5));
+    w.Board(ann, "post", w.Of(Good::Iron(), 10), w.Credits(100));
+
+    auto read = [&](ClientSession& s)
+    {
+        Proto::Snapshot snap = w.sim.BuildSnapshot(s, s.systemId);
+        Proto::Snapshot back;
+        REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+        Obs::View v;
+        v.snapshot = &back;
+        return std::make_pair(Obs::Describe(v, Obs::Detail::Brief),
+                              Obs::DescribeBoard(back.player.board, back.time));
+    };
+    const auto [seen, board] = read(bob);
+    CHECK(seen.find("TRADE  with ann, revision") != std::string::npos);
+    CHECK(seen.find("ann offers: 5 Iron") != std::string::npos);
+    CHECK(seen.find("CONTRACTS  1 exchange contract") != std::string::npos);
+    CHECK(board.find("gives 10 Iron, for 100 cr") != std::string::npos);
+    CHECK(board.find("you can take it") != std::string::npos);
+    CHECK(read(ann).second.find("yours") != std::string::npos);
 }

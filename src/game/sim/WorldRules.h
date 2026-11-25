@@ -425,6 +425,21 @@ struct Offices
     double graceHours = 24.0;
 };
 
+// Exchange between pilots (#473): what posting a contract costs and how many a pilot may keep
+// open. `postingFee` is paid once, to the station's holder (FeeAt), so a board cannot be flooded;
+// the market's fee on the value that changes hands is paid at the accept. A contract lasts
+// `defaultDays` of world time unless the poster says, at most `maxDays`. `warnRatio`: a board
+// line asking more than this many times the market value of what it gives (or less than its
+// inverse) is marked, because a price typed a hundred times too high is a scam, not a deal.
+struct Exchange
+{
+    double postingFee = 25.0;
+    int    maxOpen = 10;
+    double defaultDays = 7.0;
+    double maxDays = 14.0;
+    double warnRatio = 3.0;
+};
+
 // What a lost player ship's wreck holds of the modules it carried beyond its hull's own fit
 // (#472 slice 10): this share of each kind, rounded down. NPC ships drop none until fleets buy
 // their modules from markets.
@@ -608,6 +623,7 @@ const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
 const Hangars&     HangarRules();
 const Offices&     OfficeRules();
+const Exchange&    ExchangeRules();
 const Wrecks&      WreckRules();
 const Deliveries&  DeliveryRules();
 const Security&    SecurityRules();
@@ -631,6 +647,7 @@ void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
 void SetHangarRules(const Hangars& h);
 void SetOfficeRules(const Offices& o);
+void SetExchangeRules(const Exchange& e);
 void SetWreckRules(const Wrecks& w);
 void SetDeliveryRules(const Deliveries& d);
 void SetSecurityRules(const Security& s);
