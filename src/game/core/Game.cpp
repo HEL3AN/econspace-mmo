@@ -659,6 +659,25 @@ const Proto::LockedByView* Game::LockingMe(int id) const
     return nullptr;
 }
 
+float Game::AngularVelocityOf(const Proto::EntitySnapshot& e) const
+{
+    if (!playerShip_)
+        return 0.0f;
+    const Vector2 own = playerShip_->GetVelocity();
+    return Ships::AngularVelocity(e.pos.x - snapshot_.player.pos.x,
+                                  e.pos.y - snapshot_.player.pos.y, e.vel.x - own.x,
+                                  e.vel.y - own.y);
+}
+
+Ships::Shot Game::EstimateShot(const Proto::EntitySnapshot& e) const
+{
+    if (!playerShip_ || playerShip_->GetGuns().empty())
+        return Ships::Shot{ 0.0f, {}, 1.0f };
+    const float dx = e.pos.x - snapshot_.player.pos.x, dy = e.pos.y - snapshot_.player.pos.y;
+    return Ships::Gunnery(playerShip_->GetGuns(), std::sqrt(dx * dx + dy * dy),
+                          AngularVelocityOf(e), e.size);
+}
+
 void Game::LockSelected()
 {
     if (selected_ == nullptr)

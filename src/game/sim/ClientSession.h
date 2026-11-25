@@ -216,6 +216,7 @@ struct ClientSession
         Vector2 from{ 0.0f, 0.0f };
         Vector2 to{ 0.0f, 0.0f };
         int     targetId = 0;       // what it was fired at (#415)
+        float   quality = 1.0f;     // how well it hit (#619 slice 2)
         int     targetSession = 0;  // ...another pilot, by session (#431 slice 10)
     };
     std::vector<Shot> orderShots;

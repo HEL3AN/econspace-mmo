@@ -136,9 +136,43 @@ bool ReadCost(const json& j, Ships::Cost& cost, std::string& err)
     return true;
 }
 
+// A gun's aim (#619 slice 2): all four numbers, each above zero -- a gun that leaves one out
+// would be one nobody chose.
+bool ReadGunSpec(const json& j, Ships::GunSpec& g, std::string& err)
+{
+    if (!j.is_object() ||
+        !OnlyKnownKeys(j, { "optimal", "falloff", "tracking", "signatureRes" }, err))
+    {
+        if (err.empty())
+            err = "not an object";
+        err = "gun: " + err;
+        return false;
+    }
+    for (const char* key : { "optimal", "falloff", "tracking", "signatureRes" })
+        if (!j.contains(key))
+        {
+            err = std::string("gun: '") + key + "' is missing";
+            return false;
+        }
+    if (!ReadNumber(j, "optimal", g.optimal, err) || !ReadNumber(j, "falloff", g.falloff, err) ||
+        !ReadNumber(j, "tracking", g.tracking, err) ||
+        !ReadNumber(j, "signatureRes", g.signatureRes, err))
+    {
+        err = "gun: " + err;
+        return false;
+    }
+    if (g.optimal <= 0.0f || g.falloff <= 0.0f || g.tracking <= 0.0f || g.signatureRes <= 0.0f)
+    {
+        err = "gun: every number must be more than zero";
+        return false;
+    }
+    return true;
+}
+
 bool ParseModule(const json& j, Ships::ModulePart& m, std::string& err)
 {
-    if (!j.is_object() || !OnlyKnownKeys(j, { "id", "mass", "provides", "cost", "look" }, err))
+    if (!j.is_object() ||
+        !OnlyKnownKeys(j, { "id", "mass", "provides", "cost", "look", "gun" }, err))
     {
         if (err.empty())
             err = "not an object";
@@ -147,6 +181,17 @@ bool ParseModule(const json& j, Ships::ModulePart& m, std::string& err)
     if (!ReadString(j, "id", m.id, err) || !ReadMass(j, m.mass, err) ||
         !ReadProvides(j, m.provides, err) || !ReadCost(j, m.cost, err))
         return false;
+    if (j.contains("gun"))
+    {
+        if (m.provides.damage <= 0.0f)
+        {
+            err = "'gun' on a module that provides no damage";
+            return false;
+        }
+        if (!ReadGunSpec(j["gun"], m.gun, err))
+            return false;
+        m.hasGun = true;
+    }
     if (j.contains("look"))
     {
         if (!j["look"].is_object())
@@ -1002,6 +1047,27 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.locks = std::max(1, (int)(sum.locks + 0.5f));
     out.lockRange = r.lockRange + sum.lockRange;
     out.scanRes = r.scanRes;
+    // Its guns: the base gun every ship has, then each fitted one with its own aim (or the base
+    // gun's, for a module that says none). Their damage adds up to the volley.
+    out.guns.clear();
+    {
+        Gun base;
+        base.damage = r.baseGun;
+        base.spec = r.gun;
+        out.guns.push_back(base);
+    }
+    for (const FitLine& line : d.fit)
+    {
+        const ModulePart* m = c.FindModule(line.module);
+        if (m == nullptr || m->provides.damage <= 0.0f)
+            continue;
+        Gun g;
+        g.damage = m->provides.damage * (float)line.count;
+        g.spec = m->hasGun ? m->gun : r.gun;
+        if (const Family* fam = c.FamilyOfModule(line.module); fam != nullptr)
+            g.mix = fam->damage;
+        out.guns.push_back(g);
+    }
     // What the volley is made of: each gun's damage in its family's types, the rest -- the
     // base gun -- untyped. And the shift of the hull line this design is a variant of.
     for (const FitLine& line : d.fit)
@@ -1481,7 +1547,7 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
                        { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
                          "buildSecondsPerPart", "plain", "cruise", "baseHull", "baseGun",
                          "minEffect", "lockRange", "lockBase", "lockRef", "lockMin", "lockMax",
-                         "lockGrace", "scanRes" },
+                         "lockGrace", "scanRes", "gun" },
                        error))
     {
         error = "rules: " + error;
@@ -1524,6 +1590,11 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
             error = "rules: " + error;
             return false;
         }
+    if (rj.contains("gun") && !ReadGunSpec(rj["gun"], c.rules.gun, error))
+    {
+        error = "rules: " + error;
+        return false;
+    }
     if (c.rules.lockRef <= 0.0f || c.rules.scanRes <= 0.0f || c.rules.lockMin <= 0.0f ||
         c.rules.lockMax < c.rules.lockMin)
     {

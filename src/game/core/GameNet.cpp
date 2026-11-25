@@ -43,7 +43,7 @@ void Game::BuildNetworkBeams()
         Color c = f.fromPlayer       ? SKYBLUE
                   : f.targetIsPlayer ? ORANGE
                                      : Fade(Color{ 255, 220, 170, 255 }, 0.7f);
-        beams_.push_back({ f.from, f.to, c });
+        beams_.push_back({ f.from, f.to, c, f.quality });
     }
 }
 

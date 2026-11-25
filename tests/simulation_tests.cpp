@@ -106,7 +106,7 @@ TEST_CASE("the player only fires at a target in range, with the weapon on")
     SUBCASE("out of range is not a hit")
     {
         f.s.ToggleWeapon();
-        target->SetPosition({ Sim::PLAYER_WEAPON_RANGE * 3.0f, 0.0f });
+        target->SetPosition({ Ships::ProfileOf(f.s.ship->GetGuns()).reach * 1.5f, 0.0f });
         CHECK_FALSE(f.sim.StepPlayerFire(f.s, f.World(), 77, dt, &ev));
         CHECK(target->GetHull() == doctest::Approx(target->GetMaxHull()));
     }

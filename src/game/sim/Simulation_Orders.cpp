@@ -357,7 +357,9 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             finish(Orders::Status::Failed, "only a ship or a structure can be attacked");
             return;
         }
-        arrive = PLAYER_WEAPON_RANGE + (built ? size : 0.0f);
+        arrive = Ships::ProfileOf(s.ship->GetGuns()).optimal * 0.9f + (built ? size : 0.0f);
+        if (s.ship->GetGuns().empty())
+            arrive = PLAYER_WEAPON_RANGE + (built ? size : 0.0f);
         // Lock it on the way in (#619): an attack is approach, lock, fire. A slot that is
         // full gives up its oldest lock to it -- the order is what the pilot asked for last.
         if (s.FindLock(s.order.targetId) == nullptr)
@@ -502,7 +504,8 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
             PlayerCombatEvents ev;
             if (StepPlayerFire(s, st, s.HeldTarget() == id ? id : 0, dt, &ev))
-                s.orderShots.push_back({ ev.shotFrom, ev.shotTo, id, ev.victimSession });
+                s.orderShots.push_back(
+                    { ev.shotFrom, ev.shotTo, id, ev.quality, ev.victimSession });
             if (ev.killedPilot)
             {
                 finish(Orders::Status::Done, "target destroyed");

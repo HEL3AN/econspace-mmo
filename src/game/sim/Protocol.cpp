@@ -1554,6 +1554,7 @@ constexpr double ANGLE_UNIT = 1000.0;  // milliradians
 constexpr double HULL_UNIT = 1000.0;   // thousandths of the hull
 constexpr double SIZE_UNIT = 100.0;
 constexpr double STATUS_UNIT = 100.0;  // hundredths of a security status point
+constexpr double VEL_UNIT = 10.0;      // tenths of a unit a second
 // A far entity's heading, in milliradians: about three degrees, which is what a dot on the
 // sensor screen can show.
 constexpr long long FAR_ANGLE_STEP = 50;
@@ -1596,6 +1597,8 @@ EntityWire WireOf(const Proto::EntitySnapshot& e, float grid)
     const long long sh = Quantise(e.shieldFrac, HULL_UNIT);
     if (sh != (long long)HULL_UNIT)
         j["sh"] = sh;
+    if (grid <= 0.0f && (e.vel.x != 0.0f || e.vel.y != 0.0f))
+        j["v"] = json::array({ Quantise(e.vel.x, VEL_UNIT), Quantise(e.vel.y, VEL_UNIT) });
     if (e.ore != -1)
         j["o"] = e.ore;
     if (e.cargo >= 0 && e.cargoAmount > 0)
@@ -1638,6 +1641,10 @@ Proto::EntitySnapshot EntityOf(int id, const json& j)
     e.hullFrac = (float)((double)IntOf(j, "hp", (long long)HULL_UNIT) / HULL_UNIT);
     e.armourFrac = (float)((double)IntOf(j, "ar", (long long)HULL_UNIT) / HULL_UNIT);
     e.shieldFrac = (float)((double)IntOf(j, "sh", (long long)HULL_UNIT) / HULL_UNIT);
+    if (const auto v = j.find("v"); v != j.end() && v->is_array() && v->size() == 2 &&
+                                    (*v)[0].is_number_integer() && (*v)[1].is_number_integer())
+        e.vel = { (float)((double)(*v)[0].get<long long>() / VEL_UNIT),
+                  (float)((double)(*v)[1].get<long long>() / VEL_UNIT) };
     e.ore = (int)IntOf(j, "o", -1);
     const auto cg = j.find("cg");
     if (cg != j.end() && cg->is_array() && cg->size() == 2 && (*cg)[0].is_number_integer() &&
@@ -2302,11 +2309,16 @@ void WriteOnce(const Proto::Snapshot& s, json& j)
     {
         json fires = json::array();
         for (const FireEvent& f : s.fires)
-            fires.push_back({ { "from", V2(f.from) },
-                              { "to", V2(f.to) },
-                              { "fac", FacJ(f.shooterFaction) },
-                              { "pl", f.targetIsPlayer },
-                              { "mine", f.fromPlayer } });
+        {
+            json fj = { { "from", V2(f.from) },
+                        { "to", V2(f.to) },
+                        { "fac", FacJ(f.shooterFaction) },
+                        { "pl", f.targetIsPlayer },
+                        { "mine", f.fromPlayer } };
+            if (f.quality < 0.995f)  // how well it hit (#619 slice 2); whole is the reference
+                fj["q"] = Round2(f.quality);
+            fires.push_back(std::move(fj));
+        }
         j["fires"] = std::move(fires);
     }
     if (!s.events.empty())
@@ -2356,6 +2368,7 @@ void ReadSnapshot(const SnapshotState& st, const json& j, Proto::Snapshot& out)
             f.shooterFaction = ToFac(Val(fj, "fac", json()));
             f.targetIsPlayer = Val(fj, "pl", false);
             f.fromPlayer = Val(fj, "mine", false);
+            f.quality = Val(fj, "q", 1.0f);
             out.fires.push_back(f);
         }
     if (j.contains("events") && j["events"].is_array())
@@ -2453,9 +2466,10 @@ static bool SameWire(const EntitySnapshot& a, const EntitySnapshot& b)
     return a.kind == b.kind && a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.heading == b.heading &&
            a.size == b.size && a.faction == b.faction && a.role == b.role &&
            a.hullFrac == b.hullFrac && a.armourFrac == b.armourFrac &&
-           a.shieldFrac == b.shieldFrac && a.ore == b.ore && a.cargo == b.cargo &&
-           a.cargoAmount == b.cargoAmount && a.name == b.name && a.design == b.design &&
-           a.livery == b.livery && a.criminal == b.criminal && a.securityStatus == b.securityStatus;
+           a.shieldFrac == b.shieldFrac && a.vel.x == b.vel.x && a.vel.y == b.vel.y &&
+           a.ore == b.ore && a.cargo == b.cargo && a.cargoAmount == b.cargoAmount &&
+           a.name == b.name && a.design == b.design && a.livery == b.livery &&
+           a.criminal == b.criminal && a.securityStatus == b.securityStatus;
 }
 
 std::shared_ptr<const EntityWire> WireCache::Of(const EntitySnapshot& e, float grid)

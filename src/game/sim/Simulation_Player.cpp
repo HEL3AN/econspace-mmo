@@ -46,6 +46,29 @@ namespace
 // Ships::PLAYER_FIRE_INTERVAL -- the one cooldown, which a siege's warships are reckoned at too.
 using Ships::PLAYER_FIRE_INTERVAL;
 
+// What a ship's guns do to something `to`, moving at `vTo`, of `signature` (#619 slice 2): the
+// one hit rule, from where both ships are *now* and how they move -- the server's state, never
+// an interpolated proxy's. A ship with no guns of its own (a stats block built by hand) fires
+// its volley whole, at the reference range, as every shot did before.
+Ships::Shot ShotAt(const std::vector<Ships::Gun>& guns, float damage, const Ships::TypeValues& mix,
+                   Vector2 from, Vector2 vFrom, Vector2 to, Vector2 vTo, float signature,
+                   float edge = 0.0f)
+{
+    if (guns.empty())
+        return Ships::Shot{ damage, mix, 1.0f };
+    const float dx = to.x - from.x, dy = to.y - from.y;
+    const float d = std::max(0.0f, std::sqrt(dx * dx + dy * dy) - edge);
+    const float omega =
+        edge > 0.0f ? 0.0f : Ships::AngularVelocity(dx, dy, vTo.x - vFrom.x, vTo.y - vFrom.y);
+    return Ships::Gunnery(guns, d, omega, signature);
+}
+
+// How far a ship's guns reach: the longest of them, or the reference range with none.
+float ReachOfGuns(const std::vector<Ships::Gun>& guns)
+{
+    return guns.empty() ? Sim::PLAYER_WEAPON_RANGE : Ships::ProfileOf(guns).reach;
+}
+
 // A station as a save names it (#227): the system it is in, its name, and which of that
 // name it is there. An entity id comes from a counter that interleaves every system's
 // stations with the NPCs hydrated before them, so it means the same station only within
@@ -539,15 +562,22 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     const float   dx = at.x - shipPos.x;
     const float   dy = at.y - shipPos.y;
     // A structure is hit at its edge: an outpost is far larger than any ship.
-    const float reach =
-        PLAYER_WEAPON_RANGE + (found->GetKind() == EntityKind::Structure ? found->GetSize() : 0.0f);
+    const bool  isStructure = found->GetKind() == EntityKind::Structure;
+    const float reach = ReachOfGuns(s.ship->GetGuns()) + (isStructure ? found->GetSize() : 0.0f);
     if (std::sqrt(dx * dx + dy * dy) > reach || s.fireTimer > 0.0f)
         return false;
     s.fireTimer = PLAYER_FIRE_INTERVAL;
+    const Vector2     vTarget = found->GetKind() == EntityKind::Npc
+                                    ? static_cast<NpcShip*>(found)->GetVelocity()
+                                    : Vector2{ 0.0f, 0.0f };
+    const Ships::Shot shot = ShotAt(s.ship->GetGuns(), s.ship->GetDamage(), s.ship->GetMix(),
+                                    shipPos, s.ship->GetVelocity(), at, vTarget, found->GetSize(),
+                                    isStructure ? found->GetSize() : 0.0f);
     if (ev != nullptr)
     {
         ev->shotFrom = shipPos;
         ev->shotTo = at;
+        ev->quality = shot.quality;
     }
 
     // A structure: its rules are construction's (Simulation_Build.cpp), and what the shot
@@ -561,8 +591,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             ev->hitLawful = true;
             ev->hitFaction = law;
         }
-        const bool killed =
-            DamageStructure(st, targetId, s.ship->GetDamage(), &s, s.ship->GetMix());
+        const bool killed = DamageStructure(st, targetId, shot.damage, &s, shot.mix);
         if (killed && crime && ev != nullptr)
         {
             ev->killedLawful = true;
@@ -578,7 +607,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     // first on the shooter is free to shoot back at); then the patrol answers it.
     FactionId  tf = target->GetFaction();
     const bool crime = IsCrime(st, s, *target, tf);
-    target->TakeDamage(s.ship->GetDamage(), s.ship->GetMix());
+    target->TakeDamage(shot.damage, shot.mix);
     if (target->GetRole() == NpcRole::Guard && corps_.IdOf(s.accountName) != target->GetCorp())
         ProvokePatrol(st, target->GetCorp(), at, s.id, 0);
 
@@ -634,19 +663,23 @@ bool Simulation::FirePilot(ClientSession& s, SystemState& st, ClientSession& vic
     const Vector2 at = target.GetPosition();
     const float   dx = at.x - shipPos.x;
     const float   dy = at.y - shipPos.y;
-    if (std::sqrt(dx * dx + dy * dy) > PLAYER_WEAPON_RANGE || s.fireTimer > 0.0f)
+    if (std::sqrt(dx * dx + dy * dy) > ReachOfGuns(s.ship->GetGuns()) || s.fireTimer > 0.0f)
         return false;
     s.fireTimer = PLAYER_FIRE_INTERVAL;
+    const Ships::Shot shot =
+        ShotAt(s.ship->GetGuns(), s.ship->GetDamage(), s.ship->GetMix(), shipPos,
+               s.ship->GetVelocity(), at, target.GetVelocity(), target.GetSize());
     if (ev != nullptr)
     {
         ev->shotFrom = shipPos;
         ev->shotTo = at;
+        ev->quality = shot.quality;
         ev->victimSession = victim.id;
     }
 
     FactionId  law = Factions::Unaffiliated();
     const bool crime = IsCrime(st, s, target, law);
-    target.TakeDamage(s.ship->GetDamage(), s.ship->GetMix());
+    target.TakeDamage(shot.damage, shot.mix);
     const bool killed = !target.IsAlive();
     // The victim's own guns nearby answer the shooter, as they would an NPC (#340).
     ProvokeGuards(st, victim, at, s.id, 0);

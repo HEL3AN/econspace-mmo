@@ -91,6 +91,10 @@ draws nothing.
 | `cruise` | rules | the share of its top speed an NPC flies its rounds at |
 | `baseHull` | rules | the structure every ship has in a fight beyond what its parts give, whoever flies it |
 | `baseGun` | rules | the shot every ship fires with no guns fitted; fitted guns add to it |
+| `gun` | rules | the base gun's aim (#619): `optimal`, `falloff`, `tracking` (rad/s), `signatureRes`, all above zero |
+| `gun` | module | optional, on a module that provides `damage`: its aim, the same four numbers; without it the rules' base gun's |
+| `locks`, `lockRange` | provides | what a frame or module adds to the lock slots and the lock range (#619) |
+| `lockRange`, `lockBase`, `lockRef`, `lockMin`, `lockMax`, `lockGrace`, `scanRes` | rules | how a lock forms and is lost (#619, `core/Lock.h`): the reach of every hull's sensors, the seconds a target of signature `lockRef` takes at `scanRes` 1, the clamp, and the grace a held lock lasts out of reach |
 | `hangar` | top level | what a station sells to players, in order: `{ "design", "price" }`, the starter first — see "The hangar" |
 | `fit[].scale` | design | optional; how big the module is drawn, over its `look` |
 | `frame`, `bow`, `mid`, `stern` | design | the frame and one section per position; `mid` is a list |

@@ -59,6 +59,7 @@ bool PlayerStats(const Ships::Design& d, ShipStats& out, std::string& error)
     out.locks = s.locks;
     out.lockRange = s.lockRange;
     out.scanRes = s.scanRes;
+    out.guns = s.guns;
     out.design = d.id;
     return true;
 }

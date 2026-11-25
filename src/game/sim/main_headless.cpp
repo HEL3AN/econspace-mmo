@@ -383,6 +383,7 @@ void HostStepWorld(Simulation& sim, float dt, Simulation::FireMap& fires)
             fe.shooterSessionId = s.id;
             fe.targetEntityId = shot.targetId;
             fe.targetSessionId = shot.targetSession;
+            fe.quality = shot.quality;
             fires[s.systemId].push_back(fe);
         }
         s.orderShots.clear();

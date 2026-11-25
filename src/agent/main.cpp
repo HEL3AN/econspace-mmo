@@ -816,7 +816,12 @@ std::vector<Tool> BuildTools()
           "says what is left and, when it has a life (#617), what it can hold now and when it "
           "disperses: it thins as it ages, mining it gets slower, and what is not mined by the "
           "end is lost. Full detail "
-          "lists your corporation's patrols; a guard ship nearby is a corporation's.",
+          "lists your corporation's patrols; a guard ship nearby is a corporation's. A ship "
+          "shows 'omega', the rate (rad/s) it crosses your guns' line of sight, and 'hit', what "
+          "share of a volley your guns would land on it now (an estimate from this snapshot): "
+          "a gun is full effect inside its optimal range, loses half its effect for every "
+          "falloff beyond it, and misses what crosses its aim faster than it tracks -- long guns "
+          "track slowly and want distance, short ones want the brawl.",
           Obj({ { "detail", Str("'brief' (default) or 'full'") } }), [](const Rpc::Json& args)
           {
               g_session.Pump();
@@ -2800,8 +2805,9 @@ std::vector<Tool> BuildTools()
 
     tools.push_back(
         { "attack",
-          "Close to weapon range of a ship -- an NPC's or another player's -- or a structure, lock "
-          "it on the way (the lock takes about two seconds on a frigate, less on something "
+          "Close to your guns' optimal range of a ship -- an NPC's or another player's -- or a "
+          "structure, lock it on the way (the lock takes about two seconds on a frigate, less on "
+          "something "
           "larger; observe's LOCKS line says how far it is) and fire at it until it is "
           "destroyed. Finishes when it is gone; aborts like any order if the "
           "hull gets critical. A destroyed structure leaves a wreck where it fits; a player's "

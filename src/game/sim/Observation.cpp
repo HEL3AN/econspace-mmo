@@ -2,6 +2,7 @@
 
 #include "core/Archetype.h"
 #include "core/Fitting.h"
+#include "core/Gunnery.h"
 #include "core/Paint.h"
 #include "core/Faction.h"
 #include "economy/Market.h"
@@ -221,6 +222,23 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         else if (s.convoy == Obs::ConvoyPart::Escort)
             extra += "  your convoy's escort";
     }
+    // How the pilot's guns would do against a ship, and why (#619 slice 2): the angular velocity
+    // it crosses their aim at, and the quality of a shot now -- the same hit rule the server
+    // applies, from this snapshot, so an estimate.
+    if (e.kind == Proto::EntityKind::Npc || e.kind == Proto::EntityKind::PlayerShip)
+    {
+        ShipStats mine;
+        for (size_t i = 0; i < p.ownedShips.size() && i < p.shipDesigns.size(); i++)
+            if (p.ownedShips[i] == p.shipIndex)
+                StatsOfDesign(p.shipDesigns[i], mine);
+        const float omega = Ships::AngularVelocity(e.pos.x - p.pos.x, e.pos.y - p.pos.y,
+                                                   e.vel.x - p.vel.x, e.vel.y - p.vel.y);
+        extra += Fmt("  omega %.2f", omega);
+        if (!mine.guns.empty())
+            extra += Fmt("  hit %d%%",
+                         (int)std::lround(Ships::Gunnery(mine.guns, s.dist, omega, e.size).quality *
+                                          100.0f));
+    }
     // The lock between this ship and the pilot (#619), whichever way it points.
     std::string lockTag;
     for (const Proto::LockView& l : p.locks)
@@ -238,7 +256,8 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         if (name.empty())
             name = "another pilot";
         extra = Fmt("  player  shield %d%%  hull %d%%", (int)(e.shieldFrac * 100.0f),
-                    (int)(e.hullFrac * 100.0f));
+                    (int)(e.hullFrac * 100.0f)) +
+                extra;  // ...and how the pilot's guns would do against it (#619 slice 2)
         // What the law says of them (#431 slice 10): a criminal is free to shoot.
         if (e.criminal)
             extra += "  CRIMINAL";

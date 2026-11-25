@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Fitting.h"
+#include "core/Gunnery.h"
 #include "core/Route.h"
 #include "core/WorldLoader.h"
 #include "economy/Inventory.h"
@@ -1780,6 +1781,7 @@ public:
         FactionId killedFaction = Factions::Unaffiliated();
         Vector2   shotFrom = { 0.0f, 0.0f };  // player's shot beam (for render/snapshot)
         Vector2   shotTo = { 0.0f, 0.0f };
+        float     quality = 1.0f;     // how well it hit, 0..1 (#619 slice 2)
         int       victimSession = 0;  // another pilot was hit: their session (#431 slice 10)
         bool      killedPilot = false;
     };
