@@ -409,9 +409,10 @@ struct Wrecks
 // office carries goods between a pilot's containers for
 //   max(minFee, rate * volume * jumps * risk) + insure * value * (risk - 1)
 // credits, where risk is 1 + riskWeight * mean(1 - security) over the route's systems, and it
-// takes `hoursPerJump` hours of world time a jump, at least `minHours`. A hostile faction that
-// still holds a pilot's goods sells their release at `hostileSurcharge` times that. The price
-// comes from the route alone, never from the player market.
+// takes `hoursPerJump` hours of world time a jump, at least `minHours`. Goods carried inside
+// one system cross no jump: that is `minFee` and `sameSystemHours`, whatever the volume. A
+// hostile faction that still holds a pilot's goods sells their release at `hostileSurcharge`
+// times that. The price comes from the route alone, never from the player market.
 struct Deliveries
 {
     double rate = 1.0;
@@ -419,6 +420,7 @@ struct Deliveries
     double insure = 0.05;
     double hoursPerJump = 2.0;
     double minHours = 1.0;
+    double sameSystemHours = 1.0;
     double riskWeight = 2.0;
     double hostileSurcharge = 1.5;
 };

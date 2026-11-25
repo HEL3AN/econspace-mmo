@@ -60,6 +60,12 @@ void Game::DrawHangarRent(Ui::Layout& L)
     const Proto::HangarView& h = snapshot_.player.hangar;
     if (h.capacity <= 0)
         return;
+    // A member's hangar in a corporation's structure has no rent to set (#555): free room.
+    if (h.rentPerUnit <= 0.0 || h.periodDays <= 0.0)
+    {
+        L.Field("Hangar", TextFormat("%d volume, free", h.free), t.colors.text);
+        return;
+    }
     const int most = std::max(0, h.most - h.free);
     if (rentFor_ != h.rented)  // the field follows what the server says is rented
     {
@@ -113,12 +119,13 @@ void Game::DrawHangarRent(Ui::Layout& L)
                   c.rentHangar = want;
                   clientLink_->Send(Proto::EncodeCommand(c));
               }
-              L.Tooltip("setrent",
-                        TextFormat("Units on top of the %d free, at most %d here. %.1f cr a unit "
-                                   "every %.0f days, to the station's owner; more is paid now for "
-                                   "what is left of the period. Unpaid, the hangar closes until "
-                                   "it is paid; nothing in it is lost.",
-                                   h.free, most, h.rentPerUnit, h.periodDays));
+              L.Tooltip(
+                  "setrent",
+                  TextFormat("Volume on top of the %d free, at most %d here. %.1f cr per volume "
+                             "every %.0f days, to the station's owner; more is paid now for "
+                             "what is left of the period. Unpaid, the hangar closes until "
+                             "it is paid; nothing in it is lost.",
+                             h.free, most, h.rentPerUnit, h.periodDays));
           });
 }
 
@@ -157,18 +164,12 @@ void Game::DrawAssetsTab(Ui::Layout& L)
         return;
     }
     assetSel_ = std::clamp(assetSel_, 0, (int)assets_.size() - 1);
-    auto units = [](const Proto::AssetView& a)
-    {
-        int n = 0;
-        for (int g : a.goods)
-            n += g;
-        return n;
-    };
+    auto          units = [](const Proto::AssetView& a) { return InventoryList::Volume(a.goods); };
     Ui::TableSpec table;
     table.id = "assets";
     table.columns = { { "place", Size::Grow(), Ui::Align::Start, false },
                       { "system", Size::Fit(90.0f), Ui::Align::Start, false },
-                      { "units", Size::Fit(40.0f), Ui::Align::End, false } };
+                      { "volume", Size::Fit(40.0f), Ui::Align::End, false } };
     table.rows = (int)assets_.size();
     table.cell = [&](int r, int c)
     {
@@ -254,7 +255,15 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
             const bool       isSel = c.id == inventorySel_;
             const bool       lit = dragged != nullptr && dragged->source != c.id &&
                                    L.DropHover("cont", (uint32_t)i, "goods");
-            const float      frac = c.capacity > 0 ? (float)c.Used() / (float)c.capacity : 0.0f;
+            // A division shows what it holds against the structure's whole room, which is
+            // said once above the first of them (#555): its own capacity is what the others
+            // leave, and a different number on each line says nothing about the structure.
+            const bool  pooled = c.pool > 0;
+            const float frac = pooled           ? (float)c.Used() / (float)c.pool
+                               : c.capacity > 0 ? (float)c.Used() / (float)c.capacity
+                                                : 0.0f;
+            if (pooled && (i == 0 || all[i - 1].pool == 0))
+                L.Field("Storage", TextFormat("%d / %d", c.poolUsed, c.pool), t.colors.text);
             L.Column(Box()
                          .Id("cont", (uint32_t)i)
                          .GrowX()
@@ -268,7 +277,8 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
                      [&]
                      {
                          L.Field(c.closed ? c.name + "  (closed)" : c.name,
-                                 TextFormat("%d / %d", c.Used(), c.capacity),
+                                 pooled ? TextFormat("%d", c.Used())
+                                        : TextFormat("%d / %d", c.Used(), c.capacity),
                                  c.closed ? t.colors.bad
                                  : isSel  ? t.colors.text
                                           : t.colors.dim);
@@ -281,10 +291,8 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
         for (size_t i = 0; i < snapshot_.player.locked.size(); i++)
         {
             const Proto::LockedHangarView& lk = snapshot_.player.locked[i];
-            int                            n = 0;
-            for (int g : lk.goods)
-                n += g;
-            L.Text(TextFormat("%s, %s: %d units%s", lk.name.c_str(), lk.system.c_str(), n,
+            const int                      n = InventoryList::Volume(lk.goods);
+            L.Text(TextFormat("%s, %s: %d volume%s", lk.name.c_str(), lk.system.c_str(), n,
                               lk.hostile ? " out of reach" : ""),
                    TextStyle::Small().Tint(lk.hostile ? t.colors.bad : t.colors.dim).Wrap());
             if (lk.why.empty())
@@ -302,10 +310,8 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
         }
         for (const Proto::ShipmentView& s : snapshot_.player.shipments)
         {
-            int n = 0;
-            for (int g : s.goods)
-                n += g;
-            L.Text(TextFormat("On its way: %d units from %s, %.0f h to go", n, s.from.c_str(),
+            const int n = InventoryList::Volume(s.goods);
+            L.Text(TextFormat("On its way: %d volume from %s, %.0f h to go", n, s.from.c_str(),
                               s.hours),
                    TextStyle::Small().Tint(t.colors.dim).Wrap());
         }

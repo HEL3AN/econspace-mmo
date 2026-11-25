@@ -66,6 +66,7 @@ public:
 
     bool IsOpen(const std::string& id) const;
     void SetOpen(const std::string& id, bool open);  // opening one raises it
+    void Raise(const std::string& id);               // to the front of its layer, as it is
     // Opens or closes it -- except a tab hidden behind another, which is brought to the front.
     void Toggle(const std::string& id);
     bool Owns(const std::string& id) const;  // owns the mouse this frame

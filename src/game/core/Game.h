@@ -709,9 +709,12 @@ private:
     std::string     themeToUse_;  // chosen in Settings while it was drawn: switched to next frame
     int             missionsTab_ = 0;          // 0 the missions taken, 1 the docked station's board
     bool            missionsForward_ = false;  // opened on docking: to the front of its stack
-    bool            fitForward_ = false;       // --fit: the hangar to the front, once docked
-    bool            marketForward_ = false;    // --market: the market to the front, once docked
-    int             missionsSel_[2] = { 0, 0 };          // the mission chosen on each
+    // The panels that were open when the ship docked, back to front: they stay in front of the
+    // station's windows, which come in behind what the pilot already had out (#555).
+    std::vector<std::string> openBeforeDock_;
+    bool                     fitForward_ = false;  // --fit: the hangar to the front, once docked
+    bool      marketForward_ = false;              // --market: the market to the front, once docked
+    int       missionsSel_[2] = { 0, 0 };          // the mission chosen on each
     Rectangle radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
     int       settingsTab_ = 0;
     // The paint budgets in force, million pixels (#553): the player's, else look.json's.

@@ -1402,14 +1402,14 @@ std::vector<Tool> BuildTools()
 
     tools.push_back(
         { "rent_hangar",
-          "Set how many units of hangar you rent at the station you are docked at, on top of "
-          "the units every pilot has free there; inventory shows the hangar, the rent and the "
+          "Set how much volume of hangar you rent at the station you are docked at, on top of "
+          "the volume every pilot has free there; inventory shows the hangar, the rent and the "
           "most a station lets one pilot keep. More is paid at once for what is left of the "
           "period (a new rent pays a whole period) and then every period of world time, to "
           "the station's faction; fewer is at once and nothing is paid back. Unpaid rent "
           "closes the hangar until it is paid, which docking there does when you have the "
           "money. 0 ends the rent.",
-          Obj({ { "units", Num("units to rent on top of the free ones") } }, { "units" }),
+          Obj({ { "units", Num("volume to rent on top of the free room") } }, { "units" }),
           [](const Rpc::Json& args)
           {
               RequireLive();
@@ -1431,7 +1431,7 @@ std::vector<Tool> BuildTools()
               if (after.rented != units)
                   return Refused("rent_hangar", seq, "the rent did not change; call inventory");
               return "rent_hangar: renting " + std::to_string(units) +
-                     " units -- the hangar holds " + std::to_string(after.capacity) + ", money " +
+                     " volume -- the hangar holds " + std::to_string(after.capacity) + ", money " +
                      Money(g_session.Snapshot().player.money);
           } });
 

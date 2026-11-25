@@ -429,6 +429,7 @@ bool Load(const std::string& path)
                                                    { "insure", &dl.insure },
                                                    { "hoursPerJump", &dl.hoursPerJump },
                                                    { "minHours", &dl.minHours },
+                                                   { "sameSystemHours", &dl.sameSystemHours },
                                                    { "riskWeight", &dl.riskWeight },
                                                    { "hostileSurcharge", &dl.hostileSurcharge } },
                                                  {}, {}, g_error))

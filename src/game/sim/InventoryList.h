@@ -33,6 +33,11 @@ struct Container
     // Goods go in and never out: a division the pilot's role may put into but not take from
     // (#472 slice 5).
     bool putOnly = false;
+    // A division of a structure's storage shares one room with the others (#472 slice 5): the
+    // structure's whole capacity and what all of them hold, which are what the window and the
+    // agent show once; `capacity` stays what this one can still take in. 0: not a division.
+    int pool = 0;
+    int poolUsed = 0;
 
     int Amount(ResourceType type) const;
     int Used() const;

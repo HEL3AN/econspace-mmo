@@ -142,33 +142,30 @@ void Game::DrawStationContent(const Ui::Frame& f)
                     L.Text("Not docked", TextStyle::Body().Tint(t.colors.dim));
                     return;
                 }
-                L.Scroll(Box().Grow().Id("info").Gap(t.metrics.rowGap),
-                         [&]
-                         {
-                             L.Text(structure->GetName(), TextStyle::Title());
-                             const auto el = layout_.byId.find(structure->GetId());
-                             L.Field("Owner",
-                                     el != layout_.byId.end() ? OwnerLabel(el->second)
-                                                              : structure->GetOwner(),
-                                     t.colors.text);
-                             L.Field("Money", TextFormat("%.0f cr", player_.GetMoney()),
-                                     t.colors.money);
-                             // Its storage (#438) is a container of the inventory window
-                             // (#472), where goods are moved; here, how full it is.
-                             const Proto::PlayerView& p = snapshot_.player;
-                             if (p.storageCap > 0)
-                             {
-                                 int used = 0;
-                                 for (int n : p.storedByType)
-                                     used += n;
-                                 L.Field("Storage", TextFormat("%d / %d", used, p.storageCap),
-                                         t.colors.text);
-                                 if (L.Button("inventory", "Inventory  (I)"))
-                                     desk_.SetOpen(WIN_INVENTORY, true);
-                             }
-                             DrawLicenceOffer(L);
-                             DrawTransfer(L, *structure);
-                         });
+                L.Scroll(
+                    Box().Grow().Id("info").Gap(t.metrics.rowGap),
+                    [&]
+                    {
+                        L.Text(structure->GetName(), TextStyle::Title());
+                        const auto el = layout_.byId.find(structure->GetId());
+                        L.Field("Owner",
+                                el != layout_.byId.end() ? OwnerLabel(el->second)
+                                                         : structure->GetOwner(),
+                                t.colors.text);
+                        L.Field("Money", TextFormat("%.0f cr", player_.GetMoney()), t.colors.money);
+                        // Its storage (#438) is a container of the inventory window
+                        // (#472), where goods are moved; here, how full it is.
+                        const Proto::PlayerView& p = snapshot_.player;
+                        if (p.storageCap > 0)
+                        {
+                            L.Field("Storage", TextFormat("%d / %d", p.storageUsed, p.storageCap),
+                                    t.colors.text);
+                            if (L.Button("inventory", "Inventory  (I)"))
+                                desk_.SetOpen(WIN_INVENTORY, true);
+                        }
+                        DrawLicenceOffer(L);
+                        DrawTransfer(L, *structure);
+                    });
                 if (L.Button("undock", "Undock", true))
                     Undock();
                 return;

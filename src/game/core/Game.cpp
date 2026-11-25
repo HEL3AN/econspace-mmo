@@ -204,6 +204,14 @@ void Game::Run()
             else if (h != Ui::DeskLayout::NONE && !desk_.Layout().Shown(h))
                 desk_.Toggle(WIN_MARKET);
         }
+        // What was open before docking stays in front of what docking opens (#555): after
+        // every forward above, in the order it had.
+        if (!openBeforeDock_.empty() && mode_ == GameMode::Docked)
+        {
+            for (const std::string& id : openBeforeDock_)
+                desk_.Raise(id);
+            openBeforeDock_.clear();
+        }
         desk_.BeginFrame();
 
         // Debug commands (work in any mode).

@@ -1211,7 +1211,9 @@ json PlayerJson(const Proto::PlayerView& p)
     // Only docked at a storage of the pilot's side (#438).
     if (p.storageCap > 0)
     {
-        j["store"] = { { "cap", p.storageCap }, { "t", p.storedByType } };
+        j["store"] = { { "cap", p.storageCap },
+                       { "used", p.storageUsed },
+                       { "t", p.storedByType } };
         if (!p.divisions.empty())  // (#472 slice 5)
         {
             json divs = json::array();
@@ -1354,12 +1356,14 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
             }
     }
     p.storageCap = 0;
+    p.storageUsed = 0;
     p.storedByType.clear();
     p.divisions.clear();
     const auto store = pj.find("store");
     if (store != pj.end() && store->is_object())
     {
         p.storageCap = store->value("cap", 0);
+        p.storageUsed = store->value("used", 0);
         p.storedByType = store->value("t", std::vector<int>{});
         const auto divs = store->find("div");
         if (divs != store->end() && divs->is_array())

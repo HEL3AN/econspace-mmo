@@ -193,6 +193,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         if (const Structure* store = DockedStorage(s))
         {
             p.storageCap = store->GetStorageCapacity();
+            p.storageUsed = store->GetStoredUsed();
             // Each division the pilot's role sees (#472 slice 5); Shared is also the plain
             // `storedByType`.
             for (const char* div : Corps::DIVISION_IDS)

@@ -808,10 +808,10 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
 
     if (storedBefore > 0)
         TellOwner(owner,
-                  "Of the " + std::to_string(storedBefore) + " units kept in " + name + ", " +
+                  "Of the " + std::to_string(storedBefore) + " volume kept in " + name + ", " +
                       std::to_string(dropped.Used()) + " lie in its wreck",
                   OwnerName(owner) + "'s " + name + " was destroyed: of the " +
-                      std::to_string(storedBefore) + " units kept in it, " +
+                      std::to_string(storedBefore) + " volume kept in it, " +
                       std::to_string(dropped.Used()) + " lie in its wreck",
                   false);
     // Its owner was told by NoteAttack -- but not of their own shot.

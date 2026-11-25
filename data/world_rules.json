@@ -187,6 +187,7 @@
         "insure": 0.05,
         "hoursPerJump": 2,
         "minHours": 1,
+        "sameSystemHours": 1,
         "riskWeight": 2,
         "hostileSurcharge": 1.5
     },

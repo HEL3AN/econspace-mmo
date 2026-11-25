@@ -631,6 +631,7 @@ struct PlayerView
     // The storage of the structure the ship is docked at (#438), when it is the pilot's side's:
     // its capacity (0 -- none here, or not theirs) and what it holds per good, in the same order.
     int                           storageCap = 0;
+    int                           storageUsed = 0;  // the volume kept in all of it (#555)
     std::vector<int>              storedByType;
     std::vector<DivisionView>     divisions;  // the divisions this pilot may see (#472 slice 5)
     std::vector<LockedHangarView> locked;     // hangars out of reach, with the price to fetch them

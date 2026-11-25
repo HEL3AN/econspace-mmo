@@ -172,11 +172,11 @@ In space, put goods from your hold into a cargo can beside the ship: your own ca
 
 ### `rent_hangar`
 
-Set how many units of hangar you rent at the station you are docked at, on top of the units every pilot has free there; inventory shows the hangar, the rent and the most a station lets one pilot keep. More is paid at once for what is left of the period (a new rent pays a whole period) and then every period of world time, to the station's faction; fewer is at once and nothing is paid back. Unpaid rent closes the hangar until it is paid, which docking there does when you have the money. 0 ends the rent.
+Set how much volume of hangar you rent at the station you are docked at, on top of the volume every pilot has free there; inventory shows the hangar, the rent and the most a station lets one pilot keep. More is paid at once for what is left of the period (a new rent pays a whole period) and then every period of world time, to the station's faction; fewer is at once and nothing is paid back. Unpaid rent closes the hangar until it is paid, which docking there does when you have the money. 0 ends the rent.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
-| `units` | number | yes | units to rent on top of the free ones |
+| `units` | number | yes | volume to rent on top of the free room |
 
 ### `request_delivery`
 

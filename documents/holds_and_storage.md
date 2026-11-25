@@ -362,6 +362,14 @@ on price and speed, and earn the gap.**
   - `minFee`: no delivery is cheaper than this, so moving one unit next door is not free.
   - **Time:** `hoursPerJump` of world time per jump (2 h by default), at least one hour. A player
     flies a jump in minutes.
+  - **Inside one system** (an agent's finding, #555): no jump is crossed, so none is priced. The
+    fee is `minFee` and the time `sameSystemHours` (1 h), whatever the volume -- a short fixed
+    freight from one dock to the next, the hostile surcharge still applying. *(call, by the
+    implementer; the numbers are in `world_rules.json` -> `deliveries`.)*
+  - **One word for room** (#555): a heap's size is **volume** -- the hold, a hangar, a division,
+    a delivery and the rent are all counted in it. "Units" stays for a count of one good
+    ("Iron 70"). A corporation's storage says its whole room once and each division what it
+    holds; a division's own capacity (what the others leave) is never shown as its size.
   - The fee goes to the faction's treasury, as rent does.
   - **Numbers** (owner, 2026-10-23; data in `world_rules.json`, tuning): `rate` 1 cr per unit per
     jump, `minFee` 50 cr, `insure` 0.05, `hoursPerJump` 2, `riskWeight` 2 *(call: it keeps a

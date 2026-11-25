@@ -37,8 +37,19 @@ Simulation::DeliveryQuote Simulation::QuoteDelivery(const std::string& from, con
                                                     int volume, double value,
                                                     double surcharge) const
 {
-    DeliveryQuote                  q;
-    const WorldRules::Deliveries&  r = WorldRules::DeliveryRules();
+    DeliveryQuote                 q;
+    const WorldRules::Deliveries& r = WorldRules::DeliveryRules();
+    // Next door, in the same system: no jump to cross, so none to price. The least a delivery
+    // costs and a short fixed time, however much there is to carry.
+    if (from == to && SystemById(from) != nullptr)
+    {
+        q.jumps = 0;
+        q.risk = 1.0;
+        q.fee = std::ceil(r.minFee * surcharge);
+        q.hours = r.sameSystemHours;
+        q.ok = true;
+        return q;
+    }
     const std::vector<std::string> path = PlanRoute(from, to, Route::Preference::Safer);
     if (path.empty())
     {
@@ -196,7 +207,7 @@ bool Simulation::RequestDelivery(ClientSession& s, const std::string& key, int t
     sh.toName = dest.name;
     sh.due = time_ + q.hours * HOUR;
     s.RecordEvent(Ev::Kind::Notice, "Delivery from " + sh.from + " to " + dest.name + ": " +
-                                        std::to_string(sh.goods.Used()) + " units, " + Cr(q.fee) +
+                                        std::to_string(sh.goods.Used()) + " volume, " + Cr(q.fee) +
                                         ", arriving in " + std::to_string((int)std::ceil(q.hours)) +
                                         " h");
     shipments_.push_back(std::move(sh));
@@ -351,9 +362,9 @@ void Simulation::StepShipments()
         }
         for (const auto& g : sh.goods.All())
             into->Add(g.first, g.second);
-        TellParty(InfluenceMap::PILOT + sh.account, "Your delivery from " + sh.from +
-                                                        " has arrived at " + sh.toName + ": " +
-                                                        std::to_string(sh.goods.Used()) + " units");
+        TellParty(InfluenceMap::PILOT + sh.account,
+                  "Your delivery from " + sh.from + " has arrived at " + sh.toName + ": " +
+                      std::to_string(sh.goods.Used()) + " volume");
         shipments_.erase(shipments_.begin() + (long)i);
     }
 }
