@@ -521,6 +521,24 @@ bool Layout::Button(std::string_view id, std::string_view label, bool highlighte
     return hover && pointer_.pressed;
 }
 
+bool Layout::Swatch(std::string_view id, uint32_t index, Color color, bool selected, bool enabled)
+{
+    const Theme& t = CurrentTheme();
+    const bool   hover = enabled && Hovered(id, index);
+    const float  side = t.metrics.buttonHeight * 0.7f;
+    Row(Box()
+            .Id(id, index)
+            .Width(Size::Fixed(side))
+            .Height(Size::Fixed(side))
+            .Fill(enabled ? color : Fade(color, 0.22f))
+            .Border(selected ? t.colors.accent
+                    : hover  ? t.colors.text
+                             : t.colors.border,
+                    selected ? t.metrics.border * 2.0f : t.metrics.border),
+        [] {});
+    return hover && pointer_.pressed;
+}
+
 void Layout::Chip(std::string_view label, bool on, Color onColor)
 {
     const Theme& t = CurrentTheme();

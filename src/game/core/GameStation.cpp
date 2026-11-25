@@ -13,6 +13,7 @@
 #include "core/Actions.h"
 #include "core/Archetype.h"
 #include "core/Fitting.h"
+#include "core/Paint.h"
 #include "core/StationList.h"
 #include "sim/Observation.h"
 #include "entities/Station.h"
@@ -713,6 +714,171 @@ void Game::ChangeFitDraft(const std::string& in, const std::string& on, const st
     }
 }
 
+// The painter (#552): a pilot's own colours inside the palette livery they wear. Colours are
+// the cells of Paint's grid -- a hue, a tone, a strength -- so every combination is one the
+// art direction has seen; a tone the band could not have against this hull is disabled, so the
+// contrast rule is seen before it is broken and never an error after a click. The docked ship
+// wears the draft meanwhile; nothing is sent until Apply.
+void Game::DrawPaintPainter(Ui::Layout& L)
+{
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme&      t = Ui::CurrentTheme();
+    const std::string&    wearing = snapshot_.player.livery;
+    const std::string     palette = Paint::PaletteOf(wearing);
+    const Render::Livery* from = palette.empty() ? nullptr : Render::Materials::FindLivery(palette);
+    if (from == nullptr || from->id != palette || !from->palette)
+    {
+        L.Text("Pick a culture above to paint it in your own colours",
+               TextStyle::Small().Tint(t.colors.dim));
+        return;
+    }
+    if (pilotPaintFor_ != wearing)
+    {
+        std::string  pal;
+        bool         painted = false;
+        Paint::Paint p;
+        if (!(Paint::Split(wearing, pal, painted, p) && painted))
+        {
+            p.base =
+                Paint::Nearest(Paint::Role::Base, { from->base.r, from->base.g, from->base.b });
+            p.band = Paint::Nearest(Paint::Role::Band,
+                                    { from->accent.r, from->accent.g, from->accent.b });
+            p.pattern = (int)(from->params[2] + 0.5f);
+            p.light = from->style[2] < 0.15f   ? 0
+                      : from->style[2] < 0.5f  ? 1
+                      : from->style[2] < 0.85f ? 2
+                                               : 3;
+        }
+        pilotPaint_ = Paint::Snap(p);
+        pilotPaintFor_ = wearing;
+    }
+    auto color = [](Paint::Role role, Paint::Cell c)
+    {
+        const Paint::Rgb rgb = Paint::RgbOf(role, c);
+        return Color{ rgb[0], rgb[1], rgb[2], 255 };
+    };
+
+    L.Divider();
+    L.Text("Paint  " + palette, TextStyle::Small().Tint(t.colors.dim));
+    for (Paint::Role role : { Paint::Role::Base, Paint::Role::Band })
+    {
+        const bool        isBase = role == Paint::Role::Base;
+        Paint::Cell&      cell = isBase ? pilotPaint_.base : pilotPaint_.band;
+        const Paint::Cell other = isBase ? pilotPaint_.band : pilotPaint_.base;
+        auto              allowed = [&](Paint::Cell c)
+        { return isBase ? Paint::Contrasts(c, other) : Paint::Contrasts(other, c); };
+        const char* idHue = isBase ? "ph_base" : "ph_band";
+        const char* idTone = isBase ? "pt_base" : "pt_band";
+        const char* idStr = isBase ? "ps_base" : "ps_band";
+        L.Text(isBase ? "Hull" : "Band", TextStyle::Caption().Tint(t.colors.dim));
+        for (int row = 0; row < 2; row++)
+            L.Row(Box().Gap(2.0f),
+                  [&]
+                  {
+                      for (int h = row * 12; h < row * 12 + 12; h++)
+                          if (L.Swatch(idHue, (uint32_t)h, color(role, { h, cell.l, cell.s }),
+                                       h == cell.h))
+                              cell.h = h;
+                  });
+        L.Row(Box().Gap(2.0f).Align(Ui::Align::Start, Ui::Align::Center),
+              [&]
+              {
+                  L.Text("tone", TextStyle::Caption().Tint(t.colors.dim));
+                  for (int l = 0; l < Paint::LIGHTS; l++)
+                  {
+                      const Paint::Cell c{ cell.h, l, cell.s };
+                      const bool        ok = allowed(c);
+                      if (L.Swatch(idTone, (uint32_t)l, color(role, c), l == cell.l, ok))
+                          cell.l = l;
+                      if (!ok)
+                          L.Tooltip(idTone,
+                                    std::string("too close to the ") + (isBase ? "band" : "hull") +
+                                        " in lightness: a livery has two tones",
+                                    (uint32_t)l);
+                  }
+                  L.Spacer(6.0f);
+                  L.Text("strength", TextStyle::Caption().Tint(t.colors.dim));
+                  for (int s = 0; s < Paint::SATS; s++)
+                      if (L.Swatch(idStr, (uint32_t)s, color(role, { cell.h, cell.l, s }),
+                                   s == cell.s))
+                          cell.s = s;
+              });
+    }
+    L.Row(Box().GrowX().Gap(t.metrics.gap),
+          [&]
+          {
+              static const char* const PATTERNS[] = { "", "bands", "spine", "chevrons" };
+              for (int p = Paint::PATTERN_MIN; p <= Paint::PATTERN_MAX; p++)
+                  if (L.Button(std::string("pp_") + PATTERNS[p], PATTERNS[p],
+                               p == pilotPaint_.pattern))
+                      pilotPaint_.pattern = p;
+          });
+    L.Row(Box().GrowX().Gap(t.metrics.gap),
+          [&]
+          {
+              static const char* const LIGHT[] = { "cold", "white", "warm", "amber" };
+              for (int p = 0; p <= Paint::LIGHT_MAX; p++)
+                  if (L.Button(std::string("pl_") + LIGHT[p], LIGHT[p], p == pilotPaint_.light))
+                      pilotPaint_.light = p;
+          });
+
+    // The hull and its marking, as they will be painted.
+    {
+        const Color hull = color(Paint::Role::Base, pilotPaint_.base);
+        const Color band = color(Paint::Role::Band, pilotPaint_.band);
+        auto        mark = [&](float w, float h)
+        { L.Row(Box().Width(Size::Fixed(w)).Height(Size::Fixed(h)).Fill(band), [] {}); };
+        L.Row(Box()
+                  .Width(Size::Fixed(150.0f))
+                  .Height(Size::Fixed(22.0f))
+                  .Fill(hull)
+                  .Border(t.colors.border, t.metrics.border)
+                  .Align(Ui::Align::Start, Ui::Align::Center),
+              [&]
+              {
+                  if (pilotPaint_.pattern == 1)
+                  {
+                      mark(18.0f, 22.0f);
+                      L.Spacer();
+                      mark(18.0f, 22.0f);
+                  }
+                  else if (pilotPaint_.pattern == 2)
+                  {
+                      L.Spacer(20.0f);
+                      mark(110.0f, 5.0f);
+                  }
+                  else
+                      for (int i = 0; i < 4; i++)
+                      {
+                          L.Spacer(14.0f);
+                          mark(8.0f, 22.0f);
+                      }
+              });
+    }
+
+    const std::string spec = Paint::Format(palette, Paint::Snap(pilotPaint_));
+    paintPreview_ = spec;
+    paintPreviewAt_ = GetTime();
+    L.Row(Box().GrowX().Gap(t.metrics.gap),
+          [&]
+          {
+              if (L.Button("paint_apply", "Apply paint", false, spec != wearing))
+              {
+                  Proto::Command c;
+                  c.setLivery = spec;
+                  clientLink_->Send(Proto::EncodeCommand(c));
+              }
+              if (L.Button("paint_clear", "Back to the palette", false, wearing != palette))
+              {
+                  Proto::Command c;
+                  c.setLivery = palette;
+                  clientLink_->Send(Proto::EncodeCommand(c));
+              }
+          });
+}
+
 // The Fit tab (#279): the ship being flown, socket by socket. A fit is drawn up here and
 // nothing is sent until Apply; the numbers beside it are Obs::QuoteFit's, the server's own
 // rules and price, so what the tab says is what the server does.
@@ -918,7 +1084,11 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
         L.Divider();
         {
             const std::string& wearing = snapshot_.player.livery;
-            L.Text("Livery  " + (wearing.empty() ? std::string("plain") : wearing),
+            L.Text("Livery  " +
+                       (wearing.empty()
+                            ? std::string("plain")
+                            : Paint::PaletteOf(wearing) +
+                                  (wearing.find('/') == std::string::npos ? "" : ", painted")),
                    TextStyle::Small().Tint(t.colors.dim));
             std::vector<std::string> options = { "default" };
             for (const Render::Livery& l : Render::Materials::Liveries())
@@ -933,7 +1103,8 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                         for (size_t k = first; k < std::min(first + 3, options.size()); k++)
                         {
                             const std::string& id = options[k];
-                            const bool current = id == "default" ? wearing.empty() : id == wearing;
+                            const bool         current =
+                                id == "default" ? wearing.empty() : id == Paint::PaletteOf(wearing);
                             if (L.Button("livery_" + id, id == "default" ? "plain" : id, !current))
                             {
                                 Proto::Command c;
@@ -943,6 +1114,8 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                         }
                     });
         }
+
+        DrawPaintPainter(L);
 
         // The library: a name, and what can be done with it and with the design chosen.
         L.Divider();

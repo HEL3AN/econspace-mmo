@@ -28,6 +28,7 @@
 #include "core/Interpolation.h"
 #include "core/Prediction.h"
 #include "core/Faction.h"
+#include "core/Paint.h"
 #include "core/Goal.h"
 #include "core/Navigation.h"
 #include "economy/Resource.h"
@@ -236,6 +237,7 @@ private:
     void DrawMarketContent(const Ui::Frame& f);   // what it pays for what is in the hold
     void DrawHangarContent(const Ui::Frame& f);   // the hulls: fly, switch, buy
     void DrawLossContent(const Ui::Frame& f);     // a ship was lost: what, and what paid (#344)
+    void DrawPaintPainter(Ui::Layout& L);         // a pilot's own paint on a livery (#552)
     void DrawFitTab(Ui::Layout& L, bool wide);    // ...and the Fit tab: refit (#279)
     // Orders to the server (#343); `where` is the container sold from or bought into, empty for
     // the hold (#472).
@@ -650,6 +652,12 @@ private:
     std::vector<Ships::FitLine> fitDraft_;
     std::string                 fitDraftFor_;
     int                         fitSel_ = 0;
+    // The painter under the livery picker (#552): the paint being drawn up, the livery it was
+    // drawn up from, and what the docked ship wears meanwhile (a preview, never sent).
+    Paint::Paint pilotPaint_;
+    std::string  pilotPaintFor_;
+    std::string  paintPreview_;
+    double       paintPreviewAt_ = -1.0;
     // ...and its design library (#279 step 3): the saved design chosen, and the name typed.
     std::string designSel_;
     std::string designName_;

@@ -362,7 +362,9 @@ void Game::BuildClientSnapshot()
         // Weapon state is server-owned; the local flag is only an optimistic echo of the
         // toggle we sent, corrected here the same way the ship's position is.
         weaponOn_ = p.weaponOn;
-        playerShip_->SetLivery(p.livery);  // the palette's pick (#516)
+        // The palette's pick (#516) and the pilot's paint (#552) -- or, while the painter is
+        // being drawn on, what it would look like: a preview the server never hears of.
+        playerShip_->SetLivery(GetTime() - paintPreviewAt_ < 0.25 ? paintPreview_ : p.livery);
 
         // The account is a MIRROR of the server (M4f): money/reputation/wanted/skills arrive in
         // the snapshot, the client only displays them (mutations moved to the server via
