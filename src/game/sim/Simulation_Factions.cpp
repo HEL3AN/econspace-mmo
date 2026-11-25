@@ -677,6 +677,20 @@ void Simulation::StepFactions()
     // thinnest holdings before topping up the full ones. Ties by system id, the map's order.
     std::stable_sort(orders.begin(), orders.end(),
                      [](const Order& x, const Order& y) { return x.held < y.held; });
+    // What a holding's open order needs is held back from the recipes at the market it buys at
+    // (#584): one ship's parts, since each period buys a share of a ship and the rest of the
+    // shelf is the recipes' as before. Set again every period, never saved.
+    for (auto& kv : systems_)
+        kv.second.market.ClearReserve();
+    for (const Order& o : orders)
+    {
+        const std::string design =
+            Archetypes::ShipCatalogue().Pick(Factions::Id(o.f), "warship", 0);
+        if (SystemState* shop = BuyingMarket(o.st->id, o.f == Factions::Pirates());
+            shop != nullptr && !design.empty())
+            for (const auto& [good, n] : PartsCost(design))
+                shop->market.Reserve(good, (double)n);
+    }
     StepFleetOrders();  // ships bought away from home that have come in (#566)
     for (const Order& o : orders)
         o.st->agg.presence[o.f] += BuyShips(*o.st, o.f, o.want);

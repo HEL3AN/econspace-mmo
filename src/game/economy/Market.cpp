@@ -158,6 +158,14 @@ double Market::Buy(ResourceType type, int amount, int& bought)
     return cost;
 }
 
+void Market::Reserve(ResourceType type, double amount)
+{
+    const size_t i = (size_t)type.Index();
+    if (reserve_.size() <= i)
+        reserve_.resize(i + 1, 0.0);
+    reserve_[i] = std::max(reserve_[i], amount);
+}
+
 void Market::Step(const MarketRates& rates, double hours)
 {
     Fit();
@@ -174,10 +182,24 @@ void Market::Step(const MarketRates& rates, double hours)
         // Iron into them and leaves the Iron where it is.
         if (!Pays(r))
             continue;
+        // Production follows orders (#584): a recipe whose every output is on the shelf at its
+        // target idles. A producer works to a shelf, not to ten times it, so a yard does not turn
+        // Iron into hull parts nobody ordered, and a glut of Food stops where it is.
+        bool full = true;
+        for (const auto& out : r.out)
+            full = full && (size_t)out.first.Index() < n &&
+                   stock_[(size_t)out.first.Index()] >= Target(out.first);
+        if (full)
+            continue;
         double cycles = r.rate * hours;
         for (const auto& in : r.in)
             if ((size_t)in.first.Index() < n)
-                cycles = std::min(cycles, stock_[(size_t)in.first.Index()] / in.second);
+            {
+                // ...and orders come before recipes: not below what a fleet's open order needs.
+                const size_t i = (size_t)in.first.Index();
+                const double held = i < reserve_.size() ? reserve_[i] : 0.0;
+                cycles = std::min(cycles, std::max(0.0, stock_[i] - held) / in.second);
+            }
         if (cycles <= 0.0)
             continue;
         for (const auto& in : r.in)
