@@ -89,7 +89,6 @@ int main(int argc, char** argv)
     trade.targetId = 42;
     Proto::Command dock;
     dock.seq = 10;
-    dock.toggleWeapon = true;
     dock.targetId = 42;
 
     // One of a few verbs, each a message of its own (#354).

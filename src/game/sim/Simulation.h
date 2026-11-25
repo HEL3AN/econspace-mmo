@@ -1053,11 +1053,12 @@ public:
     // account -- a pirate hunts the player it is hostile to, not "the player".
     void StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& players);
 
-    // NPC combat: each ready combat NPC hits the nearest hostile target (NPC or player)
-    // through the Combatant interface. fires!=nullptr — collect fire events (the client
-    // turns them into beams). A hidden player is not shot at.
+    // NPC combat: each combat NPC locks the nearest hostile target (NPC or player) as a pilot's
+    // ship would (#619), and once the lock is held and the guns are ready hits it through the
+    // Combatant interface. fires!=nullptr — collect fire events (the client turns them into
+    // beams). A hidden player is not shot at.
     void StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
-                       std::vector<FireEvent>* fires);
+                       std::vector<FireEvent>* fires, float dt = 1.0f / 60.0f);
 
     // Whether NPC targeting reads a spatial grid or every ship and pilot in the system (#350).
     // The two are identical in result -- the grid only prunes, and is walked in the same order
@@ -1743,8 +1744,38 @@ public:
     // reads the truth back from the snapshot. Two independent copies would drift apart on
     // any dropped or duplicated command, leaving the reticle disagreeing with the guns.
     // The bit itself lives on the session (ClientSession::ToggleWeapon).
+    // `targetId` is the active lock once it is held (ClientSession::HeldTarget): a gun fires at
+    // a lock and at nothing else (#619); the caller names it, this checks reach and cooldown.
     bool StepPlayerFire(ClientSession& s, SystemState& st, int targetId, float dt,
                         PlayerCombatEvents* ev);
+
+    // --- Targeting (#619, Simulation_Targeting.cpp) ---
+    // What a pilot sees of something they may lock: where it is and how big, and whether it is a
+    // structure (reached at its edge, as a shot is).
+    struct LockAim
+    {
+        Vector2 pos = { 0.0f, 0.0f };
+        float   size = 0.0f;
+        bool    structure = false;
+    };
+    // The thing `id` names, if this pilot may lock it now: in their system, alive, not hidden
+    // from them (a signature they have not scanned is not there to lock, #346, #415), not
+    // their own, and a ship or a structure -- the rest is looked at, never locked.
+    bool LockAimOf(ClientSession& s, SystemState& st, int id, LockAim& out);
+    // Begin locking `id`: a ship or a structure in the pilot's system that they can see, within
+    // the ship's lock range, with a slot free. The first lock is the active one. False, with the
+    // reason as a Notice unless `quiet`, where it is refused.
+    bool LockTarget(ClientSession& s, int id, bool quiet = false);
+    // Free the slot of `id` (0 -- every one), and make another held lock active if it was.
+    void Unlock(ClientSession& s, int id);
+    // Point the guns at one of the pilot's own locks.
+    bool SetActiveLock(ClientSession& s, int id);
+    // One world tick of the pilot's locks: they form, hold, and are lost when their target is
+    // gone, hidden or out of reach for longer than the grace.
+    void StepPlayerLocks(ClientSession& s, SystemState& st, float dt);
+    // Who is locking this ship, or holds a lock on it: NPCs' and other pilots'.
+    std::vector<Proto::LockedByView> LockedByOf(const ClientSession& s,
+                                                const SystemState&   st) const;
     // ...at another pilot's ship (#431 slice 10): in range and off cooldown, the hit goes on
     // the victim's ship, IsCrime decides what it costs the shooter, and a kill is the loss
     // every ship takes (ServerRespawnPlayer, on the world tick).

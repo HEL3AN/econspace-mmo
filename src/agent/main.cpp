@@ -2702,8 +2702,10 @@ std::vector<Tool> BuildTools()
 
     tools.push_back(
         { "attack",
-          "Close to weapon range of a ship -- an NPC's or another player's -- or a structure and "
-          "fire until it is destroyed. Finishes when it is gone; aborts like any order if the "
+          "Close to weapon range of a ship -- an NPC's or another player's -- or a structure, lock "
+          "it on the way (the lock takes about two seconds on a frigate, less on something "
+          "larger; observe's LOCKS line says how far it is) and fire at it until it is "
+          "destroyed. Finishes when it is gone; aborts like any order if the "
           "hull gets critical. A destroyed structure leaves a wreck where it fits; a player's "
           "ship shot down is their loss, insurance and wreck as any. Shooting what a lawful "
           "faction owns, a player's structure in a system a lawful faction holds -- or a "
@@ -2728,6 +2730,66 @@ std::vector<Tool> BuildTools()
               Orders::Order c = OrderCommand(Orders::Kind::Attack);
               c.targetId = id;
               return GiveOrder(c, "attack");
+          } });
+
+    tools.push_back(
+        { "lock",
+          "Commit to a target: lock a ship -- an NPC's or another player's -- or a structure that "
+          "is not yours, within your lock range (observe's LOCKS line). A lock takes time, from "
+          "half a second for something large to a few seconds for a small ship, holds one of "
+          "your slots, and is shown to the one locked (their observe says LOCKED ON YOU); it is "
+          "what the guns fire at, and nothing else is. The first lock is the active one; "
+          "'active' true makes this one the active lock of those you hold. A lock is lost if "
+          "the target leaves, hides or stays out of range for a few seconds. Locking is never a "
+          "crime; the first shot is. Refused, with the reason, if there is no such target, it "
+          "is out of range, hidden or every slot is in use. observe shows lock progress.",
+          Obj({ { "target_id", Num("ship or structure id from observe") },
+                { "active", Bool("make it the lock the guns address (default: only if you "
+                                 "hold none)") } },
+              { "target_id" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const int id = (int)NumberOr(args, "target_id", 0);
+              if (g_session.Snapshot().player.docked)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "docked; undock first" };
+              const int        seq = g_session.LastEventSeq();
+              std::string      why;
+              Proto::Act::Lock c;
+              c.id = id;
+              if (!Confirm(c, why))
+                  return "lock: " + why;
+              bool held = false;
+              for (const Proto::LockView& l : g_session.Snapshot().player.locks)
+                  held = held || l.id == id;
+              if (!held)
+                  return Refused("lock", seq, "the server did not start the lock");
+              if (args.contains("active") && args["active"].is_boolean() &&
+                  args["active"].get<bool>())
+              {
+                  Proto::Act::SetActive a;
+                  a.id = id;
+                  if (!Confirm(a, why))
+                      return "lock: " + why;
+              }
+              return "lock: locking #" + std::to_string(id) +
+                     "; observe's LOCKS line shows when it is held";
+          } });
+
+    tools.push_back(
+        { "unlock",
+          "Let go of a lock, freeing its slot; without target_id, every lock. Another held lock "
+          "becomes the active one if it was.",
+          Obj({ { "target_id", Num("a locked target's id (omit for all)") } }, {}),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              Proto::Act::Unlock c;
+              c.id = (int)NumberOr(args, "target_id", 0);
+              std::string why;
+              if (!Confirm(c, why))
+                  return "unlock: " + why;
+              return std::string("unlock: done");
           } });
 
     tools.push_back(
@@ -3188,9 +3250,18 @@ int Selftest(const std::vector<Tool>& tools)
         }
     note("salvage", salvage);
 
+    // 8) Locks (#619): nothing is locked that is not there, the refusal says so, and letting go
+    // of nothing is no error.
+    g_phase = "locking";
+    const std::string badLock = RunTool(tools, "lock", Rpc::Json{ { "target_id", 999999 } });
+    const bool        locks =
+        badLock.find(docked ? "undock first" : "nothing there to lock") != std::string::npos &&
+        RunTool(tools, "unlock", Rpc::Json::object()).find("unlock: done") != std::string::npos;
+    note("lock and unlock", locks);
+
     const bool ok = observed && stationId != 0 && ordered && arrived && refused && docked &&
                     listed && accepted && unaffordable && noBounty && building && rules && corp &&
-                    salvage;
+                    salvage && locks;
     // A failure that is really a lost connection should say so, rather than leave a list of
     // FAILs to be read as five separate bugs.
     if (!ok && !g_session.ByeReason().empty())

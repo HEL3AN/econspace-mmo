@@ -35,6 +35,9 @@ enum class Verb
     Dock,         // a station
     Mine,         // a belt
     Attack,       // a ship, or a structure that is not your own (#39)
+    Lock,         // commit to it: a lock takes a little time, and is what the guns fire at (#619)
+    Unlock,       // ...let go of it, freeing the slot
+    SetActive,    // ...make it the lock the guns address
     Investigate,  // a wreck
     Jump,         // a gate
     FlyHere,      // a point in space
@@ -85,7 +88,11 @@ struct Target
     Vector2     pos{ 0.0f, 0.0f };
     float       size = 0.0f;  // its radius
     std::string name;
-    bool        looted = false;   // a wreck already searched
+    bool        looted = false;  // a wreck already searched
+    // The viewer's lock on it (#619): whether one is forming or held, and whether the guns
+    // address it. Offers Lock before one, Unlock and Set active after.
+    bool        locked = false;
+    bool        active = false;
     std::string destinationName;  // a gate: where it leads, if the galaxy index knows
     // A structure: whether the viewer built it, and what dismantling it would return now
     // ("5 Iron, 1 Crystal"; empty when that is not known). A pilot's ship: the viewer's own.

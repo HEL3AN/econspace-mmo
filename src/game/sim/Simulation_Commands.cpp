@@ -41,7 +41,9 @@ template <class T> constexpr Where WhereOf()
         return Where::Docked;
     else if constexpr (std::is_same_v<T, Jump> || std::is_same_v<T, Loot> ||
                        std::is_same_v<T, Scan> || std::is_same_v<T, Deploy> ||
-                       std::is_same_v<T, Dismantle> || std::is_same_v<T, SetDefence>)
+                       std::is_same_v<T, Dismantle> || std::is_same_v<T, SetDefence> ||
+                       std::is_same_v<T, Lock> || std::is_same_v<T, Unlock> ||
+                       std::is_same_v<T, SetActive> || std::is_same_v<T, Fire>)
         return Where::InFlight;
     else
         return Where::Anywhere;
@@ -234,6 +236,12 @@ struct Doer
     // A direct trade with a pilot docked here (#473): not a docked verb either, so that a
     // cancel still reaches a pilot who has just left and a refusal says why.
     void operator()(const Proto::Act::Deal& a) { sim.ApplyDeal(s, a); }
+    // Targeting and fire (#619). A lock is asked for and answered in the snapshot's locks (or a
+    // Notice saying why not); the guns are on or off and fire only at a held active lock.
+    void operator()(const Proto::Act::Lock& a) { sim.LockTarget(s, a.id); }
+    void operator()(const Proto::Act::Unlock& a) { sim.Unlock(s, a.id); }
+    void operator()(const Proto::Act::SetActive& a) { sim.SetActiveLock(s, a.id); }
+    void operator()(const Proto::Act::Fire& a) { s.weaponOn = a.on; }
 };
 }  // namespace
 
@@ -273,23 +281,21 @@ void Simulation::ApplyCommand(ClientSession& s, const Proto::Command& c, float d
     if (s.HasRunningOrder() && (c.thrust || c.brake || c.turn != 0.0f || c.navMode != 0))
         AbortOrder(s, "manual control");
 
-    if (c.toggleWeapon)
-        s.ToggleWeapon();
-
     StepPlayerShip(s, c, 1.0f, Simulation::CommandDt(s, dt));
 
     // Player fire: on a shot — a beam event into the snapshot (client draws it blue). What a
     // shot or a kill costs or earns the account is applied in StepPlayerFire.
     Simulation::PlayerCombatEvents ev;
-    s.selectedId = c.targetId;  // what it is told about in full, wherever it is (#349)
-    if (StepPlayerFire(s, *SystemOf(s), c.targetId, dt, &ev))
+    s.selectedId = c.targetId;          // what it is told about in full, wherever it is (#349)
+    const int fireAt = s.HeldTarget();  // a gun fires at a held lock, never at a selection (#619)
+    if (StepPlayerFire(s, *SystemOf(s), fireAt, dt, &ev))
     {
         FireEvent fe;
         fe.from = ev.shotFrom;
         fe.to = ev.shotTo;
         fe.shooterFaction = Factions::Unaffiliated();
         fe.shooterSessionId = s.id;  // "mine" for this player and nobody else
-        fe.targetEntityId = c.targetId;
+        fe.targetEntityId = fireAt;
         fe.targetSessionId = ev.victimSession;  // "at me" for a pilot shot at (#431 slice 10)
         fires[s.systemId].push_back(fe);
     }

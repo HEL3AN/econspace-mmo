@@ -1,6 +1,7 @@
 # Combat and flight
 
-Status: **proposal, for the owner** (#619). Nothing here is built. It is the design that
+Status: **accepted by the owner** (#619, every recommendation). Slice 1, lock before fire, is built;
+the rest of the slice plan (section 5) is not. This is the design that
 corporation wars (#574) rest on, and the forks that change the game's feel are collected in
 "Decisions for the owner" at the end; everything before that plans on top of the premises in
 CLAUDE.md and does not re-open them: an MMO with an authoritative server, one combat model for

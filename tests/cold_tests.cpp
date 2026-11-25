@@ -416,6 +416,9 @@ TEST_CASE("an NPC of a design hits as hard as a player's ship of that design (#1
         NpcShip& npc = PutNpc(st, at, Fac::TradersGuild(), NpcRole::Police, design, 900001);
         NpcShip& npcTarget =
             PutNpc(st, { at.x + 100.0f, at.y }, Fac::Pirates(), NpcRole::Pirate, "cruiser", 900002);
+        // Its lock is held already: what is compared is what a volley takes off (#619 adds a
+        // lock before the first, the same for both).
+        npc.TargetLock().Begin(900002, 0.0f);
         const float byNpc = StructureLost(npcTarget, ticks,
                                           [&]()
                                           {

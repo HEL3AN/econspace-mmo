@@ -38,7 +38,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    89;  // 89: a belt line of the snapshot carries what the field can hold now (#617);
+    90;  // 90: lock before fire (#619) -- the verbs `lock`, `unlock`, `active` and `fire` replace
+         // the command's `tWeap`; the player view carries `locks`, `lockMax` and `lockedBy`, and an
+         // entity its `sh` (shield fraction);
+         // 89: a belt line of the snapshot carries what the field can hold now (#617);
          // 88: a direct trade between two docked pilots (#473): the action `deal` and a
          // PlayerView's `trade`, each side's bundle as the server describes it; 87: a ship is named
          // by its id (#356) -- `ship` of the buy, switch and insure verbs and the view's `ships`
@@ -280,8 +283,8 @@ struct Command
     // on the server only).
     bool toggleStabilizer = false;
     bool toggleMining = false;
-    bool toggleWeapon = false;
-    // Combat target: what the weapon fires at, every tick (0 -- none).
+    // What the pilot has selected, every tick (0 -- none): the server tells them of it in full,
+    // wherever it is (#349). It arms nothing: fire is `Act::Fire` at a lock (#619).
     int targetId = 0;
     // Navigation order. Modes 1 and 2 are one-shot -- fly there, or warp there, and stop.
     // Modes 3 to 5 are standing: hold station on an object until released, which is what
@@ -489,6 +492,25 @@ struct Deal
     Exchange::Bundle bundle;
     int              rev = 0;
 };
+// Targeting and fire (#619). A lock is a commitment, not a click: it takes a little time, holds
+// one of the ship's slots, is shown to the one locked, and is what the guns fire at. Selecting
+// (`Command::targetId`) is free and does nothing to anyone.
+struct Lock
+{
+    int id = 0;  // begin locking this ship or structure; the first lock is the active one
+};
+struct Unlock
+{
+    int id = 0;  // free its slot; 0 -- every lock
+};
+struct SetActive
+{
+    int id = 0;  // which held lock the guns address
+};
+struct Fire
+{
+    bool on = false;  // the guns, on or off; they fire only at a held active lock
+};
 }  // namespace Act
 
 using Action =
@@ -498,7 +520,7 @@ using Action =
                  Act::RequestAssets, Act::Deliver, Act::SwitchShip, Act::BuyShip, Act::InsureShip,
                  Act::PayBounty, Act::AcceptOffer, Act::CompleteMission, Act::GiveOrder,
                  Act::AbortOrder, Act::Jump, Act::Loot, Act::Scan, Act::Deploy, Act::Dismantle,
-                 Act::SetDefence, Act::Deal>;
+                 Act::SetDefence, Act::Deal, Act::Lock, Act::Unlock, Act::SetActive, Act::Fire>;
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
 // no translation between "what the world says an object is" and "what the snapshot says",
@@ -540,6 +562,24 @@ struct EntitySnapshot
     std::string livery{};
     // The armour left, 0..1: the layer over the hull (#464, slice 8); 1 for a ship with none.
     float armourFrac = 1.0f;
+    // The shield left, 0..1 (#619): what the target card shows; 1 for a ship with none.
+    float shieldFrac = 1.0f;
+};
+
+// One of the pilot's locks (#619): a target being locked or held, and whether the guns address it.
+struct LockView
+{
+    int   id = 0;
+    float progress = 0.0f;  // 0..1; 1 -- held
+    bool  held = false;
+    bool  active = false;
+};
+// Somebody locking the pilot, or holding a lock on them (#619). Shown on the instruments, never
+// on the object: it names a relation between two ships.
+struct LockedByView
+{
+    int  id = 0;  // the ship locking them: an NPC's or another pilot's
+    bool held = false;
 };
 
 // One entry of a player's design library: their name for it, and the design's id.
@@ -752,9 +792,15 @@ struct PlayerView
     bool  stabilizer = true;
     bool  mining = false;
     bool  weaponOn = false;
-    bool  docked = false;
-    int   nearbyStationId = 0;
-    int   lastInput = 0;  // last input number the server processed (ack, M4e)
+    // Targeting (#619): the locks held or forming (the active one flagged), how many the ship
+    // may hold and from how far, and who is locking it.
+    std::vector<LockView>     locks;
+    int                       lockMax = 0;
+    float                     lockRange = 0.0f;
+    std::vector<LockedByView> lockedBy;
+    bool                      docked = false;
+    int                       nearbyStationId = 0;
+    int                       lastInput = 0;  // last input number the server processed (ack, M4e)
     // The running standing order, so a client can see what it asked for is under way.
     // The journal (#29) reports outcomes; this reports what is in progress.
     int              orderKind = 0;    // Orders::Kind as int
