@@ -38,7 +38,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    91;  // 91: exchange contracts (#473): the action `board` (post, accept, cancel) and a
+    92;  // 92: range and tracking (#619): an entity's `v` (velocity) and a shot's `q` (how well it
+         // hit), which the target card's hit figure and the beams are drawn from;
+         91;  // 91: exchange contracts (#473): the action `board` (post, accept, cancel) and a
          // PlayerView's `board`, the contracts a pilot may take here or has posted;
          // 90: lock before fire (#619) -- the verbs `lock`, `unlock`, `active` and `fire` replace
          // the command's `tWeap`; the player view carries `locks`, `lockMax` and `lockedBy`, and an
