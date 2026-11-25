@@ -66,7 +66,8 @@ struct BenchRow
         0.0;  // worst tick after the first five seconds: the warm-up is not a pass
     double routeKnownMs = 0.0;  // one route order's plan: the pilot's index and the search (#432)
     double routeAllMs = 0.0;    // the search alone, over every system: a galaxy fully charted
-    double saveMs = 0.0;
+    double saveMs = 0.0;        // the whole checkpoint: building, text, disk
+    double saveBuildMs = 0.0;   // what the tick pays when the writer does the rest (#350)
     long   saveBytes = 0;
     double memoryMb = -1.0;  // resident growth from before the world was built
 };
@@ -194,6 +195,10 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
     for (int i = 0; i < saves; i++)
         sim.SaveWorld(path);
     row.saveMs = Since(t) / saves;
+    t = Clock::now();
+    for (int i = 0; i < saves; i++)
+        (void)sim.WorldJson();
+    row.saveBuildMs = Since(t) / saves;
     {
         std::ifstream in(path, std::ios::binary | std::ios::ate);
         row.saveBytes = in.is_open() ? (long)in.tellg() : 0;
@@ -418,14 +423,14 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
 
     // Markdown, so the table can be pasted where it is discussed.
     printf("\nPer tick (60 Hz, budget 16.7 ms) and per coarse pass (every 2 s):\n\n");
-    printf(
-        "| region | systems | links | players | hot | static | NPCs | generate ms | "
-        "materialise ms | "
-        "agents ms/tick | structures ms/tick | recount ms/pass | "
-        "macro ms/pass | top-up ms/pass | tick ms (mean / worst) | route plan ms (known / all) | "
-        "save ms | save KB | memory MB |\n");
+    printf("| region | systems | links | players | hot | static | NPCs | generate ms | "
+           "materialise ms | "
+           "agents ms/tick | structures ms/tick | recount ms/pass | "
+           "macro ms/pass | top-up ms/pass | tick ms (mean / worst / worst after 5 s) | route plan "
+           "ms (known / all) | "
+           "save ms | save build ms | save KB | memory MB |\n");
     printf("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
-           "---:|---:|---:|\n");
+           "---:|---:|---:|---:|\n");
     for (const BenchRow& r : rows)
     {
         char mem[32];
@@ -434,11 +439,13 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
         else
             snprintf(mem, sizeof(mem), "n/a");
         printf("| %d | %d | %d | %d | %d | %ld | %ld | %.1f | %.1f | %.3f | %.4f | %.3f | "
-               "%.3f | %.3f | %.2f / %.1f / %.1f | %.2f / %.2f | %.2f | %.0f | %s |\n",
-               r.region, r.systems, r.links, r.players, r.hot, r.statics, r.npcs, r.generateMs,
+               "%.3f | %.3f | %.2f / %.1f / %.1f | %.2f / %.2f | %.2f | %.2f | %.0f | %s |
+               ",
+               r.region,
+               r.systems, r.links, r.players, r.hot, r.statics, r.npcs, r.generateMs,
                r.materializeMs, r.agentsMs, r.structuresMs, r.recountMs, r.macroMs, r.topUpMs,
                r.tickMs, r.worstTickMs, r.worstSteadyMs, r.routeKnownMs, r.routeAllMs, r.saveMs,
-               r.saveBytes / 1024.0, mem);
+               r.saveBuildMs, r.saveBytes / 1024.0, mem);
     }
     return 0;
 }

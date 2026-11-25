@@ -806,7 +806,29 @@ struct HostRun
     Log::Metrics       metrics;            // the once-a-minute line
     double             shutdownAt = -1.0;  // uptime to stop at, asked for with a delay; -1: not
     bool               shutdownWarned = false;  // ten seconds before it
+    // world.json is written on a thread of its own (#350): the tick builds what is saved, this
+    // writes it. Declared last, so it is the first to go, and its destructor waits for the writes.
+    Save::BackgroundWriter writer;
 };
+
+// The world, queued to be written. What is saved is built here, on the simulation's thread, and
+// owned by the job; the text and the disk are the writer's.
+static void QueueWorldSave(Simulation& sim, HostRun& run)
+{
+    run.writer.Submit(
+        run.worldPath, [doc = sim.WorldJson()]() { return Simulation::WorldText(doc); },
+        Simulation::WORLD_BACKUPS);
+}
+
+// Says so if a queued write failed: the writer's thread writes nothing to the log itself.
+static void ReportWriteFailures(HostRun& run)
+{
+    std::string path;
+    if (const int n = run.writer.TakeFailures(&path))
+        Log::Errorf("Save FAILED: %d write(s) of the world could not be made, the last of %s; "
+                    "the file is as it was.\n",
+                    n, path.c_str());
+}
 
 // --- Chat (#347) ---------------------------------------------------------------------------
 
@@ -1709,7 +1731,13 @@ static bool SaveAll(Simulation& sim, const std::vector<HostClient>& clients, Hos
                 ok = sim.SaveAccount(*s, AccountPath(run.accountsDir, hc.account)) && ok;
                 accounts++;
             }
-    ok = sim.SaveWorld(run.worldPath) && ok;
+    // Through the writer like every other write of it, so there is never a second one at once;
+    // and waited for, because this is the save that must be on disk when it returns.
+    run.writer.Wait();  // an earlier checkpoint, still being written, finishes first
+    ReportWriteFailures(run);
+    QueueWorldSave(sim, run);
+    run.writer.Wait();
+    ok = run.writer.TakeFailures() == 0 && ok;
     sim.SaveDesigns(DesignsPath(run.worldPath));
     ok = sim.Corporations().Save(CorpsPath(run.worldPath)) && ok;
     run.savedAt = run.uptime;
@@ -2802,7 +2830,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
 
             for (int slot : opened)
                 PrintOpening(sim, slot, "");
-            sim.SaveWorld(worldPath);
+            QueueWorldSave(sim, run);
             sim.SaveDesigns(DesignsPath(worldPath));
             worldSaveAcc = 0.0;
             SendKnowledge(clients, sim, net, knowledgeSeen);
@@ -2936,7 +2964,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             // A system charted or named is a claim made once, for good: it is written now
             // rather than at the next checkpoint, so a crash cannot take it back (#308).
             // It happens a handful of times in a session, so the write costs nothing.
-            sim.SaveWorld(worldPath);
+            QueueWorldSave(sim, run);
             sim.SaveDesigns(DesignsPath(worldPath));
             worldSaveAcc = 0.0;
         }
@@ -2961,6 +2989,8 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         if (net.window >= NET_REPORT_INTERVAL && !clients.empty())
             net.Report(clients.size());
 
+        ReportWriteFailures(run);  // a checkpoint the writer could not make (#350)
+
         // How the server is doing, once a minute whether or not anyone is on (#400).
         metricsAcc += frame;
         if (metricsAcc >= METRICS_INTERVAL)
@@ -2983,7 +3013,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         if (worldSaveAcc >= WORLD_SAVE_INTERVAL)
         {
             worldSaveAcc = 0.0;
-            sim.SaveWorld(worldPath);
+            QueueWorldSave(sim, run);
             sim.SaveDesigns(DesignsPath(worldPath));
             // Treasuries move with every fee and are written here, with the world they were
             // earned in (#431 slice 5); corps.json is written at once only for a verb.

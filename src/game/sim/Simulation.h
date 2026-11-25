@@ -2005,6 +2005,11 @@ public:
     // `.bak1`..`.bakN`. False if the write failed; the file is then as it was.
     static constexpr int WORLD_BACKUPS = 3;
     bool                 SaveWorld(const std::string& path) const;
+    // What SaveWorld writes, as a value that owns everything in it (#350): built on the
+    // simulation's thread, then text-ified and written by `Save::BackgroundWriter` on another,
+    // so a checkpoint costs the tick the building and not the writing.
+    nlohmann::json WorldJson() const;
+    static std::string WorldText(const nlohmann::json& doc);
     // Save::Result::TooNew means the file was written by a later build: it is left alone
     // and nothing is loaded, because reading it with this build's rules would turn an
     // unknown field into a default and then write that back (#20).

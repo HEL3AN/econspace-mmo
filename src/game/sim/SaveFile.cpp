@@ -100,4 +100,99 @@ bool WriteFileAtomic(const std::string& path, const std::string& contents, int b
     return true;
 }
 
+BackgroundWriter::BackgroundWriter() : worker_([this] { Run(); })
+{
+}
+
+BackgroundWriter::~BackgroundWriter()
+{
+    {
+        std::lock_guard<std::mutex> lock(m_);
+        stop_ = true;
+    }
+    wake_.notify_all();
+    worker_.join();  // Run() leaves only when nothing is waiting
+}
+
+void BackgroundWriter::Submit(const std::string& path, std::function<std::string()> text,
+                              int backups)
+{
+    {
+        std::lock_guard<std::mutex> lock(m_);
+        auto                        it = waiting_.find(path);
+        if (it != waiting_.end())
+        {
+            coalesced_++;
+            it->second = Job{ std::move(text), backups };
+        }
+        else
+            waiting_.emplace(path, Job{ std::move(text), backups });
+    }
+    wake_.notify_one();
+}
+
+void BackgroundWriter::Wait()
+{
+    std::unique_lock<std::mutex> lock(m_);
+    idle_.wait(lock, [this] { return waiting_.empty() && !busy_; });
+}
+
+int BackgroundWriter::TakeFailures(std::string* lastPath)
+{
+    std::lock_guard<std::mutex> lock(m_);
+    const int                   n = failures_;
+    if (lastPath != nullptr)
+        *lastPath = failedPath_;
+    failures_ = 0;
+    return n;
+}
+
+int BackgroundWriter::Coalesced() const
+{
+    std::lock_guard<std::mutex> lock(m_);
+    return coalesced_;
+}
+
+int BackgroundWriter::Written() const
+{
+    std::lock_guard<std::mutex> lock(m_);
+    return written_;
+}
+
+void BackgroundWriter::Run()
+{
+    std::unique_lock<std::mutex> lock(m_);
+    for (;;)
+    {
+        wake_.wait(lock, [this] { return stop_ || !waiting_.empty(); });
+        if (waiting_.empty())
+            return;  // stopped, and nothing left to write
+        auto        first = waiting_.begin();
+        std::string path = first->first;
+        Job         job = std::move(first->second);
+        waiting_.erase(first);
+        busy_ = true;
+        lock.unlock();
+        bool ok = false;
+        try
+        {
+            ok = WriteFileAtomic(path, job.text(), job.backups);
+        }
+        catch (...)
+        {
+            ok = false;  // a job that throws is a failed save, not a dead thread
+        }
+        lock.lock();
+        busy_ = false;
+        if (ok)
+            written_++;
+        else
+        {
+            failures_++;
+            failedPath_ = path;
+        }
+        idle_.notify_all();
+    }
+}
+
 }  // namespace Save

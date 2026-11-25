@@ -323,7 +323,8 @@ add_library(shipcore STATIC
     src/game/player/Skills.cpp
     src/game/missions/MissionSystem.cpp
 )
-target_link_libraries(shipcore PUBLIC engine netproto)
+find_package(Threads REQUIRED)
+target_link_libraries(shipcore PUBLIC engine netproto Threads::Threads)
 
 # simcore: the authoritative world, Simulation and everything it owns -- the server's, and
 # the tests', which test the rules where they live rather than through a socket (#10).
