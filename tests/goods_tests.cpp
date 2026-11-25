@@ -211,6 +211,40 @@ TEST_CASE("a market's price follows its stock, and its recipes run on what is in
     CHECK(HaulAmount(Market(), Market(), iron, cap) == 0);
 }
 
+TEST_CASE("a recipe idles at its output's target, and keeps back what an order needs (#584)")
+{
+    GoodsFile          file;
+    const ResourceType iron = Good::Iron();
+    const ResourceType steel = Good::Named("Steel");
+    MarketRates        rates;
+    rates.recipes.push_back(Goods::IndustryOf("station.mining_outpost")->recipes[0]);
+    rates.use.assign((size_t)Goods::Count(), 0.0);
+
+    // Steel on the shelf at its target: the Iron is left where it is, though it would pay.
+    Market full;
+    full.SetStock(iron, 300.0);
+    full.SetStock(steel, full.Target(steel));
+    full.Step(rates, 1.0);
+    CHECK(full.Stock(iron) == doctest::Approx(300.0));
+    CHECK(full.Stock(steel) == doctest::Approx(full.Target(steel)));
+    // Below it, the same recipe runs.
+    full.SetStock(steel, 0.0);
+    full.Step(rates, 1.0);
+    CHECK(full.Stock(iron) < 300.0);
+
+    // An open order's Iron is not made into Steel: the recipes take only what is above it.
+    Market held;
+    held.SetStock(iron, 100.0);
+    held.SetStock(steel, 0.0);
+    held.Reserve(iron, 80.0);
+    held.Step(rates, 1.0);
+    CHECK(held.Stock(iron) == doctest::Approx(80.0));
+    CHECK(held.Stock(steel) == doctest::Approx(20.0 / 3.0));
+    held.ClearReserve();
+    held.Step(rates, 1.0);  // the recipe's own rate (20 cycles, 60 ore) is all it takes
+    CHECK(held.Stock(iron) == doctest::Approx(20.0));
+}
+
 TEST_CASE("a client's quote of several units is the market's own (#572)")
 {
     GoodsFile          file;

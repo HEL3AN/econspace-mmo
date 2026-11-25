@@ -61,6 +61,12 @@ public:
     // arrives from other systems comes in a hauler's hold (#343).
     void Step(const MarketRates& rates, double hours);
 
+    // What a holder's open ship order needs of a good (#584): a recipe does not take its input
+    // below it, so that the Iron a fleet is waiting for is not made into Steel as it arrives.
+    // Not saved: the faction pass sets it again every period.
+    void ClearReserve() { reserve_.clear(); }
+    void Reserve(ResourceType type, double amount);
+
     // The target stock of a good here: what the curve is drawn about (carried in the snapshot).
     double TargetOf(ResourceType type) const { return Target(type); }
 
@@ -72,6 +78,7 @@ private:
 
     std::vector<double> stock_;
     std::vector<double> base_;
+    std::vector<double> reserve_;  // by good index
     int                 markets_ = 1;
     bool                fresh_ = true;  // never stepped or loaded
 };
