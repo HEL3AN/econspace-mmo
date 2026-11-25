@@ -1,9 +1,12 @@
 #include <doctest/doctest.h>
 
+#include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -430,4 +433,120 @@ TEST_CASE("each failed login doubles the wait before the next, and a success cle
     gate.Expire(4000.0);
     gate.LoginFailed(a, "ann", 4000.0);
     CHECK(gate.LoginWait(a, "ann", 4000.0) == doctest::Approx(1.0));
+}
+
+// The world is written on a thread of its own (#350): what is saved is built on the caller's
+// thread and owned by the job, and the rules of a save are the same as before.
+TEST_CASE("a background save is the world's own text, one write at a time (#350)")
+{
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world.json");
+    auto              sim = World();
+
+    SUBCASE("it writes what SaveWorld writes")
+    {
+        REQUIRE(sim->SaveWorld(path));
+        const std::string direct = Slurp(path);
+        const std::string queued = tmp.Path("queued.json");
+        {
+            Save::BackgroundWriter w;
+            w.Submit(
+                queued, [doc = sim->WorldJson()]() { return Simulation::WorldText(doc); },
+                Simulation::WORLD_BACKUPS);
+            w.Wait();
+            CHECK(w.TakeFailures() == 0);
+            CHECK(w.Written() == 1);
+        }
+        CHECK(Slurp(queued) == direct);
+    }
+    SUBCASE("what is saved is a copy: changing the world afterwards does not reach the file")
+    {
+        Save::BackgroundWriter w;
+        std::mutex             gate;
+        gate.lock();  // holds the first write until the world has changed
+        w.Submit(
+            path,
+            [&gate, doc = sim->WorldJson()]()
+            {
+                std::lock_guard<std::mutex> lock(gate);
+                return Simulation::WorldText(doc);
+            },
+            0);
+        const std::string before = Simulation::WorldText(sim->WorldJson());
+        sim->MaintainWorld(2.0f);
+        sim->MaintainWorld(2.0f);
+        CHECK(Simulation::WorldText(sim->WorldJson()) != before);  // it did change
+        gate.unlock();
+        w.Wait();
+        CHECK(Slurp(path) == before);
+    }
+    SUBCASE("a save asked for while one waits replaces it; one running is not interrupted")
+    {
+        Save::BackgroundWriter  w;
+        std::mutex              gate;
+        std::atomic<int>        running{ 0 }, most{ 0 }, ran{ 0 };
+        std::condition_variable started;
+        std::mutex              startedM;
+        bool                    isRunning = false;
+        gate.lock();
+        auto job = [&](std::string text, bool signal)
+        {
+            return [&, text, signal]()
+            {
+                const int now = ++running;
+                most = std::max(most.load(), now);
+                if (signal)
+                {
+                    std::lock_guard<std::mutex> l(startedM);
+                    isRunning = true;
+                    started.notify_all();
+                }
+                std::lock_guard<std::mutex> lock(gate);
+                ran++;
+                --running;
+                return text;
+            };
+        };
+        w.Submit(path, job("first", true), 0);
+        {
+            std::unique_lock<std::mutex> l(startedM);
+            started.wait(l, [&] { return isRunning; });  // the first is in the writer's hands
+        }
+        w.Submit(path, job("second", false), 0);  // waits behind it
+        w.Submit(path, job("third", false), 0);   // ...and replaces the second
+        w.Submit(path, job("fourth", false), 0);  // ...and the third
+        gate.unlock();
+        w.Wait();
+        CHECK(Slurp(path) == "fourth");
+        CHECK(ran == 2);  // the first, and the last: the ones between never ran
+        CHECK(w.Coalesced() == 2);
+        CHECK(most == 1);  // never two at once
+    }
+    SUBCASE("the destructor waits: a stopping server's last save reaches the disk")
+    {
+        {
+            Save::BackgroundWriter w;
+            for (int i = 0; i < 5; i++)
+                w.Submit(
+                    tmp.Path("f" + std::to_string(i) + ".json"),
+                    [i]() { return std::string(200000, (char)('a' + i)); }, 0);
+        }
+        for (int i = 0; i < 5; i++)
+            CHECK(Slurp(tmp.Path("f" + std::to_string(i) + ".json")).size() == 200000);
+    }
+    SUBCASE("a write that fails is counted and leaves the old file as it was")
+    {
+        REQUIRE(sim->SaveWorld(path));
+        const std::string good = Slurp(path);
+        std::filesystem::create_directory(path + ".tmp");  // the write cannot even start
+        Save::BackgroundWriter w;
+        w.Submit(path, []() { return std::string("{\"half\":"); }, 3);
+        w.Submit(tmp.Path("throws.json"), []() -> std::string { throw 1; }, 0);
+        w.Wait();
+        std::string last;
+        CHECK(w.TakeFailures(&last) == 2);
+        CHECK(w.TakeFailures() == 0);
+        CHECK(Slurp(path) == good);
+        CHECK_FALSE(std::filesystem::exists(tmp.Path("throws.json")));
+    }
 }
