@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    79;  // 79: a mission may be a raid job (#345): MissionType::Raid;
+    80;  // 80: the market carries each good's target stock (a fourth number a line), so a client
+         // quotes several modules by the server's own price curve (#572);
+         // 79: a mission may be a raid job (#345): MissionType::Raid;
          // 78: a mission may be a survey job (#345): MissionType::Survey, a plan's job like the
          // rest;
          // 77: a corporation's enemy list (#466) -- a CorpAct "enemy" (name: a faction or a
@@ -726,6 +728,8 @@ struct Snapshot
     std::vector<float> marketPrices;
     std::vector<float> marketAsk;
     std::vector<int>   marketStock;
+    std::vector<int>
+        marketTarget;  // each good's target here, whole units: its price curve's centre (#572)
     // What is left of each belt in the system (#348), by entity id: the ore now and full. It
     // changes as the belts are mined and grow back, which the layout does not follow.
     struct BeltOre

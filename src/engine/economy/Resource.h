@@ -107,6 +107,13 @@ bool ModuleGood(const std::string& moduleId, ResourceType& out);
 
 namespace Goods
 {
+// The price a market with `target` of a good (base price `base`) asks of nobody in particular
+// with `stock` on the shelf: base x (target / stock) ^ elasticity, clamped to the rules' floor
+// and ceiling -- the one curve (#343). And what buying `amount` units off that shelf costs at
+// the ask, a unit at a time as each raises the next's price: the server's quote and a client's
+// of several modules (#572) are this one function.
+double PriceOnShelf(double base, double target, double stock);
+double QuoteBuyOn(double base, double target, double stock, int amount);
 // Reads goods.json and replaces the registry with it. Strict (#191): a missing file, an
 // unknown field, a good named twice, a recipe naming a good that is not there -- each is an
 // error, and the registry is left as it was. Before any load the registry holds the three

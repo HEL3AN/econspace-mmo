@@ -61,6 +61,9 @@ public:
     // arrives from other systems comes in a hauler's hold (#343).
     void Step(const MarketRates& rates, double hours);
 
+    // The target stock of a good here: what the curve is drawn about (carried in the snapshot).
+    double TargetOf(ResourceType type) const { return Target(type); }
+
 private:
     void   Fit();  // sized to the registry
     double PriceAt(ResourceType type, double stock) const;

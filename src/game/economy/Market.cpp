@@ -63,14 +63,10 @@ void Market::SetMarkets(int markets, const MarketRates* rates)
 
 double Market::PriceAt(ResourceType type, double stock) const
 {
-    const MarketRules& k = Goods::Rules();
-    const size_t       i = (size_t)type.Index();
+    const size_t i = (size_t)type.Index();
     if (i >= base_.size())
         return 0.0;
-    // Server-side and never compared across machines (the snapshot carries the result), so
-    // pow is fine here.
-    const double short_ = Target(type) / std::max(stock, 0.5);
-    return base_[i] * std::clamp(std::pow(short_, k.elasticity), k.floor, k.ceiling);
+    return Goods::PriceOnShelf(base_[i], Target(type), stock);
 }
 
 double Market::Mid(ResourceType type) const
@@ -126,11 +122,8 @@ double Market::QuoteSell(ResourceType type, int amount) const
 
 double Market::QuoteBuy(ResourceType type, int amount) const
 {
-    const double spread = 1.0 + Goods::Rules().spread * 0.5;
-    double       s = Stock(type), sum = 0.0;
-    for (int i = 0; i < amount && s >= 1.0; i++, s -= 1.0)
-        sum += PriceAt(type, s) * spread;
-    return sum;
+    const size_t i = (size_t)type.Index();
+    return i < base_.size() ? Goods::QuoteBuyOn(base_[i], Target(type), Stock(type), amount) : 0.0;
 }
 
 double Market::Sell(ResourceType type, int amount)

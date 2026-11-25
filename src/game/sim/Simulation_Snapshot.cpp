@@ -111,6 +111,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         snap.marketPrices.push_back((float)(std::round(market.Bid(rt) * 100.0) / 100.0));
         snap.marketAsk.push_back((float)(std::round(market.Ask(rt) * 100.0) / 100.0));
         snap.marketStock.push_back((int)market.Stock(rt));
+        snap.marketTarget.push_back((int)std::lround(market.TargetOf(rt)));
     }
     // What is left of each belt (#348), in whole units -- of the belts this pilot may see: a
     // hidden one's id would say it is there (#346).
