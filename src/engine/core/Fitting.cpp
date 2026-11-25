@@ -289,6 +289,31 @@ Fighter DesignFighter(const Catalogue& c, const std::string& id)
     return f;
 }
 
+Miner RoleMiner(const Catalogue& c, const std::string& faction)
+{
+    Miner                           m;
+    const std::vector<std::string>* list = c.DesignsFor(faction, "miner");
+    if (list == nullptr || list->empty())
+        return m;
+    for (const std::string& id : *list)
+    {
+        const Design* d = c.FindDesign(id);
+        Stats         st;
+        std::string   why;
+        if (d != nullptr && Derive(c, *d, st, why))
+        {
+            m.rate += st.miningRate;
+            m.hold += (float)st.cargoCapacity;
+            m.speed += st.cruise;
+        }
+    }
+    const float n = (float)list->size();
+    m.rate /= n;
+    m.hold /= n;
+    m.speed /= n;
+    return m;
+}
+
 float Bite(const Catalogue& c, const Fighter& by, const Fighter& on)
 {
     if (by.dps <= 0.0f || on.hull <= 0.0f)

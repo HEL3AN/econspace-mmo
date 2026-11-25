@@ -65,8 +65,13 @@ struct Item
 
     float heading = 0.0f;    // radians; 0 for things that do not point anywhere
     float intensity = 1.0f;  // 0..1 — ore left in a belt, hull left on a ship, a looted wreck
-    float ring = 0.0f;       // guide circle radius (a planet's orbit); 0 draws none
-    bool  thrusting = false;
+    // World time at which this thing ends, 0 for one that stays (#618): an unstable mouth or a
+    // roaming hole. `Present` turns it into `intensity` -- its life -- against the clock it is
+    // given, so what is left of a hole is read on the world's own clock and nothing new crosses
+    // the wire: the end was already in the layout.
+    double endsAt = 0.0;
+    float  ring = 0.0f;  // guide circle radius (a planet's orbit); 0 draws none
+    bool   thrusting = false;
 
     // How settled a body is, 0..1 (#515): what a material may light its night side by. One
     // for anything nobody has said otherwise of -- the gallery, the editor -- so a card shows
@@ -121,6 +126,13 @@ void Present(std::vector<Item> items, IBackend& backend);
 // its radii, which holds every orbit the generator gives a satellite -- is settled, more so
 // for each further station, and a planet with none shows a dark night side. Read from the
 // scene alone, so what a client draws and what the layout it was sent says cannot differ.
+// How much of a mouth or hole is left, 0..1, from the seconds before it closes (#618): one
+// from `MOUTH_FRESH_HOURS` out, falling in a straight line to nothing at the end. A mouth lives
+// a day and a roaming hole four to twenty-four hours, so a young one is whole and the last
+// hours show.
+constexpr double MOUTH_FRESH_HOURS = 12.0;
+float            MouthLife(double secondsLeft);
+
 void MarkSettled(std::vector<Item>& items);
 
 // The same, lit. Separate from the plain overload rather than a defaulted argument so the

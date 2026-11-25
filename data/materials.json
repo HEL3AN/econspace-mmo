@@ -671,6 +671,22 @@
             }
         },
         {
+            "id": "wormhole",
+            "shader": "wormhole",
+            "bindings": {
+                "centre": "item.screenPos",
+                "radius": "item.screenSize",
+                "time": "clock.time",
+                "seed": "item.seed",
+                "life": "item.intensity",
+                "noiseTex": "texture.noise",
+                "base": "item.color",
+                "hot": [1.0, 0.93, 0.85],
+                "beyond": [0.35, 0.55, 0.95],
+                "throat": 0.12
+            }
+        },
+        {
             "id": "nebula",
             "shader": "nebula",
             "bindings": {

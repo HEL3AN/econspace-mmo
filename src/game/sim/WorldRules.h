@@ -3,6 +3,8 @@
 #include <map>
 #include <string>
 
+#include "entities/AsteroidField.h"
+
 // How the world grows (#342 S3): the rules of the tide, read from data/world_rules.json.
 //
 // Every region on the edge -- one with a free neighbouring slot in the skeleton -- gathers
@@ -246,6 +248,20 @@ struct Ore
 {
     double margin = 1.0;
     double fleetTurnover = 0.0;
+};
+
+// How a field with a life is worked (#617, documents/mining_and_fields.md). The curve is what
+// a new field's cap follows as it ages; `yieldFloor` is how slowly a pull comes from a field
+// thinned to nothing (the rate is yieldFloor + (1 - yieldFloor) * ore / cap of the field's own
+// speed); `crew` is how many of a system's miners work its fields at the most, each at what its
+// design gives (mining rate and hold) between the field and the nearest market, with
+// `dockSeconds` for the turn round at the station.
+struct Fields
+{
+    FieldCurve curve;
+    double     yieldFloor = 0.3;
+    double     crew = 2.0;
+    double     dockSeconds = 30.0;
 };
 
 // The police's answer to a crime (#431 slice 9): always real ships, never an invincible
@@ -618,6 +634,7 @@ const Contracts&   ContractRules();
 const Holes&       HoleRules();
 const Scan&        ScanRules();
 const Ore&         OreRules();
+const Fields&      FieldRules();
 const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
@@ -642,6 +659,7 @@ void SetContractRules(const Contracts& c);
 void SetHoleRules(const Holes& h);
 void SetScanRules(const Scan& s);
 void SetOreRules(const Ore& o);
+void SetFieldRules(const Fields& f);
 void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);

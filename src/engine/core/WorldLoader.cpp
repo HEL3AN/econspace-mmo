@@ -196,7 +196,8 @@ const std::vector<WorldLoader::DocumentList>& WorldLoader::DocumentLists()
           { "name", "pos", "size", "faction", "role", "archetype", "orbits" },
           { "name", "size" } },
         { "asteroidFields",
-          { "name", "pos", "size", "resource", "ore", "archetype", "orbits" },
+          { "name", "pos", "size", "resource", "ore", "archetype", "orbits", "bornAt", "life",
+            "curve" },
           { "name", "size", "resource", "ore" } },
         { "nebulae", { "name", "pos", "radius", "archetype", "orbits" }, { "radius" } },
         { "derelicts",
@@ -503,6 +504,23 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
                                                 ResourceFromString(f["resource"]), (int)f["ore"]));
             ApplyArchetype(*entities.back(), f);
             ApplyOrbit(*entities.back(), f);
+            // A field with a life (#617): when it was born, how long it lasts, and the curve
+            // its cap follows -- fixed at birth, so a rule tuned later leaves it alone.
+            if (f.value("life", 0.0) > 0.0)
+            {
+                FieldCurve curve;
+                if (f.contains("curve") && f["curve"].is_object())
+                {
+                    const json& c = f["curve"];
+                    curve.bloomEnd = c.value("bloomEnd", curve.bloomEnd);
+                    curve.bloomFrom = c.value("bloomFrom", curve.bloomFrom);
+                    curve.richEnd = c.value("richEnd", curve.richEnd);
+                    curve.thinEnd = c.value("thinEnd", curve.thinEnd);
+                    curve.thinTo = c.value("thinTo", curve.thinTo);
+                }
+                static_cast<AsteroidField&>(*entities.back())
+                    .SetLife(f.value("bornAt", 0.0), f["life"].get<double>(), curve);
+            }
         }
     }
 
@@ -648,6 +666,17 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
             o["size"] = f.GetSize();
             o["resource"] = ResourceName(f.GetResource());
             o["ore"] = f.GetOreMax();
+            if (f.HasLife())
+            {
+                o["bornAt"] = f.BornAt();
+                o["life"] = f.Life();
+                const FieldCurve& c = f.Curve();
+                o["curve"] = { { "bloomEnd", c.bloomEnd },
+                               { "bloomFrom", c.bloomFrom },
+                               { "richEnd", c.richEnd },
+                               { "thinEnd", c.thinEnd },
+                               { "thinTo", c.thinTo } };
+            }
             break;
         }
         case EntityKind::Nebula:

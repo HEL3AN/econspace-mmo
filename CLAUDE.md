@@ -400,6 +400,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   is re-aimed after the drop-out because the target has moved since it was issued. Within
   `Orders::CHASE_WITHIN` the re-aim is a follow hold, never another warp (#377): a warp
   goes to a fixed point, and re-warping at a station doing 100 u/s landed short for ever.
+- **A field with a life is `f(age) - taken`** (#617). `AsteroidField::OreAt(now)` is the cap its
+  curve gives at its age less what anyone took; the saved state is `taken`, and the curve is
+  copied from `world_rules.json` `fields` at birth so a tuned rule never touches one alive.
+  It is a static added and removed only through `AddStatic`/`RemoveStatic`, and ended by
+  `StructureSchedule`. Ore the cap takes unmined is *dispersed* (a sink, `Market::Flow`); the
+  coarse pass's crews take an absolute rate from the miner design (`Simulation::WorkFields`),
+  not a share of what is left, and only while the shelf has room. `fleetbench` prints the flows.
 - **Anything that moves is `f(time, seed)`** (#136), never integrated per frame. A part
   whose angle accumulated would drift between clients and two players would see the same
   station turned differently; as written nothing about motion crosses the wire. The turn is

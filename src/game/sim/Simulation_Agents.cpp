@@ -1569,19 +1569,33 @@ void Simulation::StepMarket(SystemState& st, float seconds)
         st.market.SetMarkets(st.profile.markets, &st.profile.rates);
     // A hidden belt (#346) grows back like any other, but no crew works one nobody has found:
     // it is not in the profile, so it is looked at whether or not the profile has belts.
+    std::vector<AsteroidField*> living;  // the fields with a life (#617), worked below
     for (auto& e : st.entities)
     {
         if (e->GetKind() != EntityKind::Field)
             continue;
         AsteroidField& belt = static_cast<AsteroidField&>(*e);
+        if (belt.HasLife())
+        {
+            // What the cap took off it since the last look left the world unmined: a sink.
+            const double lost = belt.Age(time_);
+            if (lost > 0.0)
+                st.market.NoteDispersed(belt.GetResource(), lost);
+            if (trades && SignatureOf(belt) <= 0.0f)
+                living.push_back(&belt);
+            continue;
+        }
         if (trades && SignatureOf(belt) <= 0.0f)
         {
             const double mined =
                 belt.Take(belt.GetOre() * std::min(1.0, k.beltMined * crew * hours));
             st.market.SetStock(belt.GetResource(), st.market.Stock(belt.GetResource()) + mined);
+            st.market.NoteMined(belt.GetResource(), mined);
         }
         belt.Regrow(k.beltRegrow, hours);
     }
+    if (!living.empty())
+        WorkFields(st, living, hours);
     // Nowhere to trade: nothing is kept. A system that gains a market starts at its targets.
     if (!trades)
         return;

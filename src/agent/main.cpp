@@ -812,7 +812,10 @@ std::vector<Tool> BuildTools()
           "Look at the world: the ship, the system, what is nearby, hostiles, "
           "and recent events. Start here, and call it again after anything "
           "changes. Use detail='full' only when deciding something. A structure says "
-          "what it mends a second (#431): fire below that rate does nothing to it. Full detail "
+          "what it mends a second (#431): fire below that rate does nothing to it. A field of ore "
+          "says what is left and, when it has a life (#617), what it can hold now and when it "
+          "disperses: it thins as it ages, mining it gets slower, and what is not mined by the "
+          "end is lost. Full detail "
           "lists your corporation's patrols; a guard ship nearby is a corporation's.",
           Obj({ { "detail", Str("'brief' (default) or 'full'") } }), [](const Rpc::Json& args)
           {

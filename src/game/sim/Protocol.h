@@ -38,8 +38,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    89;  // 89: exchange contracts (#473): the action `board` (post, accept, cancel) and a
+    90;  // 90: exchange contracts (#473): the action `board` (post, accept, cancel) and a
          // PlayerView's `board`, the contracts a pilot may take here or has posted;
+         // 89: a belt line of the snapshot carries what the field can hold now (#617);
          // 88: a direct trade between two docked pilots (#473): the action `deal` and a
          // PlayerView's `trade`, each side's bundle as the server describes it; 87: a ship is named
          // by its id (#356) -- `ship` of the buy, switch and insure verbs and the view's `ships`
@@ -546,6 +547,7 @@ struct EntitySnapshot
     // A belt's ore (#348): what is left and what it holds full, filled in from the
     // snapshot's `belts` by CompleteFromLayout; -1 -- not a belt, or not told.
     int oreLeft = -1, oreMax = -1;
+    int oreCap = -1;  // what it can hold at this moment (#617); equals oreMax for a belt
     // Another pilot under the law (#431 slice 10): flagged a criminal -- anyone may shoot them
     // without a crime -- and their security status, -10..+10.
     bool  criminal = false;
@@ -906,6 +908,7 @@ struct Snapshot
     struct BeltOre
     {
         int id = 0, ore = 0, max = 0;
+        int cap = 0;  // what it can hold now: a field with a life thins (#617); a belt, `max`
     };
     std::vector<BeltOre>     belts;
     std::vector<TradeAck>    tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
