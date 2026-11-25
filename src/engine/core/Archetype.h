@@ -4,6 +4,8 @@
 #include "entities/EntityKind.h"
 #include "render/Silhouette.h"
 #include "raylib.h"
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -167,11 +169,47 @@ struct Archetype
     bool Has(Component c) const { return components.Has(c); }
 };
 
-// The registry is process-wide and loaded once, like Factions. Every executable that
-// touches the world needs it, and an archetype is immutable reference data — there is
-// nothing per-instance to own it.
+// The registry the free functions below read is the *current* one (#356). A process that
+// never makes another has one, loaded once, as before. A world that must not share one -- a
+// test with two hangars, the editor previewing a pack -- owns a `Registry` of its own, loads it
+// under a `Scope` and reads it under one. The current pointer is not thread-local: a thread
+// other than the one that holds the scope must not read the registries (the background save
+// writer, #592, only writes prebuilt JSON and must stay so).
 namespace Archetypes
 {
+// Designs players made, and the archetype each is drawn as (#279 fitting). Held by pointer so
+// that adding one never moves another: a ship keeps its look by pointer.
+struct AddedDesign
+{
+    Ships::Design design;
+    Archetype     look;
+};
+
+struct Registry
+{
+    std::vector<Archetype>                              archetypes;
+    std::string                                         error;
+    Ships::Catalogue                                    ships;
+    unsigned                                            generation = 0;
+    std::map<std::string, std::unique_ptr<AddedDesign>> added;
+};
+
+// The registry the functions below read and Load writes.
+Registry& Current();
+
+// Makes a registry the current one for a scope, and puts the previous one back after.
+class Scope
+{
+public:
+    explicit Scope(Registry& r);
+    ~Scope();
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+
+private:
+    Registry* previous_;
+};
+
 // Reads data/archetypes.json. Returns false and leaves the previous contents in place
 // if the file is missing or malformed; Error() then says what went wrong. Callers that
 // cannot run without a world should treat that as fatal rather than limping on with an

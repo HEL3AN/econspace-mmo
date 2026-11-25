@@ -13,20 +13,41 @@
 
 using json = nlohmann::json;
 
+namespace Archetypes
+{
 namespace
 {
-std::vector<Archetype> g_archetypes;
-std::string            g_error;
-Ships::Catalogue       g_ships;
-unsigned               g_generation = 0;
-// Designs players made, and the archetype each is drawn as (#279 fitting). Held by pointer so
-// that adding one never moves another: a ship keeps its look by pointer.
-struct AddedDesign
+Registry  g_process;  // what a process that never makes another registry reads and writes
+Registry* g_current = &g_process;
+
+// Unique across registries, so a cache built from one (the hangar catalog) is rebuilt when
+// another is switched in.
+unsigned NextGeneration()
 {
-    Ships::Design design;
-    Archetype     look;
-};
-std::map<std::string, std::unique_ptr<AddedDesign>> g_added;
+    static unsigned last = 0;
+    return ++last;
+}
+}  // namespace
+
+Registry& Current()
+{
+    return *g_current;
+}
+
+Scope::Scope(Registry& r) : previous_(g_current)
+{
+    g_current = &r;
+}
+
+Scope::~Scope()
+{
+    g_current = previous_;
+}
+}  // namespace Archetypes
+
+namespace
+{
+using Archetypes::Current;
 
 EntityKind KindFromString(const std::string& s)
 {
@@ -126,7 +147,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
     if (j.contains("design"))
     {
         a.design = j["design"].is_string() ? j["design"].get<std::string>() : std::string();
-        const Ships::Design* d = g_ships.FindDesign(a.design);
+        const Ships::Design* d = Current().ships.FindDesign(a.design);
         if (d == nullptr || j.contains("shape"))
         {
             err =
@@ -137,9 +158,9 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         }
         json        shape;
         std::string why;
-        if (!Ships::ShapeOf(g_ships, *d, shape, why) ||
+        if (!Ships::ShapeOf(Current().ships, *d, shape, why) ||
             !Render::ParseShape(shape, a.visual.shape, why) ||
-            !Ships::Derive(g_ships, *d, a.ship, why))
+            !Ships::Derive(Current().ships, *d, a.ship, why))
         {
             err = "archetype '" + a.id + "': design '" + a.design + "': " + why;
             return false;
@@ -316,7 +337,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
                 {
                     a.weaponType = p["damageType"].is_string() ? p["damageType"].get<std::string>()
                                                                : std::string();
-                    const auto& types = g_ships.damageTypes;
+                    const auto& types = Current().ships.damageTypes;
                     if (std::find(types.begin(), types.end(), a.weaponType) == types.end())
                     {
                         err = "archetype '" + a.id + "': component 'defensive': damageType '" +
@@ -403,7 +424,7 @@ namespace Archetypes
 {
 const Ships::Catalogue& ShipCatalogue()
 {
-    return g_ships;
+    return Current().ships;
 }
 
 namespace
@@ -414,11 +435,11 @@ bool AddDrawn(const Ships::Design& d, const Archetype* base, std::string& error)
 
 bool Load(const std::string& path)
 {
-    g_error.clear();
+    Current().error.clear();
     // Whatever happens below, what was read before may be gone: the ship catalogue is
     // replaced before the archetypes are read.
-    ++g_generation;
-    g_added.clear();  // made from the catalogue being replaced
+    Current().generation = NextGeneration();
+    Current().added.clear();  // made from the catalogue being replaced
 
     // The module library first, from beside this file: archetypes name modules, and a
     // part naming one that is not loaded is a load error (#240).
@@ -429,16 +450,16 @@ bool Load(const std::string& path)
         std::string why;
         if (!Render::Modules::Load(dir + "modules.json", why))
         {
-            g_error = why;
+            Current().error = why;
             return false;
         }
         // Then the ship designs, which ship archetypes are drawn from. Nothing has to have
         // them; a file that is there and wrong is an error.
-        g_ships = Ships::Catalogue();
+        Current().ships = Ships::Catalogue();
         if (std::ifstream(dir + "ships.json").is_open() &&
-            !Ships::Load(dir + "ships.json", g_ships, why))
+            !Ships::Load(dir + "ships.json", Current().ships, why))
         {
-            g_error = why;
+            Current().error = why;
             return false;
         }
     }
@@ -446,7 +467,7 @@ bool Load(const std::string& path)
     std::ifstream f(path);
     if (!f.is_open())
     {
-        g_error = "cannot open " + path;
+        Current().error = "cannot open " + path;
         return false;
     }
 
@@ -457,13 +478,13 @@ bool Load(const std::string& path)
     }
     catch (const std::exception& e)
     {
-        g_error = std::string("malformed JSON in ") + path + ": " + e.what();
+        Current().error = std::string("malformed JSON in ") + path + ": " + e.what();
         return false;
     }
 
     if (!j.contains("archetypes") || !j["archetypes"].is_array())
     {
-        g_error = path + ": expected an \"archetypes\" array";
+        Current().error = path + ": expected an \"archetypes\" array";
         return false;
     }
 
@@ -474,7 +495,7 @@ bool Load(const std::string& path)
         std::string err;
         if (!ParseArchetype(entry, a, err))
         {
-            g_error = path + ": " + err;
+            Current().error = path + ": " + err;
             return false;
         }
         // What the object can do decides part of what it wears (#137, #240 phase 5): a kit
@@ -500,8 +521,8 @@ bool Load(const std::string& path)
                 }
             if (!known)
             {
-                g_error = path + ": archetype '" + a.id + "': kit line when \"" + w +
-                          "\" names no component";
+                Current().error = path + ": archetype '" + a.id + "': kit line when \"" + w +
+                                  "\" names no component";
                 return false;
             }
             if (has == negate)
@@ -512,7 +533,7 @@ bool Load(const std::string& path)
         for (const Archetype& seen : loaded)
             if (seen.id == a.id)
             {
-                g_error = path + ": duplicate archetype id '" + a.id + "'";
+                Current().error = path + ": duplicate archetype id '" + a.id + "'";
                 return false;
             }
         loaded.push_back(std::move(a));
@@ -520,7 +541,7 @@ bool Load(const std::string& path)
 
     // An NPC is drawn as the design it flies (#279 step 4), so a doctrine naming a design that
     // no ship archetype draws would put an invisible ship in the world.
-    for (const Ships::Doctrine& d : g_ships.doctrines)
+    for (const Ships::Doctrine& d : Current().ships.doctrines)
         for (const auto& [role, designs] : d.roles)
             for (const std::string& design : designs)
             {
@@ -529,37 +550,37 @@ bool Load(const std::string& path)
                     drawn = drawn || (a.design == design && a.kind == EntityKind::Npc);
                 if (!drawn)
                 {
-                    g_error = path + ": doctrine '" + d.faction + "' flies '" + design + "' as " +
-                              role + ", and no Npc archetype draws that design";
+                    Current().error = path + ": doctrine '" + d.faction + "' flies '" + design +
+                                      "' as " + role + ", and no Npc archetype draws that design";
                     return false;
                 }
             }
     // So is a player's (#279 step 5): a hull in the hangar that nothing draws would be flown
     // as nothing.
-    for (const Ships::HangarEntry& h : g_ships.hangar)
+    for (const Ships::HangarEntry& h : Current().ships.hangar)
     {
         bool drawn = false;
         for (const Archetype& a : loaded)
             drawn = drawn || (a.design == h.design && a.kind == EntityKind::Npc);
         if (!drawn)
         {
-            g_error = path + ": the hangar sells '" + h.design +
-                      "', and no Npc archetype draws that design";
+            Current().error = path + ": the hangar sells '" + h.design +
+                              "', and no Npc archetype draws that design";
             return false;
         }
     }
 
     // Swapped in only once the whole file parsed: a half-applied registry would be
     // worse than the previous one.
-    g_archetypes = std::move(loaded);
+    Current().archetypes = std::move(loaded);
 
     // Every variant of a stock design (#464) is drawn as its stock design's archetype wearing
     // its own shape, on every side of the wire alike: an NPC flying one needs no design
     // message, and a variant nothing can draw is a load error like a doctrine's.
-    for (const Ships::Variant& v : g_ships.variants)
+    for (const Ships::Variant& v : Current().ships.variants)
     {
         const Archetype* base = nullptr;
-        for (const Archetype& a : g_archetypes)
+        for (const Archetype& a : Current().archetypes)
             if (base == nullptr && a.kind == EntityKind::Npc && a.design == v.base)
                 base = &a;
         std::string why;
@@ -567,8 +588,8 @@ bool Load(const std::string& path)
             why = "no Npc archetype draws its stock design '" + v.base + "'";
         if (base == nullptr || !AddDrawn(v.design, base, why))
         {
-            g_error = path + ": variant '" + v.design.id + "': " + why;
-            g_added.clear();
+            Current().error = path + ": variant '" + v.design.id + "': " + why;
+            Current().added.clear();
             return false;
         }
     }
@@ -579,23 +600,23 @@ const Archetype* ForDesign(const std::string& design)
 {
     if (design.empty())
         return nullptr;
-    for (const Archetype& a : g_archetypes)
+    for (const Archetype& a : Current().archetypes)
         if (a.design == design && a.kind == EntityKind::Npc)
             return &a;
-    auto it = g_added.find(design);
-    return it == g_added.end() ? nullptr : &it->second->look;
+    auto it = Current().added.find(design);
+    return it == Current().added.end() ? nullptr : &it->second->look;
 }
 
 bool AddDesign(const Ships::Design& d, std::string& error)
 {
-    if (g_added.count(d.id) != 0 || g_ships.FindDesign(d.id) != nullptr)
+    if (Current().added.count(d.id) != 0 || Current().ships.FindDesign(d.id) != nullptr)
         return true;
     // The stock archetype of the same frame says what such a ship is -- its glyph, layer,
     // material -- and this design says what it looks like and what it can do.
     const Archetype* base = nullptr;
-    for (const Archetype& a : g_archetypes)
+    for (const Archetype& a : Current().archetypes)
         if (a.kind == EntityKind::Npc && !a.design.empty())
-            if (const Ships::Design* sd = g_ships.FindDesign(a.design))
+            if (const Ships::Design* sd = Current().ships.FindDesign(a.design))
                 if (sd->frame == d.frame && base == nullptr)
                     base = &a;
     return AddDrawn(d, base, error);
@@ -618,34 +639,35 @@ bool AddDrawn(const Ships::Design& d, const Archetype* base, std::string& error)
     added->look.id = base->id + "@" + d.id;
     added->look.design = d.id;
     added->look.visual.shape = Render::Shape();
-    if (!Ships::Validate(g_ships, d, why) || !Ships::ShapeOf(g_ships, d, shape, why) ||
+    if (!Ships::Validate(Current().ships, d, why) ||
+        !Ships::ShapeOf(Current().ships, d, shape, why) ||
         !Render::ParseShape(shape, added->look.visual.shape, why) ||
-        !Ships::Derive(g_ships, d, added->look.ship, why))
+        !Ships::Derive(Current().ships, d, added->look.ship, why))
     {
         error = why;
         return false;
     }
-    g_added[d.id] = std::move(added);
+    Current().added[d.id] = std::move(added);
     return true;
 }
 }  // namespace
 
 const Ships::Design* FindDesign(const std::string& id)
 {
-    if (const Ships::Design* d = g_ships.FindDesign(id))
+    if (const Ships::Design* d = Current().ships.FindDesign(id))
         return d;
-    auto it = g_added.find(id);
-    return it == g_added.end() ? nullptr : &it->second->design;
+    auto it = Current().added.find(id);
+    return it == Current().added.end() ? nullptr : &it->second->design;
 }
 
 unsigned Generation()
 {
-    return g_generation;
+    return Current().generation;
 }
 
 const Archetype* Find(const std::string& id)
 {
-    for (const Archetype& a : g_archetypes)
+    for (const Archetype& a : Current().archetypes)
         if (a.id == id)
             return &a;
     return nullptr;
@@ -653,7 +675,7 @@ const Archetype* Find(const std::string& id)
 
 Archetype* Mutable(const std::string& id)
 {
-    for (Archetype& a : g_archetypes)
+    for (Archetype& a : Current().archetypes)
         if (a.id == id)
             return &a;
     return nullptr;
@@ -662,7 +684,7 @@ Archetype* Mutable(const std::string& id)
 std::vector<const Archetype*> With(Component c)
 {
     std::vector<const Archetype*> out;
-    for (const Archetype& a : g_archetypes)
+    for (const Archetype& a : Current().archetypes)
         if (a.Has(c))
             out.push_back(&a);
     return out;
@@ -671,7 +693,7 @@ std::vector<const Archetype*> With(Component c)
 std::vector<const Archetype*> OfKind(EntityKind kind)
 {
     std::vector<const Archetype*> out;
-    for (const Archetype& a : g_archetypes)
+    for (const Archetype& a : Current().archetypes)
         if (a.kind == kind)
             out.push_back(&a);
     return out;
@@ -679,11 +701,11 @@ std::vector<const Archetype*> OfKind(EntityKind kind)
 
 const std::vector<Archetype>& All()
 {
-    return g_archetypes;
+    return Current().archetypes;
 }
 
 const std::string& Error()
 {
-    return g_error;
+    return Current().error;
 }
 }  // namespace Archetypes
