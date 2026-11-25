@@ -105,8 +105,8 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
     MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
     CHECK(skeleton == 3947093538462403513ull);
-    const uint64_t GOLDEN[] = { 1076609828545080046ull, 18161380091881429577ull,
-                                7639317408501677024ull };
+    const uint64_t GOLDEN[] = { 12555943607699795651ull, 3618910237981663308ull,
+                                7821834822150896275ull };
     for (int slot = 0; slot < 3; slot++)
     {
         CAPTURE(slot);
@@ -1403,16 +1403,16 @@ TEST_CASE("the editor writes a pin for every seed, beside a seed's own (#290)")
     CHECK(Gen::ReplacesByIndex(byIndex));
 }
 
-TEST_CASE("Iron is mined wherever a people has a market: every native system and every capital "
+TEST_CASE("a people lives where its basics are: Iron, Ice and Crystal in every native system "
           "(#566)")
 {
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
-    auto hasIron = [](const nlohmann::json& sys)
+    auto has = [](const nlohmann::json& sys, const char* ore)
     {
         if (!sys.contains("asteroidFields"))
             return false;
         for (const nlohmann::json& b : sys["asteroidFields"])
-            if (b.value("resource", std::string()) == "Iron")
+            if (b.value("resource", std::string()) == ore)
                 return true;
         return false;
     };
@@ -1426,7 +1426,8 @@ TEST_CASE("Iron is mined wherever a people has a market: every native system and
         for (const nlohmann::json& id : r.natives["systems"])
         {
             CAPTURE(id.get<std::string>());
-            CHECK(hasIron(r.documents.at(id.get<std::string>())));
+            for (const char* ore : { "Iron", "Ice", "Crystal" })
+                CHECK(has(r.documents.at(id.get<std::string>()), ore));
             natives++;
         }
     }

@@ -711,13 +711,33 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
         std::vector<Line> lines;
         double            can = n;
         int               far = 0;
-        auto              source = [&](const std::pair<ResourceType, int>& c) -> bool
+        // What it will pay follows its need and its wealth (#566): as dear as `dearAt` times
+        // the base when it is at its keep and poor, and as dear as the market ever asks when
+        // its fleets are gone and it can well afford a ship -- the share of its keep it is
+        // short of, times how many ships its treasury is (money over money plus a ship's
+        // price), so a poor faction stays thrifty and a rich one in want pays what it must.
+        // Nothing here is a number of its own: the ceiling is the market's, the need the
+        // faction's own fleets, the wealth its own treasury.
+        const double keepHere = std::max(1e-3, (double)Factions::TemperamentOf(f).capacity);
+        double       coming = 0.0;
+        for (const FleetOrder& o : fleetOrders_)
+            if (o.faction == f && o.system == st.id)
+                coming += o.n;
+        const double need =
+            std::clamp((keepHere - (double)st.agg.presence[f] - coming) / keepHere, 0.0, 1.0);
+        const double       shipPrice = ShipPriceAt(*shops.front().first, design);
+        const double       wealth = shipPrice > 0.0 ? treasury / (treasury + shipPrice) : 1.0;
+        const MarketRules& mk = Goods::Rules();
+        const double       askCeiling = mk.ceiling * (1.0 + mk.spread * 0.5);
+        const double       accept =
+            rules.dearAt + std::max(0.0, askCeiling - rules.dearAt) * need * wealth;
+        auto source = [&](const std::pair<ResourceType, int>& c) -> bool
         {
             for (const auto& [shop, jumps] : shops)
             {
                 const double base = shop->market.GetBasePrice(c.first);
                 if (shop->market.Stock(c.first) < 0.02 * c.second ||
-                    shop->market.Ask(c.first) > rules.dearAt * base)
+                    shop->market.Ask(c.first) > accept * base)
                     continue;
                 lines.push_back({ c.first, c.second, shop, jumps });
                 can = std::min(can, shop->market.Stock(c.first) / (double)c.second);

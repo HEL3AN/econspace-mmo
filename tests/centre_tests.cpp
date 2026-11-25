@@ -272,7 +272,7 @@ TEST_CASE("a new world opens every centre and one frontier beside each (#342)")
     MESSAGE("skeleton with 3 centres, seed 1: " << skeleton);
     MESSAGE("first centre's region, seed 1: " << centre);
     CHECK(skeleton == 5604254571228940977ull);
-    CHECK(centre == 8774360415817725141ull);
+    CHECK(centre == 14320521567071865537ull);
 }
 
 TEST_CASE("a server's world: centres to start in, charted, and nothing hand-written (#342)")
@@ -506,4 +506,29 @@ TEST_CASE("the starts and the answer cross the wire (#342)")
                               back));
     CHECK(back.options.empty());
     CHECK_FALSE(back.randomOnly);
+}
+
+TEST_CASE("a civilisation arises where its basics are: a capital has Iron, Ice and Crystal belts "
+          "(#566)")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    for (uint64_t seed = 1; seed <= 6; seed++)
+    {
+        CAPTURE(seed);
+        const Gen::GalaxySkeleton g = World(seed, 3);
+        for (int c : g.centres)
+        {
+            const Gen::Region r = Gen::GenerateRegion(Gen::SlotParams(g, c));
+            bool              found = false;
+            for (const auto& kv : r.documents)
+            {
+                std::set<std::string> ores;
+                if (kv.second.contains("asteroidFields"))
+                    for (const nlohmann::json& b : kv.second["asteroidFields"])
+                        ores.insert(b.value("resource", std::string()));
+                found = found || (ores.count("Iron") && ores.count("Ice") && ores.count("Crystal"));
+            }
+            CHECK(found);
+        }
+    }
 }
