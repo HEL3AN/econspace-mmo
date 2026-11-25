@@ -58,6 +58,7 @@ uniform float relief;   // how far neighbouring panels tilt against each other
 uniform float shine;    // 0 matt .. 1 glass
 uniform float paint;    // 1: the livery's stripes are painted on it
 uniform float windows;  // how many lit windows it has, times the livery's
+uniform float depthCue; // 0..1: how much the object is shaded as one solid body (#618 prototype)
 uniform float heat;     // how much it glows on its own: a radiator, a nozzle
 
 out vec4 finalColor;
@@ -318,6 +319,17 @@ void main()
     float facing = noLight ? 1.0 : max(0.0, dot(n, toLight));
     float floorLevel = ambient * 0.75;
     float lit = floorLevel + (1.0 - floorLevel) * facing * lightAmount;
+    // Form: a planet has a terminator, a dark limb and an edge that falls away; a built thing lit
+    // part by part has none of them, which is most of why it reads as a stack of stickers. The
+    // whole object is shaded as one body -- day to night across it, along the light -- and each
+    // part's own edge falls into shadow as a thick plate's does where it meets what is under it.
+    if (depthCue > 0.0 && !noLight && kind != 7 && kind != 8)
+    {
+        float body = smoothstep(-1.1, 1.0, dot(gl_FragCoord.xy - frame.xy, lightDir) / R);
+        lit *= mix(1.0 - 0.55 * depthCue * lightAmount, 1.0 + 0.12 * depthCue, body);
+        float edgeAO = smoothstep(0.78, 1.0, rimAt) * (1.0 - 0.5 * smoothstep(0.55, 0.9, facing));
+        lit *= 1.0 - 0.38 * depthCue * edgeAO;
+    }
     // Night: the half of the whole object turned from the light, measured across it from its
     // centre as the CPU's `onlyDark` parts are -- every part is lit a little from above, so a
     // part's own shading never has a night side. A lit window shows there, and is lost in

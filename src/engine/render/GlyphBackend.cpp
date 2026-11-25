@@ -6,6 +6,7 @@
 #include "rlgl.h"
 #include "ui/UiTheme.h"
 #include <cmath>
+#include <cstdlib>
 #include <utility>
 
 namespace Render
@@ -1054,6 +1055,34 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         // glitters through the same field.
         if (p.brightness < 1.0f)
             base = Fade(base, p.brightness);
+        // A part stands over what was drawn before it and throws its shadow on it (#618
+        // prototype). Multiplied into the picture rather than painted over it, so a shadow
+        // that falls on nothing leaves the sky as it was, and one that falls on plating darkens
+        // exactly the plating. Three offsets stacked make a penumbra.
+        static const bool noShadow =
+            std::getenv("ECON_NOSHADOW") != nullptr;  // prototype: a baseline for --perf
+        if (!noShadow && shaded && !p.surface && !p.soft && p.role != Role::Light && !p.fallback &&
+            pieceLight.strength > 0.0f && (p.role != Role::Antenna || p.z > 0))
+        {
+            const float len = std::fmin(shadeR * 0.5f, item.size * 0.06f) *
+                              (1.0f + 0.6f * (float)std::max(p.z, 0));
+            if (len * view_.zoom >= 1.5f)
+            {
+                EndMaterial();
+                BeginBlendMode(BLEND_MULTIPLIED);
+                const Color k = { 0, 0, 0, (unsigned char)(105.0f * pieceLight.strength) };
+                for (int s = 1; s <= 3; s++)
+                {
+                    Piece       sh = p;
+                    const float d = len * (0.45f + 0.35f * (float)s);
+                    sh.pos = { p.pos.x - pieceLight.dir.x * d, p.pos.y - pieceLight.dir.y * d };
+                    DrawPiece(sh, k);
+                }
+                EndBlendMode();
+                // The surface shader's inputs were set before the shadow was drawn.
+                BeginMaterialAt(item, pieceLight, shadeAt, shadeR, shadeAxis, surface, &p);
+            }
+        }
         DrawPiece(p, ForRole(p.role, base));
         // Not ended here: the next piece may be shaded with the same inputs.
     }
