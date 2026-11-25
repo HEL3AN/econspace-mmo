@@ -104,3 +104,9 @@ A spec from a client that parses is snapped; one that does not is refused with a
 the pilot's livery is left as it was. A spec in a save that does not parse costs the paint,
 not the palette, with a notice on login. The renderer resolves specs into a ring of 512
 slots, so a crowd of distinct paints never grows the cache.
+
+## Built
+
+All three slices: storage and wire (#599), the Fit tab painter (#603), and econagent's
+`set_livery` (`hull`, `band`, `pattern`, `light` beside the palette id; the answer says what
+the server kept) with `observe` naming the livery on the SHIP line.

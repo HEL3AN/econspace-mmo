@@ -190,11 +190,15 @@ Have goods you keep in a hangar at another station brought to your hangar where 
 
 ### `set_livery`
 
-Paint your ships in a livery: a people's art palette named by culture, such as 'guild', 'syndicate' or 'clan', shown to everyone who sees your ship. 'default' is plain plating. It is looks only -- it says nothing about whose side you are on.
+Paint your ships: a people's art palette named by culture, such as 'guild', 'syndicate' or 'clan', optionally in colours of your own -- 'hull' and 'band' as rrggbb, with 'pattern' (bands, spine, chevrons) and 'light' (cold, white, warm, amber) -- shown to everyone who sees your ship. 'default' is plain plating. Paint is looks only. Colours are snapped to a curated grid: the hull tint is a quiet metal tone (never loud), the band is bolder but must differ from the hull in lightness (it is moved if it does not), and the stripes are never flat -- bands, spine or chevrons. Windows: cold, white, warm or amber. It is looks only: it says nothing about whose side you are on, and the answer says what was kept.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
+| `band` | string |  | stripe colour, rrggbb; with hull |
+| `hull` | string |  | hull tint, rrggbb; with band |
+| `light` | string |  | cold, white, warm or amber |
 | `livery` | string | yes | a livery id, or 'default' |
+| `pattern` | string |  | bands, spine or chevrons |
 
 ### `move_goods`
 
