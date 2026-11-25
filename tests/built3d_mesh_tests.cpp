@@ -187,3 +187,50 @@ TEST_CASE("the generator's choices are integers from the seed: the same pieces o
         CHECK(std::hypot(p.pos.x, p.pos.y) < 2500.0f);
     CHECK(a.size() < 1000);
 }
+
+#include "render/BuiltLook.h"
+
+TEST_CASE("the governor lowers the look only when solids in view make frames slow, and only down")
+{
+    using namespace Render;
+    BuiltGovernor g;
+    CHECK(g.Effective(BuiltLook::HIGH) == BuiltLook::HIGH);
+    CHECK(g.Effective(BuiltLook::BASIC) == BuiltLook::BASIC);
+    CHECK(g.Effective(99) == BuiltLook::HIGH);
+
+    // Slow frames with nothing drawn are not its business.
+    for (int i = 0; i < 1000; i++)
+        CHECK_FALSE(g.Frame(0.05f, false));
+    CHECK(g.Cap() == BuiltLook::HIGH);
+
+    // Fast frames with solids never lower it.
+    for (int i = 0; i < 1000; i++)
+        CHECK_FALSE(g.Frame(0.012f, true));
+    CHECK(g.Cap() == BuiltLook::HIGH);
+
+    // A load hitch inside a window does not count for more than a hitch.
+    for (int i = 0; i < BuiltGovernor::WINDOW - 1; i++)
+        g.Frame(0.012f, true);
+    CHECK_FALSE(g.Frame(5.0f, true));
+    CHECK(g.Cap() == BuiltLook::HIGH);
+
+    // A window of slow frames takes one step, not all of them.
+    bool lowered = false;
+    for (int i = 0; i < BuiltGovernor::WINDOW; i++)
+        lowered = g.Frame(0.04f, true) || lowered;
+    CHECK(lowered);
+    CHECK(g.Cap() == BuiltLook::FULL);
+    CHECK(g.Effective(BuiltLook::HIGH) == BuiltLook::FULL);
+    CHECK(g.Effective(BuiltLook::SHADOWS) == BuiltLook::SHADOWS);  // never raised, never forced
+
+    // It can go all the way to the 2D path, and stops there.
+    for (int w = 0; w < 10; w++)
+        for (int i = 0; i < BuiltGovernor::WINDOW; i++)
+            g.Frame(0.06f, true);
+    CHECK(g.Cap() == BuiltLook::PLAIN);
+    CHECK(g.Effective(BuiltLook::HIGH) == BuiltLook::PLAIN);
+
+    // Only a choice brings it back.
+    g.Reset();
+    CHECK(g.Cap() == BuiltLook::HIGH);
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/Built3D.h"
+#include "render/BuiltLook.h"
 #include "render/MaterialLibrary.h"
 #include "render/Scene.h"
 #include <functional>
@@ -64,9 +65,7 @@ class ShapeBackend : public IBackend
 public:
     const char* Name() const override { return "shapes"; }
 
-    // The spike's switches, until it has a setting (#618): ECON_BUILT3D=1 draws stations,
-    // structures and gates as solids, =ships adds ships; ECON_BUILT3D_QUALITY=0..3 is
-    // Built3D::Quality (default 2).
+    // Reads the developer overrides (below); with none set, built objects follow the setting.
     ShapeBackend();
 
     void SetLighting(const Lighting& l) override { lighting_ = l; }
@@ -87,25 +86,30 @@ public:
             built3d_->BeginFrame();
     }
 
-    // Built objects as solids (#618 spike): bevelled meshes built from the same composition,
-    // lit by the system's star with shadows from the object's own heights, drawn into the
-    // frame through the same 2D camera. Off unless asked; if this driver cannot, the 2D path
-    // draws as it always did. `ships` includes ships, which the spike keeps optional.
-    void SetBuilt3D(bool on, bool ships = false);
-    void SetBuilt3DQuality(int q)
-    {
-        quality3d_ = q;
-        if (built3d_ != nullptr)
-            built3d_->SetQuality((Built3D::Quality)q);
-    }
+    // Built objects as solids (#618): bevelled meshes built from the same composition, lit by
+    // the system's star with shadows from the object's own heights, drawn into the frame through
+    // the same 2D camera. `look` is what the player asked for (BuiltLook.h: 0 is the 2D path);
+    // what is drawn is that, or less: a frame that is too slow with solids in view takes it down
+    // a step (BuiltGovernor), and a driver that cannot make them draws the 2D path as it always
+    // did. Ships and gates are not solids yet.
+    void SetBuiltLook(int look);
+    int  BuiltLookWanted() const { return wanted3d_; }
+    int  BuiltLookNow() const { return shown3d_; }
+    // Whether the look in use is lower than the one asked for, and why not more: the driver
+    // (`Built3DProblem`) or the frame time. The settings screen says so.
+    bool               BuiltLookReduced() const { return shown3d_ < wanted3d_ && devLook_ < 0; }
+    const std::string& Built3DProblem() const;
+    // The previous frame's time in seconds, once a frame, for the governor. Off while a shot or
+    // a measurement is being taken, which a slow machine would otherwise change under it.
+    void NoteFrame(float seconds);
+    void SetGovernor(bool on) { governorOn_ = on; }
     // The camera's lean in degrees, and the star's height over the plane (ECON_BUILT3D_TILT,
-    // ECON_BUILT3D_ELEV, ECON_BUILT3D_EXPOSURE until they are settings).
+    // ECON_BUILT3D_ELEV, ECON_BUILT3D_EXPOSURE for the developer).
     void SetBuilt3DLook(float tiltDeg, float elevationDeg)
     {
         tilt3d_ = tiltDeg;
         elevation3d_ = elevationDeg;
     }
-    bool               Built3DOn() const { return want3d_; }
     Built3D::Renderer* Built3DRenderer() { return built3d_.get(); }
 
     // How far around the light direction the rim highlight reaches, and how thick it is
@@ -211,9 +215,15 @@ private:
     Lighting::Sample LightAt(Vector2 p) const { return lighting_.At(p, own_); }
 
     std::unique_ptr<Built3D::Renderer> built3d_;
+    void                               ApplyBuiltLook();
+    int                                wanted3d_ = 0;  // the setting
+    int                                shown3d_ = 0;   // ...as the governor and the driver allow
+    int                                devLook_ = -1;  // ECON_BUILT3D, over everything, or -1
     bool                               want3d_ = false;
     bool                               ships3d_ = false;
+    bool                               governorOn_ = true;
     int                                quality3d_ = 2;
+    BuiltGovernor                      governor_;
     float                              tilt3d_ = Built3D::TILT_DEG;
     float                              elevation3d_ = Built3D::LIGHT_ELEVATION_DEG;
     float                              exposure3d_ = Built3D::EXPOSURE;

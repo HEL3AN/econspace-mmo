@@ -770,6 +770,11 @@ private:
         return Ui::BuiltBudgetSetting() > 0.0f ? Ui::BuiltBudgetSetting()
                                                : treatment_.Config().builtBudget;
     }
+    // How built objects are drawn (#618): the player's, else the look's own.
+    int BuiltLookWanted() const
+    {
+        return Ui::BuiltLookSetting() >= 0 ? Ui::BuiltLookSetting() : treatment_.Config().builtLook;
+    }
     float paintDraft_ = 0.5f;
     float builtDraft_ = 0.5f;
     bool  budgetDragging_ = false;

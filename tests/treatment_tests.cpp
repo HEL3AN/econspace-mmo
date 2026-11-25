@@ -74,6 +74,7 @@ TEST_CASE("the chain survives being written and read back")
     cfg.enabled = false;
     cfg.paintBudget = 0.5f;   // a laptop's setting (#426)
     cfg.builtBudget = 0.75f;  // ...and a built thing's own (#516)
+    cfg.builtLook = 3;        // how built objects are drawn (#618)
     cfg.chain[0].amount = 0.25f;
     cfg.chain[0].scale = 3.5f;
     cfg.chain[1].enabled = false;
@@ -91,6 +92,7 @@ TEST_CASE("the chain survives being written and read back")
     CHECK(back.treatHud == cfg.treatHud);
     CHECK(back.paintBudget == doctest::Approx(0.5f));
     CHECK(back.builtBudget == doctest::Approx(0.75f));
+    CHECK(back.builtLook == 3);
     REQUIRE(back.chain.size() == cfg.chain.size());
     for (size_t i = 0; i < cfg.chain.size(); i++)
     {

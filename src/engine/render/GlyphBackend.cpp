@@ -334,11 +334,17 @@ void ShapeBackend::EndMaterial()
 
 ShapeBackend::ShapeBackend()
 {
+    // Developer overrides, over the setting and the governor: ECON_BUILT3D=0 is the 2D path,
+    // 1 solids, `ships` solids with ships too; ECON_BUILT3D_QUALITY=0..3 their level.
     const char* on = std::getenv("ECON_BUILT3D");
-    if (on != nullptr && on[0] != '\0' && on[0] != '0')
-        SetBuilt3D(true, std::string(on) == "ships");
     const char* q = std::getenv("ECON_BUILT3D_QUALITY");
-    quality3d_ = q != nullptr ? std::clamp(std::atoi(q), 0, 3) : 2;
+    if (on != nullptr && on[0] != '\0')
+    {
+        ships3d_ = std::string(on) == "ships";
+        devLook_ =
+            on[0] == '0' ? BuiltLook::PLAIN : std::clamp(q != nullptr ? std::atoi(q) : 2, 0, 3) + 1;
+        ApplyBuiltLook();
+    }
     const char* t = std::getenv("ECON_BUILT3D_TILT");
     if (t != nullptr)
         tilt3d_ = std::clamp((float)std::atof(t), 0.0f, 60.0f);
@@ -350,10 +356,44 @@ ShapeBackend::ShapeBackend()
         exposure3d_ = std::clamp((float)std::atof(x), 0.3f, 3.0f);
 }
 
-void ShapeBackend::SetBuilt3D(bool on, bool ships)
+void ShapeBackend::ApplyBuiltLook()
 {
-    want3d_ = on;
-    ships3d_ = ships;
+    const int was = shown3d_;
+    shown3d_ = devLook_ >= 0 ? devLook_ : governor_.Effective(wanted3d_);
+    want3d_ = shown3d_ > BuiltLook::PLAIN;
+    quality3d_ = std::max(shown3d_ - 1, 0);
+    if (built3d_ != nullptr)
+        built3d_->SetQuality((Built3D::Quality)quality3d_);
+    (void)was;
+}
+
+void ShapeBackend::SetBuiltLook(int look)
+{
+    look = BuiltLook::Clamp(look);
+    if (look == wanted3d_)
+        return;
+    wanted3d_ = look;
+    governor_.Reset();  // a choice starts over: the governor only ever lowers what was asked
+    ApplyBuiltLook();
+}
+
+const std::string& ShapeBackend::Built3DProblem() const
+{
+    static const std::string none;
+    return built3d_ != nullptr && !built3d_->Available() ? built3d_->Problem() : none;
+}
+
+void ShapeBackend::NoteFrame(float seconds)
+{
+    if (!governorOn_ || devLook_ >= 0 || wanted3d_ == BuiltLook::PLAIN)
+        return;
+    const bool drawn = built3d_ != nullptr && built3d_->Solids() > 0;
+    if (!governor_.Frame(seconds, drawn))
+        return;
+    ApplyBuiltLook();
+    TraceLog(LOG_WARNING,
+             "Built3D: frames are slow with solids in view -- built objects drawn as %s",
+             BuiltLook::Name(shown3d_));
 }
 
 bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light, bool probe)

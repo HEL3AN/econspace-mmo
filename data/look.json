@@ -3,6 +3,7 @@
     "treatHud": false,
     "paintBudget": 0.5,
     "builtBudget": 0.5,
+    "builtLook": 2,
     "chain": [
         {
             "pass": "bloom",

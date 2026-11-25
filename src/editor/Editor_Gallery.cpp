@@ -580,6 +580,11 @@ void Editor::DrawGalleryPanel()
 
     Ui::Toggle({ x, y, w, 24.0f }, "True scale (compare sizes)", galleryTrueScale_);
     y += 30.0f;
+    // How built objects are drawn (#618): 2D, or solids with more of the light worked out.
+    if (Ui::SmallButton({ x, y, w, 24.0f }, TextFormat("Built objects: %s  [F6]",
+                                                       Render::BuiltLook::Name(BuiltLookNow()))))
+        builtLook_ = (BuiltLookNow() + 1) % Render::BuiltLook::COUNT;
+    y += 30.0f;
 
     // The lighting section (#119). Flat colour is what makes a simple shape read as a
     // toy; these are the knobs that decide whether it stops doing that.

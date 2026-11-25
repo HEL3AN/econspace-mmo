@@ -810,6 +810,69 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                              "scaled up. A faster graphics card can take more and look sharper "
                              "close up; a slow one wants less.",
                              t.colors.dim);
+
+                        // How stations and structures are drawn (#618): flat as ever, or as lit
+                        // solids with more and more of the light worked out. This machine's.
+                        {
+                            const int shown = shapeBackend_.BuiltLookNow();
+                            L.FormRow(
+                                "Built objects",
+                                [&]
+                                {
+                                    L.Column(
+                                        Box().GrowX().Gap(t.metrics.rowGap),
+                                        [&]
+                                        {
+                                            const size_t perRow = wide ? 3 : 2;
+                                            // The five looks, then the look's own.
+                                            for (int r = 0; r <= Render::BuiltLook::COUNT;
+                                                 r += (int)perRow)
+                                                L.Row(
+                                                    Box().GrowX().Gap(t.metrics.rowGap),
+                                                    [&]
+                                                    {
+                                                        for (int i = r;
+                                                             i <
+                                                             std::min(r + (int)perRow,
+                                                                      Render::BuiltLook::COUNT + 1);
+                                                             i++)
+                                                        {
+                                                            const bool own =
+                                                                i == Render::BuiltLook::COUNT;
+                                                            const bool on =
+                                                                own ? Ui::BuiltLookSetting() < 0
+                                                                    : Ui::BuiltLookSetting() == i;
+                                                            if (!L.Button(
+                                                                    "builtLook" + std::to_string(i),
+                                                                    own ? "Default"
+                                                                        : Render::BuiltLook::Name(
+                                                                              i),
+                                                                    on))
+                                                                continue;
+                                                            Ui::SetBuiltLookSetting(own ? -1 : i);
+                                                            saveBudgets();
+                                                        }
+                                                    });
+                                        });
+                                });
+                            L.Tooltip("builtLook5",
+                                      "What the game ships with (look.json): shadows");
+                            if (!shapeBackend_.Built3DProblem().empty())
+                                hint("This machine could not make solids: built objects are "
+                                     "drawn flat.",
+                                     t.colors.warn);
+                            else if (shapeBackend_.BuiltLookReduced())
+                                hint(TextFormat("Frames were slow with stations in view: drawn as "
+                                                "%s for now. Choose a look again to retry.",
+                                                Render::BuiltLook::Name(shown)),
+                                     t.colors.warn);
+                            else
+                                hint("Stations, structures and outposts as lit solids, leaned "
+                                     "toward you. Basic is cheapest; shadows and occlusion cost "
+                                     "more on a weak graphics card. Drops a step by itself if "
+                                     "frames get slow.",
+                                     t.colors.dim);
+                        }
                     }
                     else
                     {
