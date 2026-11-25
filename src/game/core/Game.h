@@ -94,10 +94,12 @@ public:
     // Select the nearest thing shortly after joining, and with `menu` open its right-click
     // menu too (--select, --menu): for a picture of the selected-item window and the
     // actions, without a hand on the mouse.
-    void StartWithSelection(bool menu)
+    // `ships` (--select-ship): the nearest ship, hostile first -- what Tab picks (#619).
+    void StartWithSelection(bool menu, bool ships = false)
     {
         startSelectFrames_ = 90;
         startMenu_ = menu;
+        startSelectShips_ = ships;
     }
     // Fly to the nearest station and dock shortly after joining (--dock): for a picture of the
     // station's windows without a hand on the controls.
@@ -206,6 +208,10 @@ public:
     void AddScriptedSay(const std::string& text, int frame) { says_.push_back({ text, frame }); }
     // --scan FRAME: a pass of the scanner asked for on that frame (#346).
     void AddScriptedScan(int frame) { scans_.push_back(frame); }
+    // --lock FRAME, --unlock FRAME, --fire FRAME: what L, Shift+L and F do, on that frame (#619).
+    void AddScriptedLock(int frame) { locksAt_.push_back(frame); }
+    void AddScriptedUnlock(int frame) { unlocksAt_.push_back(frame); }
+    void AddScriptedFire(int frame) { firesAt_.push_back(frame); }
     // Who this client is logged in as, and on which server: a discoverer may name what they
     // found (#145), and the window layout (#297, #427) and the map's itinerary (#432) are
     // kept per server and pilot.
@@ -281,7 +287,14 @@ private:
     // and a standing bracket on every other ship in view. Drawn in screen space, under the
     // windows -- an instrument, so its colour is standing and never the object's (#117).
     void DrawSpaceBrackets();
-    void ApplyResolution(int w, int h);          // changes the window size
+    // Targeting (#619): looking is free, a lock is a commitment, and the guns fire at the active
+    // lock. These send the verbs; the server decides and the snapshot says what came of them.
+    void                       LockSelected();
+    void                       UnlockSelected();      // the selection's lock, else the active one
+    void                       CycleTarget(int dir);  // select the next ship, hostile first
+    const Proto::LockView*     MyLock(int id) const;
+    const Proto::LockedByView* LockingMe(int id) const;
+    void                       ApplyResolution(int w, int h);  // changes the window size
     void DrawSettingsContent(const Ui::Frame&);  // display, interface and keys, as tabs
     void OpenContextMenu(Entity* target);  // right-click action menu on an object, at the cursor
     void OpenContextMenu(Entity* target, Vector2 at);
@@ -471,6 +484,7 @@ private:
     int        startDockFrames_ = -1;    // ...and to --dock, which then keeps at it until docked
     void       DriveStartDock();
     bool       startMenu_ = false;
+    bool       startSelectShips_ = false;
     WorldClock worldClock_;  // the server's clock, eased (#192)
 
     // --shot: where the frame goes (empty when not shooting), and how many frames are left.
@@ -705,7 +719,8 @@ private:
         int         frame;
     };
     std::vector<ScriptedSay> says_;
-    std::vector<int>         scans_;  // --scan FRAME (#346)
+    std::vector<int>         scans_;                          // --scan FRAME (#346)
+    std::vector<int>         locksAt_, unlocksAt_, firesAt_;  // --lock, --unlock, --fire (#619)
     int                      frameIndex_ = 0;
     // Chat (#347): the lines heard, newest last; who is in the local channel; what is being
     // typed; whether the log follows its newest line (it stops when scrolled back); Enter

@@ -45,6 +45,20 @@ Action Make(Verb verb, const std::string& detail = std::string(), float distance
     a.tool = ToolFor(verb);
     return a;
 }
+
+// What can be done about a lock on `t` (#619): commit to it, or let go and choose what the
+// guns address.
+void AddLock(std::vector<Action>& out, const Target& t)
+{
+    if (!t.locked)
+    {
+        out.push_back(Make(Verb::Lock));
+        return;
+    }
+    if (!t.active)
+        out.push_back(Make(Verb::SetActive));
+    out.push_back(Make(Verb::Unlock));
+}
 }  // namespace
 
 const char* Name(Verb verb)
@@ -63,6 +77,9 @@ const char* Name(Verb verb)
         case Verb::Dock: return "Dock";
         case Verb::Mine: return "Mine";
         case Verb::Attack: return "Attack";
+        case Verb::Lock: return "Lock";
+        case Verb::Unlock: return "Unlock";
+        case Verb::SetActive: return "Set active";
         case Verb::Investigate: return "Investigate";
         case Verb::Jump: return "Jump";
         case Verb::FlyHere: return "Fly here";
@@ -121,6 +138,9 @@ const char* ToolFor(Verb verb)
         case Verb::RenameDesign: return "rename_design";
         case Verb::DeleteDesign: return "delete_design";
         case Verb::Attack: return "attack";
+        case Verb::Lock:
+        case Verb::SetActive: return "lock";
+        case Verb::Unlock: return "unlock";
         case Verb::Investigate: return "salvage";
         // The interface's own: they change what a window shows, not the world. An agent
         // names a thing by its id and a range by a number, and needs neither.
@@ -227,7 +247,10 @@ std::vector<Action> For(const Target& t, Vector2 from)
     {
         case EntityKind::Station: out.push_back(Make(Verb::Dock)); break;
         case EntityKind::Field: out.push_back(Make(Verb::Mine)); break;
-        case EntityKind::Npc: out.push_back(Make(Verb::Attack)); break;
+        case EntityKind::Npc:
+            AddLock(out, t);
+            out.push_back(Make(Verb::Attack));
+            break;
         case EntityKind::Derelict:
             if (!t.looted)
                 out.push_back(Make(Verb::Investigate));
@@ -268,6 +291,7 @@ std::vector<Action> For(const Target& t, Vector2 from)
                 // An abandoned one (#468) is anyone's to take, from beside it.
                 if (t.abandoned)
                     out.push_back(Make(Verb::Take));
+                AddLock(out, t);
                 out.push_back(Make(Verb::Attack));
             }
             break;
@@ -275,7 +299,10 @@ std::vector<Action> For(const Target& t, Vector2 from)
         // that is a crime. One's own is scenery here.
         case EntityKind::PlayerShip:
             if (!t.mine)
+            {
+                AddLock(out, t);
                 out.push_back(Make(Verb::Attack));
+            }
             break;
         // Scenery: going there is all there is to do with them.
         case EntityKind::Star:

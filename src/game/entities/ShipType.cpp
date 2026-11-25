@@ -56,6 +56,9 @@ bool PlayerStats(const Ships::Design& d, ShipStats& out, std::string& error)
     out.mix = s.mix;
     out.resist = s.resist;
     out.damage = s.volley;
+    out.locks = s.locks;
+    out.lockRange = s.lockRange;
+    out.scanRes = s.scanRes;
     out.design = d.id;
     return true;
 }

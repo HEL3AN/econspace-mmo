@@ -21,7 +21,6 @@ TEST_CASE("command round-trips through JSON")
     Proto::Command c;
     c.thrust = true;
     c.turn = -1.0f;
-    c.toggleWeapon = true;
     c.targetId = 42;
     c.navMode = 1;
     c.navTarget = { 123.5f, -67.0f };
@@ -31,7 +30,6 @@ TEST_CASE("command round-trips through JSON")
     REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), r));
     CHECK(r.thrust == c.thrust);
     CHECK(r.turn == c.turn);
-    CHECK(r.toggleWeapon);
     CHECK(r.targetId == 42);
     CHECK(r.navMode == 1);
     CHECK(r.navTarget.x == doctest::Approx(123.5f));
@@ -112,12 +110,17 @@ TEST_CASE("every verb round-trips as an action (#354)")
     deal.bundle.charts = { "r7-1-2" };
     deal.rev = 4;
     all.emplace_back(deal);
+    all.emplace_back(Proto::Act::Lock{ 12 });
+    all.emplace_back(Proto::Act::Unlock{ 12 });
+    all.emplace_back(Proto::Act::SetActive{ 13 });
+    all.emplace_back(Proto::Act::Fire{ true });
 
     // One of every alternative, so a verb added to the variant and not here fails this.
     REQUIRE(all.size() == std::variant_size_v<Proto::Action>);
     for (size_t i = 0; i < all.size(); ++i)
     {
         CHECK(all[i].index() == i);
+        INFO("verb number " << i);
         Proto::Action back;
         REQUIRE(RoundTrip(all[i], back));
         CHECK(back.index() == all[i].index());
@@ -171,6 +174,12 @@ TEST_CASE("every verb round-trips as an action (#354)")
     CHECK(As<Proto::Act::Dismantle>(r).id == 42);
     REQUIRE(RoundTrip(all[31], r));
     CHECK(As<Proto::Act::SetDefence>(r).id == 9);
+    REQUIRE(RoundTrip(all[33], r));
+    CHECK(As<Proto::Act::Lock>(r).id == 12);
+    REQUIRE(RoundTrip(all[35], r));
+    CHECK(As<Proto::Act::SetActive>(r).id == 13);
+    REQUIRE(RoundTrip(all[36], r));
+    CHECK(As<Proto::Act::Fire>(r).on);
 
     // It is its own message type, and a command is not an action.
     CHECK(Proto::MessageType(Proto::EncodeAction(all[0])) == "act");
@@ -1242,4 +1251,35 @@ TEST_CASE("a decoder never throws on a field of the wrong type")
     CHECK_NOTHROW(Proto::DecodeSnapshot(
         R"({"t":"snap","v":)" + v + R"(,"seq":"x","player":[],"ents":{"a":1}})", snap));
     CHECK_NOTHROW(Proto::DecodeGalaxy(R"({"t":"galaxy","v":)" + v + R"(,"time":"now"})", galaxy));
+}
+
+TEST_CASE("locks, who locks the pilot and an entity's shield cross the wire (#619)")
+{
+    Proto::Snapshot snap;
+    snap.player.lockMax = 3;
+    snap.player.lockRange = 20000.0f;
+    snap.player.locks = { { 5, 1.0f, true, true }, { 6, 0.5f, false, false } };
+    snap.player.lockedBy = { { 9, true }, { 11, false } };
+    Proto::EntitySnapshot e;
+    e.id = 5;
+    e.kind = EntityKind::PlayerShip;
+    e.shieldFrac = 0.25f;
+    snap.entities.push_back(e);
+
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+    CHECK(back.player.lockMax == 3);
+    CHECK(back.player.lockRange == doctest::Approx(20000.0f));
+    REQUIRE(back.player.locks.size() == 2);
+    CHECK(back.player.locks[0].id == 5);
+    CHECK(back.player.locks[0].held);
+    CHECK(back.player.locks[0].active);
+    CHECK(back.player.locks[1].progress == doctest::Approx(0.5f));
+    CHECK_FALSE(back.player.locks[1].held);
+    REQUIRE(back.player.lockedBy.size() == 2);
+    CHECK(back.player.lockedBy[0].id == 9);
+    CHECK(back.player.lockedBy[0].held);
+    CHECK_FALSE(back.player.lockedBy[1].held);
+    REQUIRE(back.entities.size() == 1);
+    CHECK(back.entities[0].shieldFrac == doctest::Approx(0.25f).epsilon(0.01));
 }

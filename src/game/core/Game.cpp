@@ -280,7 +280,7 @@ void Game::Run()
                 clientLink_->Send(Proto::EncodeCommand(sent));
                 // Edge toggles and a navigation mode last one tick; the axes are held. One-shot
                 // verbs are not on this command: they go out as actions when asked for (#354).
-                cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
+                cmd_.toggleStabilizer = cmd_.toggleMining = false;
                 cmd_.navMode = 0;
             }
             simAccumulator_ -= SIM_DT;
@@ -584,6 +584,18 @@ void Game::PlayScriptedClicks()
     for (int f : scans_)  // --scan (#346)
         if (frameIndex_ == f)
             SendAction(Proto::Act::Scan{});
+    for (int f : locksAt_)  // --lock (#619): the key L's own function
+        if (frameIndex_ == f)
+            LockSelected();
+    for (int f : unlocksAt_)
+        if (frameIndex_ == f)
+            UnlockSelected();
+    for (int f : firesAt_)  // --fire: the key F's own steps
+        if (frameIndex_ == f)
+        {
+            weaponOn_ = !weaponOn_;
+            SendAction(Proto::Act::Fire{ weaponOn_ });
+        }
     frameIndex_++;
 }
 
@@ -631,6 +643,65 @@ void Game::SetPilotName(const std::string& n, const std::string& server)
                             server.empty() ? n : n + "@" + server, n);
 }
 
+const Proto::LockView* Game::MyLock(int id) const
+{
+    for (const Proto::LockView& l : snapshot_.player.locks)
+        if (l.id == id)
+            return &l;
+    return nullptr;
+}
+
+const Proto::LockedByView* Game::LockingMe(int id) const
+{
+    for (const Proto::LockedByView& l : snapshot_.player.lockedBy)
+        if (l.id == id)
+            return &l;
+    return nullptr;
+}
+
+void Game::LockSelected()
+{
+    if (selected_ == nullptr)
+        return;
+    const int id = selected_->GetId();
+    if (MyLock(id) == nullptr)
+        SendAction(Proto::Act::Lock{ id });
+    else
+        SendAction(Proto::Act::SetActive{ id });  // already locked: it becomes the active one
+}
+
+void Game::UnlockSelected()
+{
+    const int id =
+        selected_ != nullptr && MyLock(selected_->GetId()) != nullptr ? selected_->GetId() : 0;
+    if (id != 0)
+        SendAction(Proto::Act::Unlock{ id });
+    else
+        for (const Proto::LockView& l : snapshot_.player.locks)
+            if (l.active)
+                SendAction(Proto::Act::Unlock{ l.id });
+}
+
+void Game::CycleTarget(int dir)
+{
+    // The overview's own order -- hostile first, then the nearest -- over the ships in sight.
+    const std::vector<Overview::Row> rows = Overview::Build(
+        snapshot_.entities, snapshot_.player.pos, Overview::Filter::Ships, Overview::Sort::Distance,
+        [this](const Proto::EntitySnapshot& e)
+        { return e.kind == Proto::EntityKind::Npc && HostileToPlayerFaction(e.faction); });
+    if (rows.empty())
+        return;
+    const int selId = selected_ != nullptr ? selected_->GetId() : 0;
+    int       at = -1;
+    for (size_t i = 0; i < rows.size(); i++)
+        if (rows[i].entity->id == selId)
+            at = (int)i;
+    const int n = (int)rows.size();
+    const int next = at < 0 ? (dir > 0 ? 0 : n - 1) : ((at + dir) % n + n) % n;
+    if ((selected_ = FindEntityById(rows[(size_t)next].entity->id)) != nullptr)
+        desk_.SetOpen(WIN_TARGET, true);
+}
+
 void Game::HandleInput(float dt)
 {
     (void)dt;
@@ -644,7 +715,8 @@ void Game::HandleInput(float dt)
     {
         // The nearest thing that is not this ship: the overview's first row.
         const std::vector<Overview::Row> rows = Overview::Build(
-            snapshot_.entities, snapshot_.player.pos, Overview::Filter::All,
+            snapshot_.entities, snapshot_.player.pos,
+            startSelectShips_ ? Overview::Filter::Ships : Overview::Filter::All,
             Overview::Sort::Distance, [](const Proto::EntitySnapshot&) { return false; });
         for (const Overview::Row& r : rows)
             if ((selected_ = FindEntityById(r.entity->id)) != nullptr)
@@ -688,10 +760,21 @@ void Game::HandleInput(float dt)
     if (key(KEY_M))
         cmd_.toggleMining = true;
 
+    // The guns, on or off (#619): they fire only at the active lock, once it is held.
     if (key(KEY_F))
     {
-        cmd_.toggleWeapon = true;
         weaponOn_ = !weaponOn_;  // optimistic: the snapshot confirms it
+        SendAction(Proto::Act::Fire{ weaponOn_ });
+    }
+    // Next ship to look at, hostile first; L commits to the one selected, Shift+L lets go.
+    if (key(KEY_TAB))
+        CycleTarget(IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? -1 : 1);
+    if (key(KEY_L))
+    {
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))
+            UnlockSelected();
+        else
+            LockSelected();
     }
 
     if (key(KEY_T))
@@ -760,9 +843,8 @@ void Game::HandleInput(float dt)
     if (held(KEY_D) || held(KEY_RIGHT))
         cmd_.turn += 1.0f;
 
-    // Combat target — the selected object (by id). The server fires at it in StepPlayerFire (over
-    // the only target source: the server decides what a shot hits
-    // directly).
+    // The selection, by id: the server tells the pilot of it in full, wherever it is (#349). It
+    // arms nothing -- the guns fire at a lock, which is its own verb (#619).
     cmd_.targetId = selected_ != nullptr ? selected_->GetId() : 0;
 
     // On the sensor screen a click picks a cell: what is in it is selected, and a right
@@ -1011,6 +1093,11 @@ Actions::Target Game::ActionTarget(const Entity& e) const
     t.pos = e.GetPosition();
     t.size = e.GetSize();
     t.name = e.GetName();
+    if (const Proto::LockView* l = MyLock(t.id))  // the pilot's own lock on it (#619)
+    {
+        t.locked = true;
+        t.active = l->active;
+    }
     if (t.kind == EntityKind::Derelict)
         t.looted = static_cast<const Derelict&>(e).IsLooted();
     if (t.kind == EntityKind::PlayerShip)  // one's own ship, or another pilot's (#431 slice 10)
@@ -1186,10 +1273,17 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::Attack:
             selected_ = target;
             desk_.SetOpen(WIN_TARGET, true);
+            // Attack is a lock and the guns on (#619); the ship is not flown there. The order
+            // that flies, locks and fires is the agent's `attack`.
+            SendAction(Proto::Act::Lock{ target->GetId() });
+            SendAction(Proto::Act::SetActive{ target->GetId() });
             if (!weaponOn_)
-                cmd_.toggleWeapon = true;
+                SendAction(Proto::Act::Fire{ true });
             weaponOn_ = true;
             break;
+        case Verb::Lock: SendAction(Proto::Act::Lock{ target->GetId() }); break;
+        case Verb::Unlock: SendAction(Proto::Act::Unlock{ target->GetId() }); break;
+        case Verb::SetActive: SendAction(Proto::Act::SetActive{ target->GetId() }); break;
         case Verb::Investigate:
             if (distanceTo(target) <= SalvageReach(*target))
                 SendAction(

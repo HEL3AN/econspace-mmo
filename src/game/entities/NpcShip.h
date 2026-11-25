@@ -4,6 +4,7 @@
 #include "entities/Combatant.h"
 #include "core/Faction.h"
 #include "core/Fitting.h"
+#include "core/Lock.h"
 #include "economy/Resource.h"
 #include <string>
 #include <vector>
@@ -162,7 +163,12 @@ public:
 
     // Its guns fire at a player's cooldown (Ships::PLAYER_FIRE_INTERVAL): one combat model.
     bool ReadyToFire() const { return fireTimer_ <= 0.0f; }
-    void ResetFireTimer() { fireTimer_ = Ships::PLAYER_FIRE_INTERVAL; }
+
+    // Its lock (#619): an NPC fires only at a target it has locked, taking the lock time a
+    // pilot's ship would take for the same signature, and loses it by the same rules.
+    Ships::Lock&       TargetLock() { return lock_; }
+    const Ships::Lock& TargetLock() const { return lock_; }
+    void               ResetFireTimer() { fireTimer_ = Ships::PLAYER_FIRE_INTERVAL; }
 
 private:
     void PickNewTarget();
@@ -187,6 +193,7 @@ private:
     float             maxHull_ = 60.0f;
     float             hull_ = 60.0f;
     float             fireTimer_ = 0.0f;
+    Ships::Lock       lock_;
     bool              leaving_ = false;
     int               task_ = 0;
     std::string       loanHome_;

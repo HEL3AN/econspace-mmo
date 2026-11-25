@@ -375,7 +375,10 @@ TEST_CASE("an attack order hunts another pilot down")
     o.targetId = v.ship->GetId();
     s.sim->GiveOrder(*s.shooter, o);
     for (int i = 0; i < 60 * 120 && s.shooter->HasRunningOrder(); i++)
+    {
         s.sim->StepPlayerOrder(*s.shooter, s.St(), 1.0f / 60.0f);
+        s.sim->StepPlayerLocks(*s.shooter, s.St(), 1.0f / 60.0f);  // as the host's tick does
+    }
     CHECK(s.shooter->orderStatus == Orders::Status::Done);
     CHECK_FALSE(v.ship->IsAlive());
 }

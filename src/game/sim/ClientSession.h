@@ -4,6 +4,7 @@
 #include "sim/Exchange.h"
 #include "sim/Orders.h"
 
+#include "core/Lock.h"
 #include "core/WorldLoader.h"
 #include "economy/Inventory.h"
 #include "entities/ShipType.h"
@@ -155,6 +156,23 @@ struct ClientSession
     bool IsDocked() const { return dockedStationId != 0; }
 
     bool weaponOn = false;
+    // Targeting (#619): the locks forming or held, at most what the ship's sensors allow, and the
+    // one the guns address. Not saved: a login starts with no locks, as a ship does after a jump.
+    std::vector<Ships::Lock> locks;
+    int                      activeLock = 0;  // a target id; 0 -- none
+    const Ships::Lock*       FindLock(int id) const
+    {
+        for (const Ships::Lock& l : locks)
+            if (l.target == id && id != 0)
+                return &l;
+        return nullptr;
+    }
+    // What the guns fire at: the active lock's target once it is held, otherwise nothing.
+    int HeldTarget() const
+    {
+        const Ships::Lock* l = FindLock(activeLock);
+        return l != nullptr && l->held ? l->target : 0;
+    }
     // What the player has selected, as its last command said (#349): told about in full at
     // every snapshot wherever it is, because a target on the far list would be a target
     // seen once a second.
