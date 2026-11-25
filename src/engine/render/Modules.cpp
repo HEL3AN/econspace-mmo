@@ -11,7 +11,6 @@ namespace Render
 namespace
 {
 using json = nlohmann::json;
-std::vector<Module> g_modules;
 
 // The box a variant covers in its own unit: composed as the game would draw it -- rows,
 // rings and turns laid out, ranges at one seed -- and measured from the pieces, so a
@@ -121,20 +120,44 @@ std::vector<std::string> Strings(const json& o, const char* key)
 
 namespace Modules
 {
+namespace
+{
+Registry  g_process;  // what a process that never makes another registry reads and writes
+Registry* g_current = &g_process;
+}  // namespace
+
+Registry& Current()
+{
+    return *g_current;
+}
+
+// What silhouettes expanded from the modules of one registry is wrong for another.
+Scope::Scope(Registry& r) : previous_(g_current)
+{
+    g_current = &r;
+    ForgetExpansions();
+}
+
+Scope::~Scope()
+{
+    g_current = previous_;
+    ForgetExpansions();
+}
+
 void Clear()
 {
-    g_modules.clear();
+    Current().modules.clear();
     ForgetExpansions();
 }
 
 const std::vector<Module>& All()
 {
-    return g_modules;
+    return Current().modules;
 }
 
 const Module* Find(const std::string& id)
 {
-    for (const Module& m : g_modules)
+    for (const Module& m : Current().modules)
         if (m.id == id)
             return &m;
     return nullptr;
@@ -238,7 +261,7 @@ bool LoadFile(const std::string& path, std::string& error)
             v.bounds = MeasuredBounds(v.shape);
             m.variants.push_back(std::move(v));
         }
-        g_modules.push_back(std::move(m));
+        Current().modules.push_back(std::move(m));
     }
     return true;
 }
@@ -247,7 +270,7 @@ bool LoadFile(const std::string& path, std::string& error)
 bool Load(const std::string& path, std::string& error)
 {
     error.clear();
-    g_modules.clear();
+    Current().modules.clear();
     ForgetExpansions();
     if (!LoadFile(path, error))
         return false;

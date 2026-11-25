@@ -54,6 +54,26 @@ Rectangle MeasuredBounds(const Shape& s);
 
 namespace Modules
 {
+// The library Load fills and the functions below read (#356), an instance as
+// Archetypes::Registry. Switching is not thread-local; see Archetypes::Scope.
+struct Registry
+{
+    std::vector<Module> modules;
+};
+Registry& Current();
+
+class Scope
+{
+public:
+    explicit Scope(Registry& r);
+    ~Scope();
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+
+private:
+    Registry* previous_;
+};
+
 // Replaces the library with the file's and then every pack in the `modules` directory beside
 // it. A missing file is an empty library, not an error: nothing has to use modules. A file
 // that is there and wrong is an error, said by name.

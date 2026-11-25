@@ -4,6 +4,7 @@
 #include <nlohmann/json_fwd.hpp>
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -127,6 +128,35 @@ Color       FactionColor(FactionId faction);
 // Faction registry: data and relations from JSON.
 namespace Factions
 {
+// The registry is an instance (#356): `Load` and everything below read the *current* one, which
+// is a process-wide default until a `Scope` makes a `Content` of its own current. Not
+// thread-local; see Archetypes::Scope.
+struct State;
+class Content
+{
+public:
+    Content();
+    ~Content();
+    Content(const Content&) = delete;
+    Content& operator=(const Content&) = delete;
+
+private:
+    friend class Scope;
+    std::unique_ptr<State> s_;
+};
+
+class Scope
+{
+public:
+    explicit Scope(Content& c);
+    ~Scope();
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+
+private:
+    State* previous_;
+};
+
 // Reads factions.json and replaces the registry with it. Strict (#191, #357): a missing or
 // unreadable file, an unknown field, a faction named twice, a relation or role naming a
 // faction that is not there, or a stance that is not one -- each is an error, and the

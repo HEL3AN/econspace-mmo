@@ -188,6 +188,33 @@ struct Siege
 };
 const Siege& SiegeRules();
 
+// What Load reads into and the functions here read (#356): an instance, so a world that must
+// not share blueprints owns one, as Archetypes::Registry. A process with one has the default.
+// Switching is not thread-local; see Archetypes::Scope.
+struct Registry
+{
+    std::vector<Blueprint> all;
+    std::vector<Blueprint> forPlayers;  // the ones a player may build, as All() lists them
+    int                    perAccount = 0;
+    Teardown               teardown;
+    Upkeep                 upkeep;
+    Siege                  siege;
+    std::string            error;
+};
+Registry& Current();
+
+class Scope
+{
+public:
+    explicit Scope(Registry& r);
+    ~Scope();
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+
+private:
+    Registry* previous_;
+};
+
 // What an owner gets back for dismantling it, per resource, at `progress` 0..1 of the build
 // and `hullFraction` of its hull still standing -- what was shot off is gone. Rounded down,
 // so taking a thing apart never makes material. One function, for the server that pays it and

@@ -43,8 +43,23 @@ Registry Builtin()
     return r;
 }
 
-Registry    g_registry = Builtin();
-std::string g_error;
+}  // namespace
+
+// What a registry is as an instance (#356): the content and the last load's error.
+struct Goods::State
+{
+    Registry    reg = Builtin();
+    std::string error;
+};
+
+namespace
+{
+Goods::State  g_process;  // what a process that never makes another registry reads and writes
+Goods::State* g_current = &g_process;
+Goods::State& Cur()
+{
+    return *g_current;
+}
 
 int IndexOf(const Registry& r, const std::string& idOrName)
 {
@@ -369,40 +384,55 @@ std::vector<ResourceType> AllResourceTypes()
 
 namespace Goods
 {
+
+Content::Content() : s_(new State)
+{
+}
+Content::~Content() = default;
+
+Scope::Scope(Content& c) : previous_(g_current)
+{
+    g_current = c.s_.get();
+}
+
+Scope::~Scope()
+{
+    g_current = previous_;
+}
 bool Load(const std::string& path)
 {
     std::ifstream f(path);
     if (!f.is_open())
     {
-        g_error = path + ": cannot open";
+        Cur().error = path + ": cannot open";
         return false;
     }
     json data = json::parse(f, nullptr, false);
     if (data.is_discarded())
     {
-        g_error = path + ": not valid JSON";
+        Cur().error = path + ": not valid JSON";
         return false;
     }
     Registry    r;
     std::string why;
     if (!Parse(data, r, why))
     {
-        g_error = path + ": " + why;
+        Cur().error = path + ": " + why;
         return false;
     }
-    g_registry = std::move(r);
-    g_error.clear();
+    Cur().reg = std::move(r);
+    Cur().error.clear();
     return true;
 }
 
 const std::string& Error()
 {
-    return g_error;
+    return Cur().error;
 }
 
 void ResetToBuiltin()
 {
-    g_registry = Builtin();
+    Cur().reg = Builtin();
 }
 
 int Volume(ResourceType g)
@@ -412,12 +442,12 @@ int Volume(ResourceType g)
 
 int Count()
 {
-    return (int)g_registry.goods.size();
+    return (int)Cur().reg.goods.size();
 }
 
 bool Find(const std::string& idOrName, ResourceType& out)
 {
-    const int i = IndexOf(g_registry, idOrName);
+    const int i = IndexOf(Cur().reg, idOrName);
     if (i < 0)
         return false;
     out = ResourceType::FromIndex(i);
@@ -427,7 +457,7 @@ bool Find(const std::string& idOrName, ResourceType& out)
 const GoodDef& Def(ResourceType g)
 {
     static const GoodDef none;
-    return g.Index() < Count() ? g_registry.goods[(size_t)g.Index()] : none;
+    return g.Index() < Count() ? Cur().reg.goods[(size_t)g.Index()] : none;
 }
 
 const std::string& Id(ResourceType g)
@@ -464,13 +494,13 @@ double QuoteBuyOn(double base, double target, double stock, int amount)
 
 const MarketRules& Rules()
 {
-    return g_registry.rules;
+    return Cur().reg.rules;
 }
 
 std::vector<std::string> IndustryIds()
 {
     std::vector<std::string> out;
-    for (const auto& kv : g_registry.industries)
+    for (const auto& kv : Cur().reg.industries)
         out.push_back(kv.first);
     return out;
 }
@@ -483,7 +513,7 @@ std::vector<double> OreFor(const std::vector<std::pair<ResourceType, double>>& d
     {
         if (!(amount > 0.0) || depth > 8 || g.Index() < 0 || g.Index() >= Count())
             return;
-        const GoodDef& d = g_registry.goods[(size_t)g.Index()];
+        const GoodDef& d = Cur().reg.goods[(size_t)g.Index()];
         if (d.mined)
         {
             ore[(size_t)g.Index()] += amount;
@@ -495,11 +525,11 @@ std::vector<double> OreFor(const std::vector<std::pair<ResourceType, double>>& d
                 want(p.first, p.second * amount, depth + 1);
             return;
         }
-        for (const auto& kv : g_registry.planets)
+        for (const auto& kv : Cur().reg.planets)
             for (const auto& y : kv.second)
                 if (y.first.Index() == g.Index())
                     return;
-        for (const auto& kv : g_registry.industries)
+        for (const auto& kv : Cur().reg.industries)
             for (const Recipe& r : kv.second.recipes)
                 for (const auto& o : r.out)
                     if (o.first.Index() == g.Index() && o.second > 0.0)
@@ -517,13 +547,13 @@ std::vector<double> OreFor(const std::vector<std::pair<ResourceType, double>>& d
 
 const Industry* IndustryOf(const std::string& archetypeId)
 {
-    const auto it = g_registry.industries.find(archetypeId);
-    return it == g_registry.industries.end() ? nullptr : &it->second;
+    const auto it = Cur().reg.industries.find(archetypeId);
+    return it == Cur().reg.industries.end() ? nullptr : &it->second;
 }
 
 const std::vector<std::pair<ResourceType, double>>* PlanetYield(const std::string& archetypeId)
 {
-    const auto it = g_registry.planets.find(archetypeId);
-    return it == g_registry.planets.end() ? nullptr : &it->second;
+    const auto it = Cur().reg.planets.find(archetypeId);
+    return it == Cur().reg.planets.end() ? nullptr : &it->second;
 }
 }  // namespace Goods

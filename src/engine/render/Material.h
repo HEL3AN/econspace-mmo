@@ -169,9 +169,31 @@ float SeedOf(int id);
 // object that cannot supply it should look wrong, not crash.
 UniformValue Resolve(const Binding& b, const MaterialInputs& in);
 
-// The registry, loaded once like the archetypes and the factions.
+// The registry Load reads into and the functions below read (#356): an instance, as
+// Archetypes::Registry, with a default for a process that never makes another. Switching is
+// not thread-local; see Archetypes::Scope.
 namespace Materials
 {
+struct Registry
+{
+    std::vector<Material> materials;
+    std::vector<Livery>   liveries;
+    std::string           error;
+};
+Registry& Current();
+
+class Scope
+{
+public:
+    explicit Scope(Registry& r);
+    ~Scope();
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+
+private:
+    Registry* previous_;
+};
+
 // Reads data/materials.json. Returns false and leaves the previous contents alone when the
 // file is missing or malformed; Error() says which. A material naming an unknown source is
 // rejected outright rather than silently losing that binding -- unlike a look setting, a
