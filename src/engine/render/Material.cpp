@@ -1,11 +1,14 @@
 #include "render/Material.h"
 
+#include "core/Paint.h"
+
 #include "core/Archetype.h"
 #include "render/Modules.h"
 #include "render/Scene.h"
 #include "render/Silhouette.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <map>
 
 using nlohmann::json;
 
@@ -419,7 +422,7 @@ bool Load(const std::string& path)
     return true;
 }
 
-const Livery* FindLivery(const std::string& id)
+static const Livery* FindPalette(const std::string& id)
 {
     const Livery* fallback = nullptr;
     for (const Livery& l : g_liveries)
@@ -430,6 +433,51 @@ const Livery* FindLivery(const std::string& id)
             fallback = &l;
     }
     return fallback;
+}
+
+// A pilot's paint over a palette livery (#552): the palette's structure with four things
+// replaced. Resolved once per distinct spec, into a ring of slots that never moves, so a
+// crowd of different paints is bounded and a pointer taken this frame stays good for it.
+static const Livery* ResolvePaint(const std::string& spec)
+{
+    static constexpr size_t           SLOTS = 512;
+    static std::vector<Livery>        ring(SLOTS);
+    static std::map<std::string, int> index;
+    static size_t                     next = 0;
+    const auto                        known = index.find(spec);
+    if (known != index.end() && ring[known->second].id == spec)
+        return &ring[known->second];
+
+    std::string  palette;
+    bool         painted = false;
+    Paint::Paint paint;
+    if (!Paint::Split(spec, palette, painted, paint) || !painted)
+        return FindPalette(palette);
+    const Livery* from = FindPalette(palette);
+    if (from == nullptr || from->id != palette)
+        return from;
+    paint = Paint::Snap(paint);
+    Livery l = *from;
+    l.id = spec;
+    l.palette = false;
+    const Paint::Rgb base = Paint::RgbOf(Paint::Role::Base, paint.base);
+    const Paint::Rgb band = Paint::RgbOf(Paint::Role::Band, paint.band);
+    l.base = { base[0], base[1], base[2], 255 };
+    l.accent = { band[0], band[1], band[2], 255 };
+    l.params[2] = (float)paint.pattern;
+    l.style[2] = Paint::Warmth(paint.light);
+    if (ring[next].id != "")
+        index.erase(ring[next].id);
+    ring[next] = l;
+    index[spec] = (int)next;
+    const Livery* out = &ring[next];
+    next = (next + 1) % SLOTS;
+    return out;
+}
+
+const Livery* FindLivery(const std::string& id)
+{
+    return id.find('/') == std::string::npos ? FindPalette(id) : ResolvePaint(id);
 }
 
 const std::vector<Livery>& Liveries()
