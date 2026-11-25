@@ -379,49 +379,73 @@ void Simulation::SendRelief(Plan& p, SystemState& st)
     }
     if (p.relief.empty())
         return;
-    p.reliefAt = time_ + hops * (double)r.hop;
+    p.reliefAt = time_;  // each contingent stands there its own jumps later
     Record("siege", g, p.target,
            FactionName(g) + " sent relief to " + SystemName(p.target) + ": " +
                std::to_string((int)std::lround(p.reliefForce)) + " ships, " + std::to_string(hops) +
                " jumps away");
 }
 
-std::pair<float, int> Simulation::ReliefFor(FactionId g, const std::string& target) const
+std::vector<Plan::Lent> Simulation::ReliefFor(FactionId g, const std::string& target) const
 {
     if (g == Factions::Unaffiliated())
-        return { 0.0f, 0 };
+        return {};
     const Blueprints::Siege& r = Blueprints::SiegeRules();
-    float                    total = 0.0f;
-    int                      hops = 0;
-    for (const Plan::Lent& l : PoolFor(g, target, r.pool * Factions::TemperamentOf(g).capacity))
-    {
-        total += l.force;
-        hops = std::max(hops, l.hops);
-    }
-    return { total, hops };
+    return PoolFor(g, target, r.pool * Factions::TemperamentOf(g).capacity);
 }
 
-Simulation::SiegeOdds Simulation::ForecastSiege(FactionId f, FactionId g, float sent,
-                                                float garrison, float relief, double reliefAfter,
+Ships::Fighter Simulation::FleetOf(FactionId f, const std::vector<Plan::Lent>& lent) const
+{
+    Ships::Fighter mean;
+    float          ships = 0.0f;
+    for (const Plan::Lent& l : lent)
+    {
+        const auto home = systems_.find(l.from);
+        if (home == systems_.end() || l.force <= 0.0f)
+            continue;
+        const Ships::Fighter its = FighterIn(home->second, f, NpcRole::Warship);
+        mean.dps += its.dps * l.force;
+        mean.hull += its.hull * l.force;
+        mean.armour += its.armour * l.force;
+        for (size_t t = 0; t < mean.mix.size(); ++t)
+            mean.mix[t] += its.mix[t] * its.dps * l.force;
+        for (size_t a = 0; a < mean.resist.size(); ++a)
+            for (size_t t = 0; t < mean.resist[a].size(); ++t)
+                mean.resist[a][t] += its.resist[a][t] * l.force;
+        ships += l.force;
+    }
+    if (ships <= 0.0f)
+        return FighterOf(f, NpcRole::Warship);
+    for (float& m : mean.mix)
+        m = mean.dps > 0.0f ? m / mean.dps : 0.0f;
+    for (auto& row : mean.resist)
+        for (float& v : row)
+            v /= ships;
+    mean.dps /= ships;
+    mean.hull /= ships;
+    mean.armour /= ships;
+    return mean;
+}
+
+Simulation::SiegeOdds Simulation::ForecastSiege(const Ships::Fighter& by, FactionId g, float sent,
+                                                float garrison,
+                                                const std::vector<std::pair<float, double>>& relief,
                                                 float wall, float mend, bool mends, float fx) const
 {
     const Blueprints::Siege& r = Blueprints::SiegeRules();
     const Ships::Catalogue&  cat = Archetypes::ShipCatalogue();
-    const Ships::Fighter     by = FighterOf(f, NpcRole::Warship);
     const Ships::Fighter     on =
         FighterOf(g, g == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
     const float     biteOn = Ships::Bite(cat, on, by), biteBy = Ships::Bite(cat, by, on);
     constexpr float STEP = 30.0f;
     SiegeOdds       o;
     float           force = sent, defenders = garrison, hp = wall;
-    bool            came = false;
+    size_t          landed = 0;
     for (float t = 0.0f; t < r.seconds; t += STEP)
     {
-        if (!came && relief > 0.0f && t >= (float)reliefAfter)
-        {
-            defenders += relief;
-            came = true;
-        }
+        // Each contingent of the relief stands with the garrison its own jumps in.
+        while (landed < relief.size() && t >= (float)relief[landed].second)
+            defenders += relief[landed++].first;
         // Both sides bleed, each by the other's guns over its own hull (the pass's formulas).
         const float lostHere = std::min(force, r.attrition * biteOn * defenders * STEP);
         const float lostThere =
@@ -441,6 +465,60 @@ Simulation::SiegeOdds Simulation::ForecastSiege(FactionId f, FactionId g, float 
     }
     o.left = force;
     return o;
+}
+
+Simulation::SiegeChance Simulation::AssessSiege(FactionId f, FactionId g,
+                                                const std::vector<Plan::Lent>& lend,
+                                                const std::string& target, float garrison,
+                                                float staleness, const Blueprint& wall,
+                                                bool mends) const
+{
+    const Blueprints::Siege& r = Blueprints::SiegeRules();
+    float                    sent = 0.0f;
+    for (const Plan::Lent& l : lend)
+        sent += l.force;
+    // Its own side is known: the fleets its holdings would lend, not the doctrine's.
+    const Ships::Fighter by = FleetOf(f, lend);
+    const float          fx = Blueprints::WallEffect(wall, by.mix);
+    const float          mend = wall.mend * wall.hull;
+    // What the holder can actually spare, each holding's share standing there its own jumps in.
+    const std::vector<Plan::Lent> help = ReliefFor(g, target);
+    // What it does not know, spread over what could be, and the more so the older the sighting
+    // (`staleness`, in Intelligence units, 1 and over: it knows nothing of today): the garrison
+    // is as last seen and may have changed; the holder's answer is, for a fresh sighting, what
+    // its holdings can spare as they stand and on time, and for a stale one equally that, none of
+    // it, half of it, or all of it late. Each case is played by the pass's own arithmetic and
+    // counted by its weight.
+    const float unknown = std::min(staleness, 1.0f);
+    const float swing = 0.25f * std::min(staleness, 2.0f);
+    const float garrisons[3] = { garrison * (1.0f - swing), garrison, garrison * (1.0f + swing) };
+    struct Case
+    {
+        float  share;  // of what the holder could spare that comes
+        double slow;   // times its jumps' travel
+    };
+    const Case  cases[4] = { { 0.0f, 1.0 }, { 0.5f, 1.5 }, { 1.0f, 1.0 }, { 1.0f, 1.5 } };
+    SiegeChance c;
+    float       weights = 0.0f;
+    for (float seen : garrisons)
+        for (int k = 0; k < 4; ++k)
+        {
+            const float w = 1.0f / 3.0f * (unknown / 4.0f + (k == 2 ? 1.0f - unknown : 0.0f));
+            if (w <= 0.0f)
+                continue;
+            std::vector<std::pair<float, double>> relief;
+            for (const Plan::Lent& l : help)
+                relief.push_back(
+                    { l.force * cases[k].share, cases[k].slow * l.hops * (double)r.hop });
+            const SiegeOdds o =
+                ForecastSiege(by, g, sent, seen, relief, wall.hull, mend, mends, fx);
+            c.win += w * (o.falls ? 1.0f : 0.0f);
+            c.lost += w * (sent - o.left);
+            weights += w;
+        }
+    c.win /= weights;
+    c.lost /= weights;
+    return c;
 }
 
 void Simulation::ResolveSiege(const Plan& p)
@@ -476,12 +554,18 @@ void Simulation::RecallSiege(const Plan& p)
     // The holder's relief too (#568): on the road, all of it; at the outpost, what is left.
     if (!p.relief.empty())
     {
-        float back = p.reliefForce;
-        if (p.reliefHere && st != nullptr)
+        // The contingents that stood there give back what is left of them; those still on the
+        // road turn round whole.
+        float landed = 0.0f;
+        for (int k = 0; k < p.reliefIn && k < (int)p.relief.size(); ++k)
+            landed += p.relief[(size_t)k].force;
+        float back = p.reliefForce - landed;
+        if (st != nullptr && landed > 0.0f)
         {
-            float& there = st->agg.presence[p.against];
-            back = std::min(back, there);
-            there -= back;
+            float&      there = st->agg.presence[p.against];
+            const float kept = std::min(landed, there);
+            back += kept;
+            there -= kept;
         }
         Plan home = p;
         home.faction = p.against;
@@ -585,15 +669,17 @@ void Simulation::StepSieges()
         }
         SystemAggregate& a = st->agg;
         const FactionId  fi = p.faction, gi = p.against;
-        // The relief the holder sent when the besiegers stood there has come: it stands with
-        // the garrison from now.
-        if (!p.relief.empty() && !p.reliefHere && time_ >= p.reliefAt)
+        // The relief the holder sent when the besiegers stood there comes in contingent by
+        // contingent, each its own jumps after, and stands with the garrison from then.
+        while (p.reliefIn < (int)p.relief.size() &&
+               time_ >= p.reliefAt + p.relief[(size_t)p.reliefIn].hops * (double)r.hop)
         {
-            p.reliefHere = true;
-            a.presence[gi] += p.reliefForce;
-            Record("siege", gi, p.target,
-                   "Relief reached " + SystemName(p.target) + ": " + FactionName(gi) +
-                       " stands with its garrison against the " + FactionName(fi));
+            a.presence[gi] += p.relief[(size_t)p.reliefIn].force;
+            if (p.reliefIn++ == 0)
+                Record("siege", gi, p.target,
+                       "Relief reached " + SystemName(p.target) + ": " + FactionName(gi) +
+                           " stands with its garrison against the " + FactionName(fi));
+            p.reliefHere = p.reliefIn >= (int)p.relief.size();
         }
 
         // Where it is real, a besieger a player shot down is one fewer: what the arithmetic

@@ -116,7 +116,8 @@ struct Plan
     std::vector<Lent> relief;
     float             reliefForce = 0.0f;
     double            reliefAt = 0.0;
-    bool              reliefHere = false;
+    bool              reliefHere = false;  // every contingent has come
+    int               reliefIn = 0;  // how many have, nearest first; reliefAt is when it set out
     std::string       via;
     double            arrivesAt = 0.0;
     bool              arrived = false;

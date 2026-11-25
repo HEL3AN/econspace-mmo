@@ -794,11 +794,15 @@ TEST_CASE("the holder lends relief to a besieged outpost: it sets out when the b
     REQUIRE_FALSE(plan.relief.empty());
     CHECK(plan.reliefForce > 0.0f);
     CHECK_FALSE(plan.reliefHere);
-    CHECK(plan.reliefAt > sim->Time());
+    CHECK(plan.reliefAt <= sim->Time());  // it set out when they stood there
     // What it lent is missing at home from the moment it sets out, and is nowhere on the road.
     CHECK(guild.presence[Fac::TradersGuild()] < 4.0f * cap);
     const float standing = sim->SystemById(s.frontier)->agg.presence[Fac::TradersGuild()];
-    RunUntil(*sim, plan.reliefAt - sim->Time() + 10.0, [&]() { return false; });
+    int         far = 1;
+    for (const Plan::Lent& l : plan.relief)
+        far = std::max(far, l.hops);
+    RunUntil(*sim, plan.reliefAt + far * Blueprints::SiegeRules().hop - sim->Time() + 10.0,
+             [&]() { return false; });
     const Plan* now = SiegeBy(*sim, Fac::Pirates());
     REQUIRE(now != nullptr);
     CHECK(now->reliefHere);
@@ -820,37 +824,62 @@ TEST_CASE("the holder lends relief to a besieged outpost: it sets out when the b
     CHECK(back.armour == doctest::Approx(plan.armour));
 }
 
-TEST_CASE("the planner's odds count the relief the holder could lend (#568)")
+TEST_CASE("the planner's odds count the relief the holder could lend, as a chance (#568)")
 {
     auto                     sim = World();
     const Blueprints::Siege& rules = Blueprints::SiegeRules();
     const Blueprint&         outpost = *Blueprints::Find(Outposts::BLUEPRINT);
     const float              mend = outpost.mend * outpost.hull;
-    const float              fx =
-        Blueprints::WallEffect(outpost, sim->FighterOf(Fac::Pirates(), NpcRole::Warship).mix);
-    // A siege that wins unopposed: a few ships, a thin garrison, no help.
+    const Ships::Fighter     by = sim->FighterOf(Fac::Pirates(), NpcRole::Warship);
+    const float              fx = Blueprints::WallEffect(outpost, by.mix);
     // (a wall that holds ten times what the fixture's does, so the relief has time to come)
     const float wall = 10.0f * outpost.hull;
     const float sent = 6.0f;
-    const auto  alone = sim->ForecastSiege(Fac::Pirates(), Fac::TradersGuild(), sent, 1.0f, 0.0f,
-                                           0.0, wall, mend, true, fx);
+    using Arrivals = std::vector<std::pair<float, double>>;
+    const auto alone =
+        sim->ForecastSiege(by, Fac::TradersGuild(), sent, 1.0f, {}, wall, mend, true, fx);
     REQUIRE(alone.falls);
     CHECK(alone.seconds <= rules.seconds);
-    // The same wall with a holder's relief arriving a jump in: slower, and what is left of
-    // the force is less. A big enough relief makes it hopeless.
-    const auto helped = sim->ForecastSiege(Fac::Pirates(), Fac::TradersGuild(), sent, 1.0f, 6.0f,
-                                           rules.hop, wall, mend, true, fx);
+    // The same wall with a holder's relief a jump in: slower, and less of the force is left.
+    const auto helped =
+        sim->ForecastSiege(by, Fac::TradersGuild(), sent, 1.0f,
+                           Arrivals{ { 6.0f, (double)rules.hop } }, wall, mend, true, fx);
     CHECK(helped.left < alone.left);
     if (helped.falls)
         CHECK(helped.seconds >= alone.seconds);
-    const auto swamped = sim->ForecastSiege(Fac::Pirates(), Fac::TradersGuild(), sent, 1.0f, 60.0f,
-                                            rules.hop, wall, mend, true, fx);
+    // A relief that comes late helps less than one that comes on time.
+    const auto late =
+        sim->ForecastSiege(by, Fac::TradersGuild(), sent, 1.0f,
+                           Arrivals{ { 6.0f, 3.0 * rules.hop } }, wall, mend, true, fx);
+    CHECK(late.left >= helped.left);
+    const auto swamped =
+        sim->ForecastSiege(by, Fac::TradersGuild(), sent, 1.0f,
+                           Arrivals{ { 60.0f, (double)rules.hop } }, wall, mend, true, fx);
     CHECK_FALSE(swamped.falls);
-    // ...which the holdings in reach of a target are what a holder could lend.
+
+    // The holdings in reach of a target are what a holder could lend, each with its jumps.
     const Scene s = GuildOutpostNextToPirates(*sim);
-    const auto  pool = sim->ReliefFor(Fac::Pirates(), s.frontier);
-    CHECK(pool.first >= 0.0f);
-    CHECK(sim->ReliefFor(Factions::Unaffiliated(), s.frontier).first == 0.0f);
+    CHECK(sim->ReliefFor(Factions::Unaffiliated(), s.frontier).empty());
+    for (const Plan::Lent& l : sim->ReliefFor(Fac::Pirates(), s.frontier))
+        CHECK(l.hops >= 1);
+    // A chance is between 0 and 1, and a thin garrison with no help in reach is a sure thing
+    // for a fleet that can take the wall at all.
+    std::vector<Plan::Lent> lend;
+    Plan::Lent              l;
+    l.from = s.den;
+    l.force = sent;
+    l.hops = 1;
+    lend.push_back(l);
+    const auto chance = sim->AssessSiege(Fac::Pirates(), Fac::TradersGuild(), lend, s.frontier,
+                                         1.0f, 0.0f, outpost, true);
+    CHECK(chance.win >= 0.0f);
+    CHECK(chance.win <= 1.0f);
+    CHECK(chance.lost >= 0.0f);
+    CHECK(chance.lost <= sent);
+    // Garrisons of ten times as many cannot be taken by it.
+    const auto hopeless = sim->AssessSiege(Fac::Pirates(), Fac::TradersGuild(), lend, s.frontier,
+                                           60.0f, 0.0f, outpost, true);
+    CHECK(hopeless.win <= chance.win);
 }
 
 // --- Pooled sieges (#295, the owner's decision of 2026-10-11) ---------------------------------
