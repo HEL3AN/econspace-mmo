@@ -379,18 +379,36 @@ Sell charts to the faction whose station you are docked at (#346, #431). What is
 
 ### `deal_act`
 
-A direct trade with another pilot docked at the same station (#473): goods, credits and charts swapped in one step, the server standing between you so that neither can cheat. Steps: 'open' with a pilot's name -- they open one with you to accept; observe shows TRADE lines for both sides' offers and invitations. 'put' adds to your side (resource and amount, from a container if not the hold; credits; chart: a system you charted yourself), 'withdraw' takes the same back out. Any change by either side clears both confirmations and moves the revision. 'confirm' needs the revision observe showed (rev) and is refused if the offer has moved; when both have confirmed, everything moves at once or nothing does. 'cancel' ends it; undocking, or either pilot leaving the station, ends it too. The market's fee is split between you and goes to the station's owner; nothing else is taken. A chart is a copy: you keep yours, and the buyer is shown only what is new to them until the trade is done. A chart you buy is second-hand, may be resold to a pilot, and is never bought by a faction. What goods and modules a hold has no room for goes to your hangar there.
+A direct trade with another pilot docked at the same station (#473): goods, credits and charts swapped in one step, the server standing between you so that neither can cheat. Steps: 'open' with a pilot's name -- they open one with you to accept; observe shows TRADE lines for both sides' offers and invitations. 'put' adds to your side (resource and amount, from a container if not the hold; credits; chart: a system you charted yourself), 'withdraw' takes the same back out. Any change by either side clears both confirmations and moves the revision. 'confirm' needs the revision observe showed (rev) and is refused if the offer has moved; when both have confirmed, everything moves at once or nothing does. 'cancel' ends it; undocking, or either pilot leaving the station, ends it too. The market's fee is split between you and goes to the station's owner; nothing else is taken. A chart is a copy: you keep yours, and the buyer is shown only what is new to them until the trade is done. A chart you buy is second-hand, may be resold to a pilot, and is never bought by a faction. What goods and modules a hold has no room for goes to your hangar there. EXCHANGE CONTRACTS, held at a station until somebody takes them (the deals tool lists them): 'post' puts up give_resource and give_amount (from a container if not the hold), give_credits and give_chart, held by the server from that moment, for ask_resource and ask_amount and ask_credits (never a chart), to anyone docked there -- or to a pilot's name, or 'corp:TICKER' -- for days (at most fourteen); 'accept' takes contract id; 'cancel' with id takes yours back from anywhere. Posting costs a flat fee and a pilot keeps only a few open; taking pays the market's fee. as_corp posts or takes for your corporation, from its office and treasury (the CEO or a director). What is not taken by its deadline goes back to whoever posted it, and you are told in your journal even when you were away.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
-| `action` | string | yes | open, put, withdraw, confirm or cancel |
+| `action` | string | yes | open, put, withdraw, confirm, cancel (a trade, or a contract with id), post or accept (contracts) |
 | `amount` | number |  | put/withdraw: how many of it |
+| `as_corp` | boolean |  | post/accept: for your corporation, from its office and treasury |
+| `ask_amount` | number |  | post: how many of it |
+| `ask_credits` | number |  | post: whole credits wanted |
+| `ask_resource` | string |  | post: a good wanted in return, by name |
 | `chart` | string |  | put/withdraw: a system's id or name from your own charts |
 | `credits` | number |  | put/withdraw: whole credits |
+| `days` | number |  | post: how long it stays up (default 7, at most 14) |
 | `from` | string |  | put: the container the goods are in (default 'hold') |
+| `give_amount` | number |  | post: how many of it |
+| `give_chart` | string |  | post: a system you charted, to put up as a copy |
+| `give_credits` | number |  | post: whole credits to put up |
+| `give_from` | string |  | post: the container it is in (default 'hold', or 'storage' as_corp) |
+| `give_resource` | string |  | post: a good to put up, by name |
+| `id` | number |  | accept/cancel: the contract's number, from deals |
 | `resource` | string |  | put/withdraw: a good by name, e.g. 'Iron' |
 | `rev` | number |  | confirm: the revision observe showed for the trade |
+| `to` | string |  | post: a pilot's name, or corp:TICKER; empty: anyone docked there |
 | `with` | string |  | open: the pilot's name |
+
+### `deals`
+
+The exchange contracts you may read (#473): those open to anyone docked at this station, those offered to you or your corporation, and your own and your corporation's wherever they are. Each says who posts it, what it gives and what it asks -- a chart only as what is new to you, never where -- until when, the market's fee to take it, and whether you may take it now or why not. A price far from the market's is marked WARNING. Take one with deal_act accept and its number.
+
+No arguments.
 
 ### `name_system`
 

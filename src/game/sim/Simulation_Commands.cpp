@@ -236,6 +236,9 @@ struct Doer
     // A direct trade with a pilot docked here (#473): not a docked verb either, so that a
     // cancel still reaches a pilot who has just left and a refusal says why.
     void operator()(const Proto::Act::Deal& a) { sim.ApplyDeal(s, a); }
+    // An exchange contract (#473): posting and taking are done docked at its station, and a
+    // cancel is from anywhere; the refusals say which.
+    void operator()(const Proto::Act::Board& a) { sim.ApplyBoard(s, a); }
     // Targeting and fire (#619). A lock is asked for and answered in the snapshot's locks (or a
     // Notice saying why not); the guns are on or off and fire only at a held active lock.
     void operator()(const Proto::Act::Lock& a) { sim.LockTarget(s, a.id); }

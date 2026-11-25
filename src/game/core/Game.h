@@ -320,6 +320,9 @@ private:
     void DrawScannerContent(const Ui::Frame& f);
     // The Trade window (#473), in GameTrade.cpp.
     void DrawTradeContent(const Ui::Frame& f);
+    // The Contracts window (#473), in GameBoard.cpp.
+    void DrawBoardContent(const Ui::Frame& f);
+    void SendBoard(const Proto::Act::Board& b);
     void SendDeal(const std::string& action, const std::string& with = std::string(),
                   const Exchange::Bundle& bundle = Exchange::Bundle(), int rev = 0);
     // Corporations (#347), in GameCorp.cpp: the window, a verb sent, and what the client knows
@@ -619,6 +622,7 @@ private:
     static constexpr const char* WIN_CORP = "corp";                // the corporation (#347)
     static constexpr const char* WIN_INVENTORY = "inventory";      // holds and storage (#472)
     static constexpr const char* WIN_TRADE = "trade";              // a trade with a pilot (#473)
+    static constexpr const char* WIN_BOARD = "board";              // exchange contracts (#473)
     const char*                  ChatWindow() const
     {
         return mode_ == GameMode::Docked ? WIN_CHAT_DOCKED : WIN_CHAT;
@@ -649,6 +653,14 @@ private:
     float       tradeAmount_ = 1.0f, tradeCredits_ = 0.0f;
     int         tradeGood_ = 0, tradeRevSeen_ = -1;
     double      tradeChangedAt_ = 0.0;
+    // The Contracts window (#473): the line chosen, and the form: what is given, asked, to whom,
+    // for how long, and whether as the corporation.
+    Ui::Layout  boardLayout_;
+    std::string boardTo_;
+    int         boardSel_ = 0, giveGood_ = 0, askGood_ = 0;
+    float       giveAmount_ = 0.0f, giveCredits_ = 0.0f, askAmount_ = 0.0f, askCredits_ = 0.0f;
+    float       boardDays_ = 7.0f;
+    bool        boardCorp_ = false;
     int         lossSeen_ = 0;  // the last loss (Proto::LossView::seq) already shown (#344)
     Ui::Layout  hallLayout_;
     // The inventory window (#472): the container shown, the good chosen in it, how many of it a

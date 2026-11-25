@@ -107,7 +107,9 @@ namespace Save
 // 23: a field of ore may have a life (#617): an added object carries `bornAt`, `life` and its
 //    `curve`, and its state is what was `taken`. A version 22 build reads an unknown key of an
 //    object as a load error, and would drop the field and save the world without it.
-inline constexpr int WORLD_VERSION = 23;
+// 24: a contract may be a pilot's, an exchange (#473): it holds the goods, credits and charts its
+//    issuer put up, and an older reader would drop it and lose them -- the dangerous reading.
+inline constexpr int WORLD_VERSION = 24;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

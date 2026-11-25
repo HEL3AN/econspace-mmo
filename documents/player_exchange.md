@@ -1,8 +1,14 @@
 # Player-to-player exchange
 
-Status: **design draft, 2026-11-25. Nothing here is built, and no code is written until the
-owner has answered the [decisions](#decisions-for-the-owner).** Calls made where the issue is
-silent are marked *(call)*.
+Status: **the owner accepted all six recommendations (comment on #473). Slices 1-3 are built**
+(direct trade; exchange contracts; corporation issuing and receiving); slices 4-9 are not. Calls
+made where the issue is silent are marked *(call)*. Calls made while building slices 1-3:
+a direct trade needs the same dock and pays the market's fee on the dearer side's value, split;
+a contract's fee at taking is paid by the taker and a flat posting fee by the poster
+(`world_rules.json` -> `exchange`); a contract is held and posted only at a station that keeps
+hangars; a contract asks for goods and credits, never charts (an offline issuer cannot be given
+one); a chart in a contract's escrow is a copy frozen when it is posted; a corporation posts
+from, and is paid into, its office at the station and its treasury.
 Related: #473 (this), #472 (holds, hangars, located ships, modules as goods, the NPC delivery
 service), #468 (structure ownership), #431 slice 16 (charts sold to factions, built), #346
 (scanning), #347 (corporations), #345 (faction jobs and contracts), #343 (the market), #42

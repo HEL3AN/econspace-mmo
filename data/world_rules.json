@@ -209,6 +209,13 @@
         "rentPerUnit": 0.2,
         "periodDays": 30
     },
+    "exchange": {
+        "postingFee": 25,
+        "maxOpen": 10,
+        "defaultDays": 7,
+        "maxDays": 14,
+        "warnRatio": 3
+    },
     "offices": {
         "units": 6000,
         "rent": 2500,

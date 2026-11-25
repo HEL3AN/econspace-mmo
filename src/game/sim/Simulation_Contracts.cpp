@@ -145,6 +145,8 @@ void Simulation::PostContracts()
     std::set<std::pair<std::string, int>> asked;  // (system, good) already under contract
     for (const auto& kv : contracts_)
     {
+        if (kv.second.IsExchange())  // pilots' (#473): not the market's to count
+            continue;
         open[kv.second.system]++;
         asked.insert({ kv.second.system, kv.second.good.Index() });
     }
@@ -210,7 +212,7 @@ void Simulation::PostContracts()
 void Simulation::EndContract(int id)
 {
     const auto it = contracts_.find(id);
-    if (it == contracts_.end())
+    if (it == contracts_.end() || it->second.IsExchange())  // a pilot's goes back by EndDeal
         return;
     director_.Mind(it->second.faction).treasury +=
         it->second.reward;  // not earned: the owner's again
@@ -240,7 +242,9 @@ void Simulation::StepContracts()
     std::vector<int> over;
     for (const auto& kv : contracts_)
     {
-        const Contract&    c = kv.second;
+        const Contract& c = kv.second;
+        if (c.IsExchange())
+            continue;
         const SystemState* st = SystemById(c.system);
         const bool filled = !c.taken && st != nullptr &&
                             st->market.Stock(c.good) >= r.fillTo * st->market.Target(c.good);
@@ -249,6 +253,7 @@ void Simulation::StepContracts()
     }
     for (int id : over)
         EndContract(id);
+    StepBoard();  // pilots' contracts out of time go back to whoever posted them (#473)
     // And once every `every` seconds, what the markets are short of now.
     const double slot = std::floor(time_ / r.every);
     if (slot != contractSlot_)
@@ -270,7 +275,7 @@ void Simulation::ContractsPostedAt(const ClientSession& s, const Station& giver,
     {
         const Contract& c = kv.second;
         const auto      at = near.find(c.system);
-        if (c.taken || c.faction != f || at == near.end())
+        if (c.IsExchange() || c.taken || c.faction != f || at == near.end())
             continue;
         found.push_back({ at->second, &c });
     }
@@ -359,6 +364,108 @@ bool Simulation::CompleteContract(ClientSession& s, int index)
     return true;
 }
 
+// An exchange contract (#473) as the world saves it: what is held -- goods by their id, credits,
+// and each chart's copy -- and what it asks, so nothing a restart could lose is only in memory.
+nlohmann::json Simulation::ExchangeJson(const Contract& c)
+{
+    using nlohmann::json;
+    json goods = json::array();
+    for (const auto& [type, n] : c.giveGoods.All())
+        goods.push_back({ Goods::Id(type), n });
+    json ask = json::array();
+    for (const Exchange::GoodLine& g : c.asking.goods)
+        ask.push_back({ Goods::Id(ResourceType::FromIndex(g.type)), g.amount });
+    json charts = json::array();
+    for (const ChartCopy& k : c.giveCharts)
+        charts.push_back({ { "system", k.system },
+                           { "observed", k.observed },
+                           { "at", k.at },
+                           { "stations", k.stations },
+                           { "structures", k.structures },
+                           { "finds", k.finds },
+                           { "seen", WorldLoader::ToJson(k.seen) },
+                           { "hops", k.hops },
+                           { "from", k.from } });
+    return { { "id", c.id },
+             { "kind", "exchange" },
+             { "issuer", c.issuer },
+             { "poster", c.poster },
+             { "to", c.to },
+             { "system", c.system },
+             { "place", c.place },
+             { "placeName", c.placeName },
+             { "give", goods },
+             { "giveCredits", c.giveCredits },
+             { "giveCharts", charts },
+             { "ask", ask },
+             { "askCredits", c.asking.credits },
+             { "postedAt", c.postedAt },
+             { "deadline", c.deadline } };
+}
+
+bool Simulation::ExchangeFrom(const nlohmann::json& cj, Contract& c) const
+{
+    using nlohmann::json;
+    c.kind = "exchange";
+    c.id = cj.value("id", 0);
+    c.issuer = cj.value("issuer", std::string());
+    c.poster = cj.value("poster", std::string());
+    c.to = cj.value("to", std::string());
+    c.system = cj.value("system", std::string());
+    c.place = cj.value("place", std::string());
+    c.placeName = cj.value("placeName", std::string());
+    c.giveCredits = cj.value("giveCredits", 0LL);
+    c.asking.credits = cj.value("askCredits", 0LL);
+    c.postedAt = cj.value("postedAt", 0.0);
+    c.deadline = cj.value("deadline", 0.0);
+    if (c.id <= 0 || c.issuer.empty() || c.poster.empty() || c.place.empty())
+        return false;
+    // A good this world no longer has cannot be given back: its line is dropped. The rest of
+    // what was held still is -- the contract is kept as long as anything of it can be.
+    auto goodAt = [](const json& l, ResourceType& g, int& n)
+    {
+        return l.is_array() && l.size() >= 2 && l[0].is_string() && l[1].is_number_integer() &&
+               Goods::Find(l[0].get<std::string>(), g) && (n = l[1].get<int>()) > 0;
+    };
+    if (cj.contains("give") && cj["give"].is_array())
+        for (const json& l : cj["give"])
+        {
+            ResourceType g;
+            int          n = 0;
+            if (goodAt(l, g, n))
+                c.giveGoods.Add(g, n);
+        }
+    if (cj.contains("ask") && cj["ask"].is_array())
+        for (const json& l : cj["ask"])
+        {
+            ResourceType g;
+            int          n = 0;
+            if (goodAt(l, g, n))
+                c.asking.goods.push_back({ g.Index(), n, "" });
+        }
+    if (cj.contains("giveCharts") && cj["giveCharts"].is_array())
+        for (const json& k : cj["giveCharts"])
+        {
+            if (!k.is_object())
+                continue;
+            ChartCopy copy;
+            copy.system = k.value("system", std::string());
+            if (!HasSystem(copy.system))
+                continue;
+            copy.charted = true;
+            copy.observed = k.value("observed", false);
+            copy.at = k.value("at", -1.0);
+            copy.stations = k.value("stations", 0);
+            copy.structures = k.value("structures", 0);
+            copy.finds = k.value("finds", std::vector<std::string>{});
+            copy.seen = WorldLoader::SightingFrom(k.value("seen", json::object()));
+            copy.hops = k.value("hops", 0);
+            copy.from = k.value("from", std::string());
+            c.giveCharts.push_back(std::move(copy));
+        }
+    return true;
+}
+
 void Simulation::SaveContracts(nlohmann::json& j) const
 {
     using nlohmann::json;
@@ -366,6 +473,11 @@ void Simulation::SaveContracts(nlohmann::json& j) const
     for (const auto& kv : contracts_)
     {
         const Contract& c = kv.second;
+        if (c.IsExchange())
+        {
+            list.push_back(ExchangeJson(c));
+            continue;
+        }
         list.push_back({ { "id", c.id },
                          { "faction", Factions::Id(c.faction) },
                          { "system", c.system },
@@ -391,6 +503,16 @@ void Simulation::ReadContracts(const nlohmann::json& j)
     {
         if (!cj.is_object())
             continue;
+        if (cj.value("kind", std::string()) == "exchange")
+        {
+            Contract e;
+            if (ExchangeFrom(cj, e) && e.id > 0 && contracts_.count(e.id) == 0)
+            {
+                nextContractId_ = std::max(nextContractId_, e.id + 1);
+                contracts_[e.id] = std::move(e);
+            }
+            continue;
+        }
         Contract c;
         c.id = cj.value("id", 0);
         c.system = cj.value("system", std::string());

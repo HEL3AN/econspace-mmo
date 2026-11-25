@@ -78,6 +78,10 @@ std::string DescribeAssets(const std::vector<Proto::AssetView>& assets);
 // who has confirmed, the revision a confirm must carry and the fee. What the Trade window shows.
 // Empty when there is no trade, no invitation and no request of one's own.
 std::string DescribeTrade(const Proto::TradeView& trade);
+// The exchange contracts a pilot may read (#473): what each gives for what, where, until when,
+// what taking it costs in the market's fee, and whether this pilot may take it now. `now` is the
+// world time the deadlines are measured from. What the Contracts window shows; empty for none.
+std::string DescribeBoard(const std::vector<Proto::DealView>& board, double now);
 std::string DescribeInventory(const View& view, const std::string& account = std::string());
 
 // --- Fitting (#279) ---------------------------------------------------------------------

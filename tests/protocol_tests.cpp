@@ -110,6 +110,16 @@ TEST_CASE("every verb round-trips as an action (#354)")
     deal.bundle.charts = { "r7-1-2" };
     deal.rev = 4;
     all.emplace_back(deal);
+    Proto::Act::Board board;
+    board.action = "post";
+    board.id = 3;
+    board.giving.goods.push_back({ 1, 30, "" });
+    board.giving.charts = { "r7-1-2" };
+    board.asking.credits = 600;
+    board.to = "corp:OFC";
+    board.days = 5;
+    board.corp = true;
+    all.emplace_back(board);
     all.emplace_back(Proto::Act::Lock{ 12 });
     all.emplace_back(Proto::Act::Unlock{ 12 });
     all.emplace_back(Proto::Act::SetActive{ 13 });
@@ -137,6 +147,15 @@ TEST_CASE("every verb round-trips as an action (#354)")
     CHECK(As<Proto::Act::Deal>(r).bundle.credits == 500);
     CHECK(As<Proto::Act::Deal>(r).bundle.charts == std::vector<std::string>{ "r7-1-2" });
     CHECK(As<Proto::Act::Deal>(r).rev == 4);
+    REQUIRE(RoundTrip(board, r));
+    CHECK(As<Proto::Act::Board>(r).action == "post");
+    CHECK(As<Proto::Act::Board>(r).id == 3);
+    CHECK(As<Proto::Act::Board>(r).giving.goods[0].amount == 30);
+    CHECK(As<Proto::Act::Board>(r).giving.charts.size() == 1);
+    CHECK(As<Proto::Act::Board>(r).asking.credits == 600);
+    CHECK(As<Proto::Act::Board>(r).to == "corp:OFC");
+    CHECK(As<Proto::Act::Board>(r).days == 5);
+    CHECK(As<Proto::Act::Board>(r).corp);
     REQUIRE(RoundTrip(all[3], r));
     CHECK(As<Proto::Act::NameSystem>(r).name == "Haven");
     CHECK(As<Proto::Act::NameSystem>(r).systemId == "r1-1-1");
@@ -174,11 +193,11 @@ TEST_CASE("every verb round-trips as an action (#354)")
     CHECK(As<Proto::Act::Dismantle>(r).id == 42);
     REQUIRE(RoundTrip(all[31], r));
     CHECK(As<Proto::Act::SetDefence>(r).id == 9);
-    REQUIRE(RoundTrip(all[33], r));
+    REQUIRE(RoundTrip(all[34], r));
     CHECK(As<Proto::Act::Lock>(r).id == 12);
-    REQUIRE(RoundTrip(all[35], r));
-    CHECK(As<Proto::Act::SetActive>(r).id == 13);
     REQUIRE(RoundTrip(all[36], r));
+    CHECK(As<Proto::Act::SetActive>(r).id == 13);
+    REQUIRE(RoundTrip(all[37], r));
     CHECK(As<Proto::Act::Fire>(r).on);
 
     // It is its own message type, and a command is not an action.

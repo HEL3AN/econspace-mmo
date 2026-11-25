@@ -663,6 +663,58 @@ json GoodLinesJson(const std::vector<Exchange::GoodLine>& lines)
     return gs;
 }
 
+json DealJson(const Proto::DealView& d)
+{
+    json give = GoodLinesJson(d.give), ask = GoodLinesJson(d.ask);
+    json j = { { "id", d.id },          { "by", d.issuer },       { "to", d.to },
+               { "at", d.place },       { "sys", d.system },      { "here", d.here },
+               { "mine", d.mine },      { "until", d.deadline },  { "give", give },
+               { "ask", ask },          { "gcr", d.giveCredits }, { "acr", d.askCredits },
+               { "gch", d.giveCharts }, { "fee", d.fee },         { "ok", d.canAccept } };
+    if (!d.why.empty())
+        j["why"] = d.why;
+    if (!d.note.empty())
+        j["note"] = d.note;
+    return j;
+}
+
+std::vector<Exchange::GoodLine> ReadGoodLines(const json& j, const char* key)
+{
+    std::vector<Exchange::GoodLine> out;
+    const auto                      gs = j.find(key);
+    if (gs != j.end() && gs->is_array())
+        for (const json& g : *gs)
+            if (g.is_array() && g.size() == 3 && g[0].is_number_integer() &&
+                g[1].is_number_integer() && g[2].is_string())
+                out.push_back({ g[0].get<int>(), g[1].get<int>(), g[2].get<std::string>() });
+    return out;
+}
+
+Proto::DealView ReadDeal(const json& j)
+{
+    Proto::DealView d;
+    if (!j.is_object())
+        return d;
+    d.id = j.value("id", 0);
+    d.issuer = j.value("by", std::string());
+    d.to = j.value("to", std::string());
+    d.place = j.value("at", std::string());
+    d.system = j.value("sys", std::string());
+    d.here = j.value("here", false);
+    d.mine = j.value("mine", false);
+    d.deadline = j.value("until", 0.0);
+    d.give = ReadGoodLines(j, "give");
+    d.ask = ReadGoodLines(j, "ask");
+    d.giveCredits = j.value("gcr", 0LL);
+    d.askCredits = j.value("acr", 0LL);
+    d.giveCharts = j.value("gch", std::vector<std::string>{});
+    d.fee = j.value("fee", 0.0);
+    d.canAccept = j.value("ok", false);
+    d.why = j.value("why", std::string());
+    d.note = j.value("note", std::string());
+    return d;
+}
+
 json TradeSideJson(const Proto::TradeSideView& v)
 {
     json charts = json::array();
@@ -925,6 +977,22 @@ struct ActionWriter
         Verb("defence");
         j["id"] = a.id;
         j["def"] = DefenceJson(a.defence);
+    }
+    void operator()(const Act::Board& a) const
+    {
+        Verb("board");
+        j["do"] = a.action;
+        if (a.id != 0)
+            j["id"] = a.id;
+        if (!a.giving.Empty())
+            j["give"] = BundleJson(a.giving);
+        if (!a.asking.Empty())
+            j["ask"] = BundleJson(a.asking);
+        Text("to", a.to);
+        if (a.days != 0)
+            j["days"] = a.days;
+        if (a.corp)
+            j["corp"] = true;
     }
     void operator()(const Act::Deal& a) const
     {
@@ -1372,6 +1440,15 @@ bool ReadAction(const json& j, Proto::Action& out)
             ok = DefenceFrom(j["def"], a.defence);
         out = std::move(a);
     }
+    else if (verb == "board")
+    {
+        Proto::Act::Board a;
+        ok = text("do", a.action) && ReadInt(j, "id", 0, 0, ID_MAX, a.id) &&
+             ReadBundle(j, "give", a.giving) && ReadBundle(j, "ask", a.asking) &&
+             text("to", a.to) && ReadInt(j, "days", 0, 0, 365, a.days) &&
+             ReadBool(j, "corp", a.corp);
+        out = std::move(a);
+    }
     else if (verb == "deal")
     {
         Proto::Act::Deal a;
@@ -1748,6 +1825,13 @@ json PlayerJson(const Proto::PlayerView& p)
                 { { "from", s.from }, { "to", s.to }, { "h", s.hours }, { "t", s.goods } });
         j["freight"] = sh;  // not "ship": that is the flown hull (#554)
     }
+    if (!p.board.empty())  // exchange contracts (#473)
+    {
+        json board = json::array();
+        for (const Proto::DealView& d : p.board)
+            board.push_back(Proto::DealJson(d));
+        j["board"] = std::move(board);
+    }
     if (!p.trade.Empty())  // a direct trade, or who asks for one (#473)
         j["trade"] = Proto::TradeJson(p.trade);
     if (p.hangar.capacity > 0)  // (#472)
@@ -1964,6 +2048,11 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
         p.hangar.owed = hgr->value("owed", 0.0);
         p.hangar.goods = hgr->value("t", std::vector<int>{});
     }
+    p.board.clear();
+    const auto board = pj.find("board");
+    if (board != pj.end() && board->is_array())
+        for (const json& d : *board)
+            p.board.push_back(Proto::ReadDeal(d));
     p.trade = Proto::TradeView{};
     const auto trade = pj.find("trade");
     if (trade != pj.end())
