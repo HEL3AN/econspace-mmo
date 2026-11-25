@@ -10,6 +10,7 @@
 #include "sim/Protocol.h"
 #include "sim/Events.h"
 #include "sim/FactionDirector.h"
+#include "sim/StructureSchedule.h"
 #include "sim/FactionMind.h"
 #include "sim/Orders.h"
 #include "sim/ClientSession.h"
@@ -2654,7 +2655,7 @@ private:
     // up -- as (instant, entity id, system). StepStructures pops what is due and touches
     // nothing else (#295). Not saved: remade when the static layers are built, from the time
     // lines the structures carry. An entry whose structure has gone is skipped.
-    std::set<std::tuple<double, int, std::string>> structureDue_;
+    StructureSchedule structureDue_;
     // Puts a structure's coming instants on the queue, and a wreck's end (#41); anything else
     // is ignored. Whatever changes a time line after it is added schedules it again.
     void ScheduleStructure(const std::string& systemId, const Entity& e);

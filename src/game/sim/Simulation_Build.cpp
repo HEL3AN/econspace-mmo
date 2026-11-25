@@ -905,20 +905,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
 
 void Simulation::ScheduleStructure(const std::string& systemId, const Entity& e)
 {
-    if (e.GetKind() == EntityKind::Derelict)
-    {
-        const double end = static_cast<const Derelict&>(e).GetExpiresAt();
-        if (end > 0.0)
-            structureDue_.insert({ end, e.GetId(), systemId });
-        return;
-    }
-    if (e.GetKind() != EntityKind::Structure)
-        return;
-    const Structure& t = static_cast<const Structure&>(e);
-    if (t.IsBuilding())
-        structureDue_.insert({ t.GetCompletesAt(), t.GetId(), systemId });
-    if (t.GetExpiresAt() > 0.0)
-        structureDue_.insert({ t.GetExpiresAt(), t.GetId(), systemId });
+    structureDue_.Add(systemId, e);
 }
 
 void Simulation::StepStructures()
@@ -940,11 +927,10 @@ void Simulation::StepStructures()
     // Only what is due (#295). The instants were fixed when the site went down; this only
     // notices them pass. A server that was down at the moment finishes it on its first tick
     // back, because everything overdue is due.
-    while (!structureDue_.empty() && std::get<0>(*structureDue_.begin()) <= time_)
+    while (const std::optional<StructureSchedule::Due> due = structureDue_.PopDue(time_))
     {
-        const int         id = std::get<1>(*structureDue_.begin());
-        const std::string systemId = std::get<2>(*structureDue_.begin());
-        structureDue_.erase(structureDue_.begin());
+        const int         id = due->id;
+        const std::string systemId = due->systemId;
 
         SystemState* st = SystemById(systemId);
         if (st == nullptr)
