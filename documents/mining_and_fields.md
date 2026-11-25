@@ -1,6 +1,7 @@
 # Mining and resource fields: many kinds, born from the world's own events
 
-Status: **slice 1 built** (a field with a life, section 9); the rest is design (refs #617; the
+Status: **slices 1 and 2 built** (a field with a life; the event engine with Impact and
+Collision, section 9); the rest is design (refs #617; the
 owner's vision is in the issue, and the owner accepted every recommendation in section 10). It
 proposes how a resource field comes to exist, what kinds of resource there are and how each is
 gathered, how all of it stays inside the living economy (#584, `economy_scales.md`), how it
@@ -401,7 +402,8 @@ Each slice is playable alone and ends with a bench or a screenshot, not a belief
    server's console gets `field <system> <ore> <size> <hours>` to place one by hand. Playable:
    an admin drops a field, pilots and NPC crews work it, it thins and ends. *Proves:* the yield
    curve, the market pass with a finite field, `LayoutDelta` at birth and end.
-2. **The event engine with two kinds.** `data/events.json`, `world_rules.json` `events`, the
+2. **The event engine with two kinds** (built; `Simulation_Events.cpp`, `EventKinds.cpp`,
+   `data/events.json`, `world_rules.json` `events`). `data/events.json`, `world_rules.json` `events`, the
    epoch roll, the **bank** (4.1), the due-queue, the `fields` log in the world file, the news
    line and the journal line, the pre-roll at opening, `Impact` (debris arc, a satellite of its
    planet) and `Collision` (moves a belt's ore). *Proves:* the ledger with the flow tally of

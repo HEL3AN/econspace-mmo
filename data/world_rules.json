@@ -121,6 +121,20 @@
         "margin": 1.3,
         "fleetTurnover": 0.012
     },
+    "events": {
+        "epochHours": 1,
+        "chance": 0.5,
+        "shareCentre": 0.4,
+        "shareFrontier": 0.7,
+        "bankHours": 48,
+        "preRollEpochs": 24,
+        "alive": 6,
+        "minOre": 100,
+        "publicOre": 400,
+        "marketWeight": 3,
+        "nearWeight": 2,
+        "frontierFlow": { "Iron": 15, "Ice": 15, "Crystal": 25 }
+    },
     "fields": {
         "curve": {
             "bloomEnd": 0.10,

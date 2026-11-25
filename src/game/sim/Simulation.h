@@ -330,6 +330,31 @@ public:
     // A spot for one by hand: `distance` ahead of the pilot `pilot` is flying, or where nothing
     // else is, in the system `systemId`.
     Vector2 FieldSpot(const std::string& systemId, const ClientSession* pilot) const;
+    // The world's own events that leave a field behind (#617, Simulation_Events.cpp). A birth
+    // is what an epoch decided and the clock has not reached: where, when, of what and for how
+    // long, kept in the save. The bank is what a region may still spend on events, by ore
+    // (Iron, Ice, Crystal), and `FieldFlowOf` what it gains an hour.
+    struct FieldBirth
+    {
+        int         slot = 0;
+        std::string kind, system, ore;  // `ore` and `amount` only for what the bank paid for
+        int         amount = 0;
+        double      t0 = 0.0;     // world time it begins
+        double      hours = 1.0;  // its life
+        float       size = 500.0f;
+        uint64_t    seed = 0;  // what the rest of it is drawn from, at its birth
+    };
+    const std::vector<FieldBirth>& FieldBirths() const { return fieldBirths_; }
+    double                         FieldBank(int slot, int ore) const;
+    double FieldFlowOf(int slot, int ore) const { return FieldFlow(slot)[(size_t)ore]; }
+    // The fields a region has with a life, and the births waiting.
+    int FieldsAlive(int slot) const;
+    // Makes one of the world's events now, as its birth says (a test, and the clock's own step).
+    bool BirthField(const FieldBirth& b);
+    // An admin's: the event `kind` in `systemId` now, from no bank. `out` is the birth made; false
+    // with `why` when the kind or the system is not there or the system has no place for it.
+    bool BirthFieldNow(const std::string& kind, const std::string& systemId, FieldBirth& out,
+                       std::string& why);
     // The links this pilot knows through roaming holes, each with its tail (kind "hole").
     std::vector<WorldLoader::SystemLink> HoleLinksOf(const ClientSession& s) const;
     // The galaxy index as this pilot knows it (#144, #431): the public charts, their own and
@@ -2488,6 +2513,25 @@ private:
     nlohmann::json                                       HangarsJson() const;
     void                                                 HangarsFrom(const nlohmann::json& j);
 
+    // Events (#617): what each region may still spend, and what the epochs decided.
+    struct FieldRegion
+    {
+        int                   epoch = -1;  // the last one decided
+        std::array<double, 3> bank = { 0.0, 0.0, 0.0 };
+    };
+    std::map<int, FieldRegion> fieldRegions_;
+    std::vector<FieldBirth>    fieldBirths_;
+    bool                       fieldsLegacy_ = false;  // a world from before the events
+    mutable std::shared_ptr<const Gen::OreModel> fieldModel_;
+    mutable unsigned                             fieldModelFrom_ = ~0u;
+    void                                         StepFields();
+    void                                         DecideField(int slot, FieldRegion& fr, int epoch);
+    void                                         BirthFields();
+    bool                                         IsCentreSlot(int slot) const;
+    std::array<double, 3>                        RegionOreNeed(int slot) const;
+    std::array<double, 3>                        FieldFlow(int slot) const;
+    void                                         SaveFields(nlohmann::json& j) const;
+    void                                         LoadFields(const nlohmann::json& j);
     // Roaming holes (S9): what the epochs decided, the last epoch decided, and which
     // signatures somebody has already been credited with finding (#346).
     std::vector<RoamingHole> holes_;
