@@ -1258,6 +1258,9 @@ public:
         // arrives at, and in neither while it is on its way. Saved.
         ResourceType good;
         int          cargo = 0;
+        // A hauler is its home's ship on loan: the system it left does not make up for it while
+        // it is away (loans_), so that a haul moves a trader and never makes one. Saved.
+        bool loan = false;
     };
     const std::map<long long, Migrant>& Migrants() const { return migrants_; }
     // Goods on their way between systems, by good: what haulers carry and no market holds.
@@ -2161,10 +2164,14 @@ private:
     int       passSpread_ = 0;
     // One unit of the pass, or all of them when it is not spread; true when the pass is done.
     bool StepPass(MaintainCost* cost, std::chrono::steady_clock::time_point& lap);
+    // Traders each system has out on loan as haulers (#584), rebuilt from migrants_ every pass.
+    std::map<std::string, int> loans_;
     // Once a pass, before the director: who leaves, who has gone, who has arrived.
     void StepMigration();
     // A migrant has come: a number in a cold system, a ship at the gate in a hot one.
     void ArriveMigrant(const Migrant& m);
+    // A hauler on loan has unloaded and is its home's again (#584): counted there, or flying in.
+    void ReturnLoan(const std::string& home, const std::string& from, FactionId faction);
     // --- Haulers (#343; Simulation_Haulers.cpp) ---
     // What a trader setting out from `from` to `to` should carry: the good whose bid there
     // beats the ask here by the most, as much of it as still pays. Nothing, where nothing does
@@ -2180,7 +2187,7 @@ private:
     // count here, on its way for `travel` seconds, then counted there. In a hot system a real
     // ship turns for the gate; false, and nothing changed, when there is none to send.
     bool SetOut(SystemState& st, const std::string& to, NpcRole role, FactionId faction,
-                const Haul& haul);
+                const Haul& haul, bool loan = false);
     // Once a pass, after migration: in each system with a market and a trader, one moment in
     // every `haulEvery` seconds, a trader sets out with the haul that pays best.
     void StepHauls();

@@ -76,6 +76,19 @@ int Simulation::KeepOf(const std::string& systemId, NpcRole role) const
 
 void Simulation::StepMigration()
 {
+    // Haulers out on loan, by the system they left: its traders' target is short by that many
+    // while they are away, so a top-up cannot make up for one that is only on a trip.
+    loans_.clear();
+    for (const auto& kv : migrants_)
+        if (kv.second.loan)
+            loans_[kv.second.from]++;
+    // ...and those that have come in to a system somebody is in and are still unloading there.
+    for (const auto& kv : systems_)
+        if (IsHot(kv.second))
+            for (const auto& e : kv.second.entities)
+                if (e->GetKind() == EntityKind::Npc &&
+                    !static_cast<const NpcShip&>(*e).GetLoanHome().empty())
+                    loans_[static_cast<const NpcShip&>(*e).GetLoanHome()]++;
     // What each system has to spare and lacks, by role, as of this pass.
     passTargets_.clear();
     passTargets_.reserve(systems_.size());
@@ -231,7 +244,7 @@ void Simulation::StepMigration()
 }
 
 bool Simulation::SetOut(SystemState& st, const std::string& to, NpcRole role, FactionId faction,
-                        const Haul& haul)
+                        const Haul& haul, bool loan)
 {
     const Migration& rules = Factions::MigrationRules();
     Migrant          m;
@@ -286,6 +299,9 @@ bool Simulation::SetOut(SystemState& st, const std::string& to, NpcRole role, Fa
         if (ship != nullptr)
             ship->SetCargo(haul.good, bought);  // shot down on the way out, it leaves it there
     }
+    m.loan = loan && role == NpcRole::Trader;
+    if (m.loan)
+        loans_[st.id]++;
     m.id = nextMigrant_++;
     float& count = CountOf(st.agg, (int)role);
     count = std::max(0.0f, count - 1.0f);
@@ -301,10 +317,18 @@ void Simulation::ArriveMigrant(const Migrant& m)
 {
     SystemState* st = SystemById(m.to);
     if (st == nullptr)
+    {
+        if (m.loan)
+            ReturnLoan(m.from, m.to, m.faction);
         return;
+    }
     if (!IsHot(*st))
     {
-        CountOf(st->agg, (int)m.role) += 1.0f;
+        // A hauler on loan is not this system's: it sells what it carried and is home's again.
+        if (m.loan)
+            ReturnLoan(m.from, m.to, m.faction);
+        else
+            CountOf(st->agg, (int)m.role) += 1.0f;
         // Nobody to see it fly to a station: it has sold what it carried.
         if (m.cargo > 0)
             Unload(*st, m.good, m.cargo);
@@ -314,7 +338,25 @@ void Simulation::ArriveMigrant(const Migrant& m)
     // full, if it is a hauler, flying to a market here to unload.
     SpawnRoleAt(*st, m.role, m.faction, ArrivalFrom(st->id, m.from));
     if (m.cargo > 0 && !st->entities.empty() && st->entities.back()->GetKind() == EntityKind::Npc)
-        LoadArrival(*st, static_cast<NpcShip&>(*st->entities.back()), m.good, m.cargo);
+    {
+        NpcShip& ship = static_cast<NpcShip&>(*st->entities.back());
+        if (m.loan)
+            ship.SetLoanHome(m.from);  // it goes home once it has unloaded (DeliverCargo)
+        LoadArrival(*st, ship, m.good, m.cargo);
+    }
+}
+
+void Simulation::ReturnLoan(const std::string& home, const std::string& from, FactionId faction)
+{
+    SystemState* st = SystemById(home);
+    if (st == nullptr)
+        return;
+    if (!IsHot(*st))
+    {
+        st->agg.traders += 1.0f;
+        return;
+    }
+    SpawnRoleAt(*st, NpcRole::Trader, faction, ArrivalFrom(st->id, from));
 }
 
 void Simulation::SpawnRoleAt(SystemState& st, NpcRole role, FactionId faction, Vector2 at)
