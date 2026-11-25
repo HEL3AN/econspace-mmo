@@ -756,19 +756,11 @@ void Simulation::Think(FactionId f)
     const bool canSiege = !weak && !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
     // ...and what each of its own warships would take off the wall a second.
     const float dps = WarshipDps(f);
-    // What losing ships and spending stock on a siege costs it (#568), as a share of what it
-    // has: the ships lost over its whole fleet, less the more stock it has to make them good,
-    // and the stock the siege takes whatever comes over what it holds. A deep treasury and a
-    // big fleet mind both less; neither is a number of ours.
-    float fleet = 0.0f;
-    for (const auto& kv : systems_)
-        fleet += kv.second.agg.presence[f];
-    auto ventureCost = [&](float lost)
-    {
-        const float held = std::max(mind.stock, SiegeCost());
-        return lost / std::max(fleet, 1.0f) / (1.0f + mind.stock / std::max(cost, 1.0f)) +
-               SiegeCost() / held;
-    };
+    // What the ships a siege is expected to lose cost it (#568): the share of the force it
+    // stakes, and the less the more it can make good -- a deep stock, in outposts' worth, buys
+    // ships and a faction with it minds a lost fleet less (its stock, not a number of ours).
+    auto ventureCost = [&](float lost, float stake)
+    { return lost / std::max(stake, 1.0f) / (1.0f + mind.stock / std::max(cost, 1.0f)); };
     // ...made of what its warships fire (#557): how much of it a wall's layers take, read by
     // the wall it would be against.
     const Ships::TypeValues fire = FighterOf(f, NpcRole::Warship).mix;
@@ -1024,8 +1016,8 @@ void Simulation::Think(FactionId f)
                 // Worth what it wins, weighed by the chance; against what it expects to lose
                 // and what it spends either way, which a faction with a deep stock and a big
                 // fleet minds less (its stock and its ships, not a number).
-                const float score =
-                    chance.win * worth - (ventureCost(chance.lost) + 0.5f * guns) / t.appetite;
+                const float score = chance.win * worth -
+                                    (ventureCost(chance.lost, sent) + 0.5f * guns) / t.appetite;
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -1094,7 +1086,8 @@ void Simulation::Think(FactionId f)
                     break;
                 const float worth =
                     entry != mind.intel.end() ? promise(entry->second) : t.unclaimed + t.curiosity;
-                const float score = chance.win * worth - ventureCost(chance.lost) / t.appetite;
+                const float score =
+                    chance.win * worth - ventureCost(chance.lost, sent) / t.appetite;
                 if (score > bestScore)
                 {
                     bestScore = score;

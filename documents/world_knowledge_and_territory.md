@@ -231,7 +231,7 @@ holder lends what its holdings within `siege.reach` can spare (the siege's own `
 the defender), which sets out then, is counted nowhere on the road, stands with the garrison from
 its arrival and goes home with what is left when the siege ends. The owner's own ships there are
 the garrison and tie up besiegers from the first pass. A trespasser's structure (an eviction) has
-no relief. Walls are measured in a reference fleet's guns (`siege.reference`), an outpost an hour
+no relief. Relief lands contingent by contingent, each its own jumps after the besiegers arrive. A faction decides to besiege by expected value (#577): `AssessSiege` plays the pass's own arithmetic over what it cannot know (the garrison as last seen, widening with the age of the sighting; the holder's relief as `ReliefFor` says it could be spared, on time, late or in part) with the fleets its own holdings would really lend, and attacks when the chance of taking the wall times the target's worth is more than the share of its stake it expects to lose, which a deep stock makes it mind less. Walls are measured in a reference fleet's guns (`siege.reference`), an outpost an hour
 and a station four, so a siege lasts long enough for relief, jobs, patrols and a pilot to matter.
 
 **D3. The front line.** A system may be besieged only from a held or neutral neighbour: the
