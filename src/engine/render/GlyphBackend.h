@@ -1,8 +1,10 @@
 #pragma once
 
+#include "render/Built3D.h"
 #include "render/MaterialLibrary.h"
 #include "render/Scene.h"
 #include <functional>
+#include <memory>
 
 namespace Render
 {
@@ -33,7 +35,6 @@ public:
     void SetLighting(const Lighting& l) override { lighting_ = l; }
 
     void Draw(const Item& item) override;
-
     // Glyph height as a fraction of the object's diameter. A character's ink fills
     // roughly half its em box, so 1.6 lands a glyph at about the size of the shape it
     // replaced.
@@ -63,6 +64,11 @@ class ShapeBackend : public IBackend
 public:
     const char* Name() const override { return "shapes"; }
 
+    // The spike's switches, until it has a setting (#618): ECON_BUILT3D=1 draws stations,
+    // structures and gates as solids, =ships adds ships; ECON_BUILT3D_QUALITY=0..3 is
+    // Built3D::Quality (default 2).
+    ShapeBackend();
+
     void SetLighting(const Lighting& l) override { lighting_ = l; }
     void SetView(const Camera2D& v) override { view_ = v; }
     void SetMaterials(MaterialLibrary* m) override { materials_ = m; }
@@ -75,6 +81,25 @@ public:
     static constexpr double SHADER_TIME_WRAP = 16384.0;
 
     void Draw(const Item& item) override;
+    void Begin() override
+    {
+        if (built3d_ != nullptr)
+            built3d_->BeginFrame();
+    }
+
+    // Built objects as solids (#618 spike): bevelled meshes built from the same composition,
+    // lit by the system's star with shadows from the object's own heights, drawn into the
+    // frame through the same 2D camera. Off unless asked; if this driver cannot, the 2D path
+    // draws as it always did. `ships` includes ships, which the spike keeps optional.
+    void SetBuilt3D(bool on, bool ships = false);
+    void SetBuilt3DQuality(int q)
+    {
+        quality3d_ = q;
+        if (built3d_ != nullptr)
+            built3d_->SetQuality((Built3D::Quality)q);
+    }
+    bool               Built3DOn() const { return want3d_; }
+    Built3D::Renderer* Built3DRenderer() { return built3d_.get(); }
 
     // How far around the light direction the rim highlight reaches, and how thick it is
     // as a fraction of the object's radius. A rim is what tells a disc from a sticker.
@@ -135,6 +160,9 @@ private:
     // false when the object has no shape in data, which is every object that has not been
     // given one yet -- and those keep the shape that used to be compiled in.
     bool DrawComposition(const Item& item, Color c, const Lighting::Sample& light);
+    // The solids of a built object, if it is one and this driver can: true when drawn, and
+    // the 2D path then draws only what a solid cannot be (glows, orbiting parts).
+    bool DrawBuilt3D(const Item& item, const Lighting::Sample& light);
     void DrawPiece(const Piece& p, Color c);
     // A glow on a planet's surface: projected and cut like any surface piece, lit as the
     // body, and still fading to nothing at its rim.
@@ -174,6 +202,12 @@ private:
     // one that lights itself (#119). Every sample this backend takes goes through here, so
     // the plain path and the material's uniforms cannot disagree about it.
     Lighting::Sample LightAt(Vector2 p) const { return lighting_.At(p, own_); }
+
+    std::unique_ptr<Built3D::Renderer> built3d_;
+    bool                               want3d_ = false;
+    bool                               ships3d_ = false;
+    int                                quality3d_ = 2;
+    bool                               solidsDrawn_ = false;  // the 2D pass is only the rest
 
     Lighting lighting_;  // a copy: a backend outlives the scene that handed it over
     int      own_ = -1;  // index in lighting_ of the drawn item's own light, or -1

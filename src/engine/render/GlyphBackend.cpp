@@ -332,6 +332,74 @@ void ShapeBackend::EndMaterial()
         materials_->End();
 }
 
+ShapeBackend::ShapeBackend()
+{
+    const char* on = std::getenv("ECON_BUILT3D");
+    if (on != nullptr && on[0] != '\0' && on[0] != '0')
+        SetBuilt3D(true, std::string(on) == "ships");
+    const char* q = std::getenv("ECON_BUILT3D_QUALITY");
+    quality3d_ = q != nullptr ? std::clamp(std::atoi(q), 0, 3) : 2;
+}
+
+void ShapeBackend::SetBuilt3D(bool on, bool ships)
+{
+    want3d_ = on;
+    ships3d_ = ships;
+}
+
+bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light)
+{
+    if (!want3d_ || materials_ == nullptr || item.shape == nullptr || item.shape->Empty())
+        return false;
+    switch (item.kind)
+    {
+        case EntityKind::Station:
+        case EntityKind::Structure:
+        case EntityKind::Gate:
+        case EntityKind::Derelict: break;
+        case EntityKind::Npc:
+        case EntityKind::PlayerShip:
+            if (!ships3d_)
+                return false;
+            break;
+        default: return false;
+    }
+    // Only what a built surface finishes: a gate that is weather (a wormhole) is not a solid.
+    if (!BuiltSurface(item))
+        return false;
+    if (built3d_ == nullptr)
+    {
+        built3d_ = std::make_unique<Built3D::Renderer>();
+        built3d_->SetQuality((Built3D::Quality)quality3d_);
+        if (!built3d_->Load(materials_->DataDir()))
+            TraceLog(LOG_WARNING, "Built3D: %s -- drawing built objects flat",
+                     built3d_->Problem().c_str());
+        built3d_->BeginFrame();
+    }
+    if (!built3d_->Available())
+        return false;
+
+    Built3D::Frame f;
+    f.view = view_;
+    f.clock = clock_;
+    f.light = light;
+    f.hasLight = !lighting_.Empty() && (light.dir.x != 0.0f || light.dir.y != 0.0f);
+    f.ambient = lighting_.ambient;
+    f.base = item.color;
+    const Livery* livery = Materials::FindLivery(item.livery.empty() ? "default" : item.livery);
+    if (livery != nullptr)
+    {
+        f.accent = livery->accent;
+        for (int k = 0; k < 4; k++)
+        {
+            f.livery[k] = livery->params[k];
+            f.style[k] = livery->style[k];
+        }
+    }
+    Perf::Scope timed(Perf::Section::Solid);
+    return built3d_->Draw(item, f);
+}
+
 void ShapeBackend::Draw(const Item& described)
 {
     // A ship is never drawn smaller than it can be found (#426); everything below, its
@@ -381,6 +449,13 @@ void ShapeBackend::Draw(const Item& described)
         // whole into the offscreen target at reduced resolution and scaled back up, as a
         // planet flown over is (#426): its surfaces are finished part by part, and a station
         // filling a 1080p screen is two million fragments of them on an integrated GPU.
+        if (paintScale_ == 1.0f && DrawBuilt3D(item, light))
+        {
+            solidsDrawn_ = true;
+            DrawComposition(item, item.color, light);
+            solidsDrawn_ = false;
+            return;
+        }
         if (paintScale_ == 1.0f && BuiltSurface(item))
         {
             Rectangle   clip{};
@@ -942,6 +1017,8 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         }
         const Piece& p0 = gone ? torn : original;
         if (p0.fallback && painted)
+            continue;
+        if (solidsDrawn_ && Built3D::Meshable(p0))
             continue;
         const Material* ownMat = OwnMaterial(p0);
         if (gone && ownMat == nullptr)  // too small to show a frame: the part is simply gone

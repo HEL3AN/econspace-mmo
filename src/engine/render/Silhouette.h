@@ -496,7 +496,14 @@ struct Piece
     float tip = 0.0f;     // Chevron: the narrow end's width over the base's; 0 is a point
     float jagged = 0.0f;  // Polygon: how far corners are pulled in, 0..1
     int   jagSeed = 0;    // ...and which corners, the same every frame
-    bool  soft = false;   // a glow fading to its rim, never shaded
+    // What the clock does to the piece, kept so a renderer that draws once and turns on the
+    // GPU (Built3D) need not compose every frame: degrees a second about the object's centre,
+    // a blink's period, where in it the piece starts, and the piece's own solidity.
+    float spin = 0.0f;
+    float blink = 0.0f;
+    float blinkPhase = 0.0f;
+    float alpha = 1.0f;
+    bool  soft = false;  // a glow fading to its rim, never shaded
 
     std::string material;          // the part's own material; empty for the object's (#426)
     bool        fallback = false;  // only while the body has no material of its own drawing

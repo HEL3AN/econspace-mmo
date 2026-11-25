@@ -1813,10 +1813,11 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
             // A light's place in its cycle. The phase comes from the part's own seed, so
             // six lamps on a ring are a sequence rather than a pulse -- lights in step read
             // as a screensaver.
-            float brightness = p.alpha;
+            float       brightness = p.alpha;
+            const float blinkPhase = Hash01(seed, salt + 13);
             if (p.blink > 0.0f)
             {
-                const float phase = Hash01(seed, salt + 13);
+                const float phase = blinkPhase;
                 const float t = (float)std::fmod(pose.time / p.blink + phase, 1.0);
                 brightness = p.alpha * (0.25f + 0.75f * (0.5f + 0.5f * std::cos(t * 2.0f * PI)));
             }
@@ -1850,6 +1851,10 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
                 piece.width = p.width * size * scale;
                 piece.length = p.length * size * scale;
                 piece.brightness = brightness;
+                piece.spin = p.spin;
+                piece.blink = p.blink;
+                piece.blinkPhase = blinkPhase;
+                piece.alpha = p.alpha;
                 piece.tint = p.tint;
                 piece.onlyDark = p.onlyDark;
                 piece.z = p.z;

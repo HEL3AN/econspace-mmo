@@ -86,6 +86,7 @@ static Texture2D MakeNoiseTexture()
 
 void MaterialLibrary::Load(const std::string& dataDir)
 {
+    dataDir_ = dataDir;
     Unload();
     if (disabled_)
     {
