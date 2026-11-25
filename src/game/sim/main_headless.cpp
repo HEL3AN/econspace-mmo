@@ -103,6 +103,8 @@ static std::vector<std::shared_ptr<const Gen::Pack>> ReadPacks(const std::string
 
 // How often the galaxy is written to world.json while the server runs (seconds).
 static const double WORLD_SAVE_INTERVAL = 60.0;
+// Ticks a coarse pass is spread over, per loop over the systems (#350): 0.13 s at 60 Hz.
+static const int HOST_PASS_SPREAD = 8;
 
 // Set up the authoritative simulation for the server host: generate the galaxy, restore
 // what the save says about it, materialize all systems.
@@ -2133,6 +2135,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         cfg.seed != 0 ? cfg.seed
                       : (((uint64_t)std::random_device{}() << 32) ^ std::random_device{}());
     SetupHostSim(sim, dataDir, worldPath, newSeed, cfg.centres, cfg.maxRegions, cfg.maxSystems);
+    sim.SetPassSpread(HOST_PASS_SPREAD);  // a coarse pass never lands in one tick (#350)
 
     // Accounts live with the world (#392): in accounts/ beside world.json. Until then they
     // were beside world.json itself, so the files already there are this world's and move in
@@ -4121,12 +4124,14 @@ int main(int argc, char** argv)
         double           seconds = 120.0;
         uint64_t         seed = 1;
         bool             allHot = false;
-        int              players = 0;
+        int              players = 0, spread = 0;
         for (int i = 2; i < argc; i++)
             if (std::string(argv[i]) == "--seconds" && i + 1 < argc)
                 seconds = atof(argv[++i]);
             else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
                 seed = std::strtoull(argv[++i], nullptr, 10);
+            else if (std::string(argv[i]) == "--spread" && i + 1 < argc)
+                spread = std::max(0, atoi(argv[++i]));
             else if (std::string(argv[i]) == "--players" && i + 1 < argc)
                 players = std::max(0, atoi(argv[++i]));
             else if (std::string(argv[i]) == "--hot")
@@ -4135,7 +4140,7 @@ int main(int argc, char** argv)
                 sizes.push_back(atoi(argv[i]));
         if (sizes.empty())
             sizes = { 20, 100, 500, 1000 };
-        return MacroBench(sizes, seconds, seed, allHot, players);
+        return MacroBench(sizes, seconds, seed, allHot, players, spread);
     }
     // econserver netbench [N ...] [--seconds S] [--seed X]: N pilots in one system, and what
     // the host spends on them -- their steps, the world, a snapshot each (#350). Without N,

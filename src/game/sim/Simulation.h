@@ -21,6 +21,7 @@
 #include "missions/MissionSystem.h"
 #include <array>
 #include <functional>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <optional>
@@ -1198,6 +1199,12 @@ public:
         int    passes = 0;        // coarse passes run
     };
     void MaintainWorld(float dt, MaintainCost* cost = nullptr);
+    // Spreads a coarse pass over about this many ticks per loop over the systems (#350): the
+    // recount, the director's walk and the rest each take a slice a tick, so a pass never
+    // lands in one. 0 or 1 does the whole pass in the tick it falls due, as before -- what the
+    // batch runs and the tests want. What a pass does is the same either way, in the same
+    // order; only when each system's turn comes differs, by a fraction of a second.
+    void SetPassSpread(int ticks) { passSpread_ = ticks; }
 
     // Materializes a system from its aggregate: spawn NPCs by role in suitable places.
     void HydrateSystem(SystemState& st);
@@ -2133,6 +2140,27 @@ private:
     // What the director keeps in each system this pass, in the order of systems_: worked out
     // once by StepMigration and read by the cold director after it. Transient.
     std::vector<Population> passTargets_;
+
+    // A coarse pass under way (#350): where it is, and the systems it walks, by id.
+    enum class PassPhase
+    {
+        Idle,
+        Recount,
+        Macro,
+        TopUp,
+        Tail
+    };
+    struct PassState
+    {
+        PassPhase                phase = PassPhase::Idle;
+        std::vector<std::string> keys;
+        size_t                   next = 0;
+        bool                     verify = false;
+    };
+    PassState pass_;
+    int       passSpread_ = 0;
+    // One unit of the pass, or all of them when it is not spread; true when the pass is done.
+    bool StepPass(MaintainCost* cost, std::chrono::steady_clock::time_point& lap);
     // Once a pass, before the director: who leaves, who has gone, who has arrived.
     void StepMigration();
     // A migrant has come: a number in a cold system, a ship at the gate in a hot one.

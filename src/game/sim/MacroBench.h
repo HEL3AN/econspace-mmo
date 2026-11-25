@@ -11,7 +11,7 @@
 // of its own spread across the galaxy, standing still. With `allHot`, every system is kept
 // hot as before cold systems (#295), for the comparison.
 int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t seed, bool allHot,
-               int players);
+               int players, int spread = 0);
 
 // `econserver netbench` (#350): the per-player side. For each crowd size, that many pilots fly
 // circles in one system -- a start, with its NPCs -- and the host's work for them is timed as

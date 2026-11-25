@@ -62,6 +62,8 @@ struct BenchRow
     double macroMs = 0.0;       // StepWorldMacro, per coarse pass
     double topUpMs = 0.0;       // the spawn director, per coarse pass
     double tickMs = 0.0, worstTickMs = 0.0;
+    double worstSteadyMs =
+        0.0;  // worst tick after the first five seconds: the warm-up is not a pass
     double routeKnownMs = 0.0;  // one route order's plan: the pilot's index and the search (#432)
     double routeAllMs = 0.0;    // the search alone, over every system: a galaxy fully charted
     double saveMs = 0.0;
@@ -69,7 +71,8 @@ struct BenchRow
     double memoryMb = -1.0;  // resident growth from before the world was built
 };
 
-BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, int players)
+BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, int players,
+                int spread)
 {
     const std::string dataDir = DataDir::Path();
     BenchRow          row;
@@ -100,6 +103,7 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
     row.generateMs = Since(t);
     sim.Seed(0xC0FFEEu);
     sim.SetAllHot(allHot);
+    sim.SetPassSpread(spread);
     t = Clock::now();
     sim.InitGalaxy();
     sim.MaterializeAllSystems(dataDir + "systems/");
@@ -141,6 +145,8 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
         const double ms = Since(tick);
         total += ms;
         row.worstTickMs = std::max(row.worstTickMs, ms);
+        if (i >= 300)
+            row.worstSteadyMs = std::max(row.worstSteadyMs, ms);
     }
     row.passes = cost.passes;
     row.agentsMs = agents / row.ticks;
@@ -381,7 +387,7 @@ int NetBench(const std::vector<int>& crowds, double seconds, uint64_t seed, int 
     printf("\nPer tick (60 Hz, budget 16.7 ms); snapshots at 20 Hz, so a third of the ticks "
            "carry them:\n\n");
     printf("| pilots | entities | pilots' steps ms | world ms | snapshot build ms | encode ms | "
-           "tick ms (mean / worst) | bytes a snapshot |\n");
+           "tick ms (mean / worst / worst after 5 s) | bytes a snapshot |\n");
     printf("|---:|---:|---:|---:|---:|---:|---:|---:|\n");
     for (const NetRow& r : rows)
         printf("| %d | %ld | %.3f | %.3f | %.3f | %.3f | %.2f / %.1f | %.0f |\n", r.pilots,
@@ -393,7 +399,7 @@ int NetBench(const std::vector<int>& crowds, double seconds, uint64_t seed, int 
 }
 
 int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t seed, bool allHot,
-               int players)
+               int players, int spread)
 {
     if (!LoadRegistries())
         return 1;
@@ -405,7 +411,7 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
     for (int n : regionSizes)
     {
         printf("  region of %d ...", n);
-        rows.push_back(RunOne(n, seconds, seed, allHot, players));
+        rows.push_back(RunOne(n, seconds, seed, allHot, players, spread));
         const BenchRow& r = rows.back();
         printf(" %d systems, %.2f ms/tick (worst %.1f)\n", r.systems, r.tickMs, r.worstTickMs);
     }
@@ -428,10 +434,10 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
         else
             snprintf(mem, sizeof(mem), "n/a");
         printf("| %d | %d | %d | %d | %d | %ld | %ld | %.1f | %.1f | %.3f | %.4f | %.3f | "
-               "%.3f | %.3f | %.2f / %.1f | %.2f / %.2f | %.2f | %.0f | %s |\n",
+               "%.3f | %.3f | %.2f / %.1f / %.1f | %.2f / %.2f | %.2f | %.0f | %s |\n",
                r.region, r.systems, r.links, r.players, r.hot, r.statics, r.npcs, r.generateMs,
                r.materializeMs, r.agentsMs, r.structuresMs, r.recountMs, r.macroMs, r.topUpMs,
-               r.tickMs, r.worstTickMs, r.routeKnownMs, r.routeAllMs, r.saveMs,
+               r.tickMs, r.worstTickMs, r.worstSteadyMs, r.routeKnownMs, r.routeAllMs, r.saveMs,
                r.saveBytes / 1024.0, mem);
     }
     return 0;

@@ -1600,79 +1600,152 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
     StepStructures();  // every tick: a site finishes when the clock says, not two seconds on
     StepOwners();      // ...and an owner who is back pays for what their structures did (#340)
     Lap(cost ? &cost->structures : nullptr, lap);
-    while (maintAccum_ >= MAINT_STEP)
+    // A coarse pass is a few units of work -- the recount of every system, the faction step,
+    // the director in every system, the rest -- and runs one unit per tick when the host has
+    // spread it (#350), all of them at once otherwise.
+    for (;;)
     {
-        if (cost != nullptr)
-            cost->passes++;
-        // Recount the real populations; accumulate losses since the last step as "pressure".
-        // A cold system has no ships to count, and its losses are arithmetic.
-        for (auto& kv : systems_)
+        if (pass_.phase == PassPhase::Idle)
         {
-            if (!IsHot(kv.second))
-            {
-                ColdLosses(kv.second);
-                continue;
-            }
-            SystemAggregate& a = kv.second.agg;
-            float prevTr = a.traders, prevMi = a.miners, prevPo = a.police, prevPi = a.pirates;
-            RecountAgg(kv.second);
-            AccumSuppress(a.supTraders, prevTr - a.traders);
-            AccumSuppress(a.supMiners, prevMi - a.miners);
-            AccumSuppress(a.supPolice, prevPo - a.police);
-            AccumSuppress(a.supPirates, prevPi - a.pirates);
-            FieldPatrols(kv.second);  // guards shot down, and as many as the patrol says (#431)
-            // What was destroyed, for the faction step: strength a faction committed and
-            // lost (#231). A fall in the count is a loss -- a ship that leaves (#295) was taken
-            // off the count when it set out, so it is not one.
-            a.lostPirates += std::max(0.0f, prevPi - a.pirates);
-            a.lostPolice += std::max(0.0f, prevPo - a.police);
+            if (maintAccum_ < MAINT_STEP)
+                break;
+            pass_.phase = PassPhase::Recount;
+            pass_.next = 0;
+            pass_.keys.clear();
+            for (const auto& kv : systems_)
+                pass_.keys.push_back(kv.first);
+            if (cost != nullptr)
+                cost->passes++;
         }
-        Lap(cost ? &cost->recount : nullptr, lap);
-        StepWorldMacro();
-        Lap(cost ? &cost->macro : nullptr, lap);
-        StepMigration();  // before the director, which leaves to next door what it can spare
-        // Fleets are checked against the catalogue once after a load or a reload (#464).
-        const bool verify = fleetsVerifiedFrom_ != Archetypes::Generation();
-        fleetsVerifiedFrom_ = Archetypes::Generation();
-        size_t nth = 0;
-        for (auto& kv : systems_)
-        {
-            const Population& target = passTargets_[nth++];
-            // Recovery: the pressure slowly subsides.
-            SystemAggregate& a = kv.second.agg;
-            a.supTraders *= SUPPRESS_DECAY;
-            a.supMiners *= SUPPRESS_DECAY;
-            a.supPolice *= SUPPRESS_DECAY;
-            a.supPirates *= SUPPRESS_DECAY;
-            DeliverCargo(kv.second, false);  // haulers that have reached a market (#343)
-            StepMarket(kv.second, MAINT_STEP);
-            // Nobody here for long enough: the ships are counted and let go.
-            if (IsHot(kv.second) && !allHot_ && time_ >= kv.second.warmUntil)
-                Cool(kv.second);
-            if (!IsHot(kv.second))
-            {
-                ColdTopUp(kv.second, target);
-                ReconcileFleets(kv.second, verify);  // which ships, for as many (#464)
-                continue;
-            }
-            ReconcileFleets(kv.second, verify);  // ...before the director draws from them
-            // Player-avoidance, per system: everyone standing in this one.
-            std::vector<Vector2> avoid;
-            for (const auto& sv : sessions_)
-                if (sv.second.systemId == kv.first && sv.second.ship &&
-                    sv.second.dockedStationId == 0)
-                    avoid.push_back(sv.second.ship->GetPosition());
-            TopUpSystem(kv.second, avoid);
-        }
-        Lap(cost ? &cost->topUp : nullptr, lap);
-        StepContracts();     // what the markets are short of, and the contracts for it (#343)
-        StepLicences();      // rent due, lapses, and where each player's structure stands (#431)
-        StepHangars();       // hangar rent due at the stations (#472)
-        StepShipments();     // freight arriving (#472)
-        StepObservations();  // what stands where somebody is, onto their maps (#431 slice 14)
-        // Last, when no pass over the systems is under way: what it opens adds systems (S3).
-        StepTide(MAINT_STEP);
-        Lap(cost ? &cost->macro : nullptr, lap);
+        if (!StepPass(cost, lap))
+            break;  // the rest of this pass is for the next tick
         maintAccum_ -= MAINT_STEP;
+    }
+}
+
+bool Simulation::StepPass(MaintainCost* cost, std::chrono::steady_clock::time_point& lap)
+{
+    const size_t count = pass_.keys.size();
+    const size_t slices = passSpread_ > 1 ? (size_t)passSpread_ : 1;
+    const size_t chunk = std::max<size_t>(1, (count + slices - 1) / slices);
+    for (;;)
+    {
+        switch (pass_.phase)
+        {
+            case PassPhase::Recount:
+            {
+                // Recount the real populations; accumulate losses since the last step as
+                // "pressure". A cold system has no ships to count, and its losses are arithmetic.
+                const size_t end = std::min(count, pass_.next + chunk);
+                for (; pass_.next < end; pass_.next++)
+                {
+                    SystemState* st = SystemById(pass_.keys[pass_.next]);
+                    if (st == nullptr)
+                        continue;  // taken away since the pass began
+                    if (!IsHot(*st))
+                    {
+                        ColdLosses(*st);
+                        continue;
+                    }
+                    SystemAggregate& a = st->agg;
+                    float            prevTr = a.traders, prevMi = a.miners, prevPo = a.police,
+                                     prevPi = a.pirates;
+                    RecountAgg(*st);
+                    AccumSuppress(a.supTraders, prevTr - a.traders);
+                    AccumSuppress(a.supMiners, prevMi - a.miners);
+                    AccumSuppress(a.supPolice, prevPo - a.police);
+                    AccumSuppress(a.supPirates, prevPi - a.pirates);
+                    FieldPatrols(*st);  // guards shot down, and as many as the patrol says (#431)
+                    // What was destroyed, for the faction step: strength a faction committed and
+                    // lost (#231). A fall in the count is a loss -- a ship that leaves (#295) was
+                    // taken off the count when it set out, so it is not one.
+                    a.lostPirates += std::max(0.0f, prevPi - a.pirates);
+                    a.lostPolice += std::max(0.0f, prevPo - a.police);
+                }
+                Lap(cost ? &cost->recount : nullptr, lap);
+                if (pass_.next >= count)
+                    pass_.phase = PassPhase::Macro;
+                break;
+            }
+            case PassPhase::Macro:
+            {
+                StepWorldMacro();
+                Lap(cost ? &cost->macro : nullptr, lap);
+                StepMigration();  // before the director, which leaves to next door what it can
+                                  // spare
+                // The systems the director walks are the ones this has just made targets for.
+                pass_.keys.clear();
+                for (const auto& kv : systems_)
+                    pass_.keys.push_back(kv.first);
+                // Fleets are checked against the catalogue once after a load or a reload (#464).
+                pass_.verify = fleetsVerifiedFrom_ != Archetypes::Generation();
+                fleetsVerifiedFrom_ = Archetypes::Generation();
+                pass_.next = 0;
+                pass_.phase = PassPhase::TopUp;
+                Lap(cost ? &cost->macro : nullptr, lap);
+                break;
+            }
+            case PassPhase::TopUp:
+            {
+                const size_t end = std::min(pass_.keys.size(), pass_.next + chunk);
+                // Who stands where, once for the slice and not once for every system in it: a
+                // system's own players are what the director keeps its pirates away from.
+                std::map<std::string, std::vector<Vector2>> standing;
+                for (const auto& sv : sessions_)
+                    if (sv.second.ship && sv.second.dockedStationId == 0)
+                        standing[sv.second.systemId].push_back(sv.second.ship->GetPosition());
+                for (; pass_.next < end; pass_.next++)
+                {
+                    // passTargets_ is in the order of the systems as StepMigration saw them.
+                    const Population& target = passTargets_[pass_.next];
+                    SystemState*      st = SystemById(pass_.keys[pass_.next]);
+                    if (st == nullptr)
+                        continue;
+                    // Recovery: the pressure slowly subsides.
+                    SystemAggregate& a = st->agg;
+                    a.supTraders *= SUPPRESS_DECAY;
+                    a.supMiners *= SUPPRESS_DECAY;
+                    a.supPolice *= SUPPRESS_DECAY;
+                    a.supPirates *= SUPPRESS_DECAY;
+                    DeliverCargo(*st, false);  // haulers that have reached a market (#343)
+                    StepMarket(*st, MAINT_STEP);
+                    // Nobody here for long enough: the ships are counted and let go.
+                    if (IsHot(*st) && !allHot_ && time_ >= st->warmUntil)
+                        Cool(*st);
+                    if (!IsHot(*st))
+                    {
+                        ColdTopUp(*st, target);
+                        ReconcileFleets(*st, pass_.verify);  // which ships, for as many (#464)
+                        continue;
+                    }
+                    ReconcileFleets(*st, pass_.verify);  // ...before the director draws from them
+                    const auto           here = standing.find(st->id);
+                    std::vector<Vector2> avoid;
+                    if (here != standing.end())
+                        avoid = here->second;
+                    TopUpSystem(*st, avoid);
+                }
+                Lap(cost ? &cost->topUp : nullptr, lap);
+                if (pass_.next >= pass_.keys.size())
+                    pass_.phase = PassPhase::Tail;
+                break;
+            }
+            case PassPhase::Tail:
+            {
+                StepContracts();     // what the markets are short of, and the contracts (#343)
+                StepLicences();      // rent due, lapses, and where each player's structure stands
+                StepHangars();       // hangar rent due at the stations (#472)
+                StepShipments();     // freight arriving (#472)
+                StepObservations();  // what stands where somebody is, onto their maps (#431)
+                // Last, when no pass over the systems is under way: what it opens adds systems.
+                StepTide(MAINT_STEP);
+                Lap(cost ? &cost->macro : nullptr, lap);
+                pass_.phase = PassPhase::Idle;
+                return true;
+            }
+            case PassPhase::Idle: return true;
+        }
+        if (passSpread_ > 1)
+            return false;  // one unit a tick
     }
 }
