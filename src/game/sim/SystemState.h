@@ -32,6 +32,10 @@ struct FireEvent
     // something a pilot has not found is not theirs to see.
     int shooterEntityId = 0;
     int targetEntityId = 0;
+    // How well the shot hit, 0..1 (#619 slice 2): the server's own figure for the shot, which
+    // the client draws the beam from. 1 -- the reference: a shot at its optimal range at
+    // something that does not cross its aim.
+    float quality = 1.0f;
 };
 
 // Cold aggregate of a system: cheap statistical state that ALWAYS exists (even for

@@ -4,6 +4,7 @@
 #include "entities/Entity.h"
 #include "entities/Ship.h"
 #include "missions/MissionSystem.h"
+#include "core/Gunnery.h"
 #include "core/WorldLoader.h"
 #include "sim/PlayerStep.h"
 #include "sim/Protocol.h"
@@ -56,6 +57,7 @@ struct Beam
     Vector2 a;
     Vector2 b;
     Color   color;
+    float   quality = 1.0f;  // how well the shot hit (#619 slice 2): the beam is drawn by it
 };
 
 // A background star for the parallax sky: base position within the tile,
@@ -294,8 +296,14 @@ private:
     void                       CycleTarget(int dir);  // select the next ship, hostile first
     const Proto::LockView*     MyLock(int id) const;
     const Proto::LockedByView* LockingMe(int id) const;
-    void                       ApplyResolution(int w, int h);  // changes the window size
-    void DrawSettingsContent(const Ui::Frame&);  // display, interface and keys, as tabs
+    // What the pilot's guns would do to a ship now, by the one hit rule (#619 slice 2), from the
+    // client's own view: the interpolated proxy of the target and the predicted own ship. An
+    // estimate, labelled one -- the server's FireEvent carries the real quality, from its own
+    // state. Zero damage for a ship out of every gun's reach.
+    float       AngularVelocityOf(const Proto::EntitySnapshot& e) const;
+    Ships::Shot EstimateShot(const Proto::EntitySnapshot& e) const;
+    void        ApplyResolution(int w, int h);          // changes the window size
+    void        DrawSettingsContent(const Ui::Frame&);  // display, interface and keys, as tabs
     void OpenContextMenu(Entity* target);  // right-click action menu on an object, at the cursor
     void OpenContextMenu(Entity* target, Vector2 at);
     void OpenContextMenuAt(Vector2 worldPoint);  // right-click menu on empty space

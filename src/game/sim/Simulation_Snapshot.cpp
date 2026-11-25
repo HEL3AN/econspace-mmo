@@ -88,6 +88,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 es.role = (int)n->GetRole();
                 es.design = n->GetDesign();
                 es.heading = n->GetHeading();
+                es.vel = n->GetVelocity();
                 es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
                 es.armourFrac =
                     n->GetMaxArmour() > 0.0f ? n->GetArmour() / n->GetMaxArmour() : 1.0f;
@@ -350,6 +351,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         es.kind = EntityKind::PlayerShip;
         es.pos = other.ship->GetPosition();
         es.heading = other.ship->GetHeading();
+        es.vel = other.ship->GetVelocity();
         es.size = other.ship->GetSize();
         es.name = other.ship->GetName();
         es.design = other.ship->GetStats().design;  // what it is drawn as (#279 step 5)

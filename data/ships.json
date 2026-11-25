@@ -16,7 +16,8 @@
         "lockMin": 0.5,
         "lockMax": 20,
         "lockGrace": 3,
-        "scanRes": 1
+        "scanRes": 1,
+        "gun": { "optimal": 200, "falloff": 100, "tracking": 0.25, "signatureRes": 12 }
     },
     "modules": [
         { "id": "hull.cockpit", "mass": 2, "cost": { "Iron": 4, "Ice": 2 },
@@ -32,9 +33,11 @@
           "look": { "spine": { "scale": 0.2 }, "side": { "mount": "out", "turn": 90, "scale": 0.2 } } },
         { "id": "hull.armour", "mass": 4, "provides": { "armour": 6 }, "cost": { "Iron": 10 },
           "look": { "edge": { "scale": 0.08, "turn": 90 }, "side": { "mount": "out", "turn": 90, "scale": 0.12 } } },
-        { "id": "weapons.laser", "mass": 2, "provides": { "damage": 3 }, "cost": { "Crystal": 2, "Circuits": 1 },
+        { "id": "weapons.laser", "mass": 2, "provides": { "damage": 3 },
+          "gun": { "optimal": 400, "falloff": 300, "tracking": 0.6, "signatureRes": 8 }, "cost": { "Crystal": 2, "Circuits": 1 },
           "look": { "top": { "scale": 0.11 } } },
-        { "id": "weapons.railgun", "mass": 5, "provides": { "damage": 6 }, "cost": { "Steel": 3, "Ammunition": 1 },
+        { "id": "weapons.railgun", "mass": 5, "provides": { "damage": 6 },
+          "gun": { "optimal": 1000, "falloff": 800, "tracking": 0.15, "signatureRes": 30 }, "cost": { "Steel": 3, "Ammunition": 1 },
           "look": { "top": { "scale": 0.2 } } },
         { "id": "weapons.tractor", "mass": 2, "provides": { "mining": 1 }, "cost": { "Iron": 4, "Crystal": 2 },
           "look": { "top": { "scale": 0.1, "mount": "centre" }, "bow": { "scale": 0.1, "mount": "out" } } },

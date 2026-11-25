@@ -399,6 +399,14 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   `StepNpcCombat`; a test that has an NPC shoot must give it a formed lock
   (`npc.TargetLock().Begin(id, 0)`) or step it for the lock time. The host steps a pilot's locks
   once a world tick (`StepPlayerLocks`) after the order, so a test of an `Attack` order calls it too.
+  **One hit rule, a number per gun** (slice 2): `Ships::Gunnery` (`core/Gunnery.h`) scales each gun's
+  damage by `0.5^(over optimal / falloff)` times `0.5^((omega / tracking) * (signatureRes / size))^2`,
+  from both ships' *server* positions and velocities -- no dice, never an interpolated proxy. A gun's
+  aim is its module's `gun` in `ships.json` (the base gun's is in `rules`); a design's guns are
+  `Stats::guns`, summing to `volley`, so `Ships::Dps` and every siege, patrol and cold-pass fight
+  stay at quality 1 (a stationary target at optimal range). The client's hit figure and the
+  overview's rad/s are estimates from the interpolated snapshot; the beam is drawn from the
+  server's `FireEvent::quality`.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a

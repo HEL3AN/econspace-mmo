@@ -28,7 +28,8 @@ struct ShipStats
     int               locks = 1;                       // targets it holds locked at once (#619)
     float             lockRange = 20000.0f;            // how far it reaches for a lock
     float             scanRes = 1.0f;                  // how fast its sensors resolve a target
-    std::string       design;  // what it is and what it looks like, in data/ships.json
+    std::vector<Ships::Gun> guns;    // how its shots reach and aim, the base gun first (#619)
+    std::string             design;  // what it is and what it looks like, in data/ships.json
 };
 
 // A ship type in the hangar: name, price, base stats.

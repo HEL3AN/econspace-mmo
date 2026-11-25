@@ -272,11 +272,24 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
 {
     const Ships::Rules&   lockRules = Archetypes::ShipCatalogue().rules;
     std::vector<NpcShip*> ships = AliveShips(st);
-    Sight                 sight(targetGrid_, NPC_WEAPON_RANGE * 2.0f, ships, players);
+    // How far each reaches is its design's guns' (#619 slice 2): the same reach a pilot's ship of
+    // that design has. The grid is cut to the longest of them.
+    auto reachOf = [](const NpcShip& n)
+    { return n.GetGuns().empty() ? NPC_WEAPON_RANGE : Ships::ProfileOf(n.GetGuns()).reach; };
+    // It locks whatever it is hunting from as far as it sees (the AI's aggro range, as a pilot
+    // locks at their sensors' range) and fires once the lock is held and the target is in reach:
+    // a target that runs is locked while it is chased (#619).
+    float longest = NPC_AGGRO_RANGE;
+    for (const NpcShip* n : ships)
+        if (n->IsCombatant())
+            longest = std::max(longest, reachOf(*n));
+    Sight sight(targetGrid_, longest * 2.0f, ships, players);
     for (NpcShip* npc : ships)
     {
         if (!npc->IsAlive() || !npc->IsCombatant())
             continue;
+        const float reach = reachOf(*npc);
+        const float acquire = std::max(reach, NPC_AGGRO_RANGE);
 
         Vector2              npos = npc->GetPosition();
         const int            lockedId = npc->TargetLock().target;
@@ -293,9 +306,10 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             [&](Combatant* c, const ClientSession* player, NpcShip* other, int id, float size)
         {
             float d = Dist(c->GetPosition(), npos);
-            if (d > NPC_WEAPON_RANGE)
+            if (d > acquire)
                 return;
-            const float key = id == lockedId ? -1.0f : d;
+            // In reach first; within that the one it has locked, then the nearest.
+            const float key = (d <= reach ? 0.0f : 1.0e6f) + (id == lockedId ? -1.0f : d);
             if (target == nullptr || key <= bestKey)
             {
                 bestKey = key;
@@ -307,7 +321,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             }
         };
 
-        for (int pi : sight.Players(npos, NPC_WEAPON_RANGE))
+        for (int pi : sight.Players(npos, acquire))
         {
             const PlayerPresence& p = players[(size_t)pi];
             if (p.ship != nullptr && p.session != nullptr && !p.hidden &&
@@ -315,7 +329,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
                 consider(p.ship, p.session, nullptr, p.session->ship->GetId(),
                          p.session->ship->GetSize());
         }
-        for (int oi : sight.Ships(npos, NPC_WEAPON_RANGE))
+        for (int oi : sight.Ships(npos, acquire))
         {
             NpcShip* other = ships[(size_t)oi];
             if (other != npc && other->IsAlive() && NpcHostileToNpc(st, npc, other))
@@ -335,6 +349,8 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             lock.Step(dt, true, lockRules.lockGrace);
             if (!lock.held)
                 continue;  // the target knows it is being locked; it is not shot at yet
+            if (Dist(target->GetPosition(), npos) > reach)
+                continue;  // locked, and closing: the guns wait for it
         }
         if (!npc->ReadyToFire())
             continue;
@@ -377,7 +393,21 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
         const bool firstStrike =
             npc->GetRole() == NpcRole::Guard &&
             !GuardProvoked(st, *npc, targetSession, targetNpc != nullptr ? targetNpc->GetId() : 0);
-        target->TakeDamage(npc->GetDamage(), npc->GetMix());
+        // The same hit rule a pilot's shot meets (#619 slice 2): from where both ships are now
+        // and how they move, in the server's state.
+        const Vector2     vTarget = targetPlayer != nullptr ? targetPlayer->ship->GetVelocity()
+                                    : targetNpc != nullptr  ? targetNpc->GetVelocity()
+                                                            : Vector2{ 0.0f, 0.0f };
+        const Ships::Shot shot =
+            npc->GetGuns().empty()
+                ? Ships::Shot{ npc->GetDamage(), npc->GetMix(), 1.0f }
+                : Ships::Gunnery(npc->GetGuns(), Dist(target->GetPosition(), npos),
+                                 Ships::AngularVelocity(target->GetPosition().x - npos.x,
+                                                        target->GetPosition().y - npos.y,
+                                                        vTarget.x - npc->GetVelocity().x,
+                                                        vTarget.y - npc->GetVelocity().y),
+                                 targetSize);
+        target->TakeDamage(shot.damage, shot.mix);
         npc->ResetFireTimer();
         if (firstStrike)
             ChargeFirstStrike(st, *npc, targetPlayer, targetNpc, !target->IsAlive());
@@ -391,6 +421,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             fe.from = npos;
             fe.to = target->GetPosition();
             fe.shooterFaction = npc->GetFaction();
+            fe.quality = shot.quality;
             fe.targetSessionId = targetSession;
             fires->push_back(fe);
         }

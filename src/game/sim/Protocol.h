@@ -38,7 +38,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    91;  // 91: exchange contracts (#473): the action `board` (post, accept, cancel) and a
+    92;  // 92: range and tracking (#619): an entity's `v` (velocity) and a shot's `q` (how well it
+         // hit), which the target card's hit figure and the beams are drawn from;
+         // 91: exchange contracts (#473): the action `board` (post, accept, cancel) and a
          // PlayerView's `board`, the contracts a pilot may take here or has posted;
          // 90: lock before fire (#619) -- the verbs `lock`, `unlock`, `active` and `fire` replace
          // the command's `tWeap`; the player view carries `locks`, `lockMax` and `lockedBy`, and an
@@ -581,6 +583,10 @@ struct EntitySnapshot
     float armourFrac = 1.0f;
     // The shield left, 0..1 (#619): what the target card shows; 1 for a ship with none.
     float shieldFrac = 1.0f;
+    // How a ship is moving (#619 slice 2): what the client's angular velocity and hit figure are
+    // worked from, and what a hold's follow wants. Ships only; zero for the rest and for one
+    // described coarsely, far away.
+    Vector2 vel = { 0.0f, 0.0f };
 };
 
 // One of the pilot's locks (#619): a target being locked or held, and whether the guns address it.

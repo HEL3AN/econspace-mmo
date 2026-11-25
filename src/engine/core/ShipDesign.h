@@ -70,6 +70,29 @@ struct Pools
 
 using Cost = std::vector<std::pair<ResourceType, int>>;
 
+// How a gun reaches and aims (#619 slice 2, documents/combat_and_flight.md 3.2): the one hit
+// rule, read for a ship's gun by Ships::HitQuality. `optimal` is the range of full effect and
+// `falloff` the distance past it over which the effect halves; `tracking` is how fast the gun
+// can slew, in radians a second, against how fast its target crosses its line of sight; and
+// `signatureRes` the smallest target signature (a ship's size) it hits at full effect -- a big
+// gun misses a small ship that a small gun does not. A number that stands in for a gun is
+// data, never code: a module says its own, the rules say the ship's base gun's.
+struct GunSpec
+{
+    float optimal = 280.0f;
+    float falloff = 200.0f;
+    float tracking = 1.0f;
+    float signatureRes = 16.0f;
+};
+// One gun of a design: what it takes off a shot, what that is made of (a share per damage type,
+// the rest untyped), and how it aims. A design's shot is the sum of its guns' (Ships::Gunnery).
+struct Gun
+{
+    float      damage = 0.0f;
+    TypeValues mix{};
+    GunSpec    spec;
+};
+
 // What a module does, whichever of its variants is drawn. `id` is the module's id in the
 // render library ("hull.engine").
 struct ModulePart
@@ -78,6 +101,8 @@ struct ModulePart
     float       mass = 0.0f;
     Provides    provides;
     Cost        cost;
+    GunSpec     gun;  // how it aims, if it has guns (provides.damage); the rules' otherwise
+    bool        hasGun = false;
     // How it meets each kind of socket when a design is drawn: socket kind -> the kit line's
     // look ({ "mount", "turn", "scale", "z" }). An engine stands out of the stern, turned aft
     // and under the hull; that is true of every design that fits one, so it is said once.
@@ -172,6 +197,9 @@ struct Rules
     float lockMax = 20.0f;
     float lockGrace = 3.0f;  // seconds out of reach or sight a held lock lasts
     float scanRes = 1.0f;    // how fast a ship's sensors resolve a target
+    // The base gun every ship has (`baseGun` a shot) aims as this; a module with guns says its
+    // own (#619 slice 2).
+    GunSpec gun;
 };
 
 // A hull a station sells to players (#279 step 5). An account owns hulls by their place in
@@ -312,9 +340,12 @@ struct Stats
     int   locks = 1;
     float lockRange = 0.0f;
     float scanRes = 1.0f;
-    Cost  cost;       // every part's, summed, in ResourceType order
-    int   parts = 0;  // frame, sections and every fitted module counted once each
-    float buildSeconds = 0.0f;
+    // Its guns, the base gun first (#619 slice 2): what a shot takes off at what range and
+    // against what crossing speed. Their damage adds up to `volley`.
+    std::vector<Gun> guns;
+    Cost             cost;       // every part's, summed, in ResourceType order
+    int              parts = 0;  // frame, sections and every fitted module counted once each
+    float            buildSeconds = 0.0f;
 };
 
 // Reads a catalogue. Every design in it is validated, so a catalogue that loads holds only

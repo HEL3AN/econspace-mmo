@@ -299,6 +299,7 @@ void Simulation::ApplyCommand(ClientSession& s, const Proto::Command& c, float d
         fe.shooterFaction = Factions::Unaffiliated();
         fe.shooterSessionId = s.id;  // "mine" for this player and nobody else
         fe.targetEntityId = fireAt;
+        fe.quality = ev.quality;
         fe.targetSessionId = ev.victimSession;  // "at me" for a pilot shot at (#431 slice 10)
         fires[s.systemId].push_back(fe);
     }

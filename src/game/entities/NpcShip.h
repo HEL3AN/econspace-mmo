@@ -75,9 +75,13 @@ public:
     float                    GetArmour() const { return armour_; }
     float                    GetMaxArmour() const { return maxArmour_; }
     void                     SetArmour(float a) { armour_ = a; }  // a proxy's, from the snapshot
-    float                    GetSpeed() const { return speed_; }
-    AiState                  GetState() const { return state_; }
-    bool                     IsPirate() const { return faction_ == Factions::Pirates(); }
+    // How its shots reach and aim (#619 slice 2), the design's, and how it is moving: measured
+    // over the last step, since an NPC's flight is not integrated from a velocity.
+    const std::vector<Ships::Gun>& GetGuns() const { return guns_; }
+    Vector2                        GetVelocity() const { return vel_; }
+    float                          GetSpeed() const { return speed_; }
+    AiState                        GetState() const { return state_; }
+    bool                           IsPirate() const { return faction_ == Factions::Pirates(); }
     float GetHeading() const { return heading_; }  // heading (for snapshots/render)
     void  SetHeading(float h) { heading_ = h; }    // for proxy reconciliation
 
@@ -173,6 +177,7 @@ public:
 private:
     void PickNewTarget();
     void MoveToward(Vector2 dest, float dt, float stopDist);
+    void Fly(float dt);  // Update's flight, whose result Update measures a velocity from
 
     FactionId            faction_;
     NpcRole              role_;
@@ -185,21 +190,23 @@ private:
     AiState state_ = AiState::Patrol;
     Vector2 aiPoint_ = { 0.0f, 0.0f };  // pursuit target or threat point
 
-    std::string       design_;
-    float             damage_ = 0.0f;  // the design's; with no catalogue it has no guns
-    Ships::TypeValues mix_{};          // what that volley is made of
-    Ships::LayerTable resist_ = Ships::NeutralTable();    // its hull line's shift on the layers
-    float             armour_ = 0.0f, maxArmour_ = 0.0f;  // a layer over the hull
-    float             maxHull_ = 60.0f;
-    float             hull_ = 60.0f;
-    float             fireTimer_ = 0.0f;
-    Ships::Lock       lock_;
-    bool              leaving_ = false;
-    int               task_ = 0;
-    std::string       loanHome_;
-    std::string       corp_;
-    std::string       label_;
-    ResourceType      cargo_;
-    int               cargoAmount_ = 0;
-    double            cargoDue_ = 0.0;
+    std::string             design_;
+    float                   damage_ = 0.0f;  // the design's; with no catalogue it has no guns
+    Ships::TypeValues       mix_{};          // what that volley is made of
+    Ships::LayerTable       resist_ = Ships::NeutralTable();  // its hull line's shift on the layers
+    float                   armour_ = 0.0f, maxArmour_ = 0.0f;  // a layer over the hull
+    float                   maxHull_ = 60.0f;
+    float                   hull_ = 60.0f;
+    float                   fireTimer_ = 0.0f;
+    Ships::Lock             lock_;
+    std::vector<Ships::Gun> guns_;  // the design's: what its shots reach and how they aim
+    Vector2                 vel_ = { 0.0f, 0.0f };
+    bool                    leaving_ = false;
+    int                     task_ = 0;
+    std::string             loanHome_;
+    std::string             corp_;
+    std::string             label_;
+    ResourceType            cargo_;
+    int                     cargoAmount_ = 0;
+    double                  cargoDue_ = 0.0;
 };

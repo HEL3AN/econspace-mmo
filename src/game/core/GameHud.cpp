@@ -172,16 +172,24 @@ void Game::DrawWorld()
                    Fade(ORANGE, 0.7f));
     }
 
-    // Weapon range.
+    // Weapon range (#619 slice 2): where the guns are at their best, a solid ring, and where
+    // they have lost half of it, a faint one -- of the guns as a whole, never one per weapon.
     if (weaponOn_)
     {
-        DrawCircleLines(playerShip_->GetPosition().x, playerShip_->GetPosition().y,
-                        Sim::PLAYER_WEAPON_RANGE, Fade(SKYBLUE, 0.15f));
+        const Ships::Profile pf = Ships::ProfileOf(playerShip_->GetGuns());
+        const Vector2        at = playerShip_->GetPosition();
+        if (pf.optimal > 0.0f)
+        {
+            DrawCircleLines(at.x, at.y, pf.optimal, Fade(SKYBLUE, 0.30f));
+            DrawCircleLines(at.x, at.y, pf.optimal + pf.falloff, Fade(SKYBLUE, 0.10f));
+        }
+        else
+            DrawCircleLines(at.x, at.y, Sim::PLAYER_WEAPON_RANGE, Fade(SKYBLUE, 0.15f));
     }
 
-    // Weapon beams for this frame.
+    // Weapon beams for this frame: thinner and fainter as the shot hit worse (#619 slice 2).
     for (const Beam& b : beams_)
-        DrawLineEx(b.a, b.b, 2.5f, b.color);
+        DrawLineEx(b.a, b.b, 1.0f + 1.5f * b.quality, Fade(b.color, 0.35f + 0.65f * b.quality));
 
     // Drawn last and on its own, so it stays on top of the beams and range rings above.
     Render::Item ship = playerShip_->Describe();
@@ -516,7 +524,8 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
     table.id = "overview";
     table.columns = { { "name", Size::Grow(), Ui::Align::Start, true, true },
                       { "type", Size::Fit(0.0f, 96.0f), Ui::Align::Start, true },
-                      { "dist", Size::Fit(), Ui::Align::End, true } };
+                      { "dist", Size::Fit(), Ui::Align::End, true },
+                      { "rad/s", Size::Fit(), Ui::Align::End, false } };
     table.rows = (int)rows.size();
     table.sort = &overviewSort_;
     table.empty = filters[overviewTab_] == Overview::Filter::Hostile ? "nothing hostile in sight"
@@ -567,6 +576,12 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                                               : TextFormat("lock %.0f%%", lk->progress * 100.0f),
                                      t.colors.accent };
                 return Ui::Cell{ row.kind, t.colors.dim };
+            // The rate it crosses the guns' line of sight (#619 slice 2): why a gun misses.
+            case 3:
+                if (row.entity->kind != Proto::EntityKind::Npc &&
+                    row.entity->kind != Proto::EntityKind::PlayerShip)
+                    return Ui::Cell{ "", t.colors.dim };
+                return Ui::Cell{ TextFormat("%.2f", AngularVelocityOf(*row.entity)), t.colors.dim };
             default: return Ui::Cell{ Ui::Distance(row.distance), t.colors.dim };
         }
     };
@@ -712,6 +727,17 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 }
                 L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
                 L.Bar(e->hullFrac, e->hullFrac > 0.3f ? t.colors.good : t.colors.bad);
+            }
+            // How the pilot's guns would do against it, and why (#619 slice 2): the angular
+            // velocity is the figure that says whether tracking is the problem.
+            if (e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::PlayerShip)
+            {
+                const Ships::Shot est = EstimateShot(*e);
+                L.Field("Hit (est.)", TextFormat("%.0f%%", est.quality * 100.0f),
+                        est.quality > 0.66f   ? t.colors.good
+                        : est.quality > 0.33f ? t.colors.warn
+                                              : t.colors.bad);
+                L.Field("Angular", TextFormat("%.2f rad/s", AngularVelocityOf(*e)), t.colors.dim);
             }
             // A pilot's ship has shields over all of it (#619); an NPC's design has none.
             if (e->kind == Proto::EntityKind::PlayerShip)

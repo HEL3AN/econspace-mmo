@@ -159,6 +159,8 @@ public:
     float GetDamage() const { return stats_.damage; }
     // What a volley of it is made of, by damage type (#464, slice 8).
     const Ships::TypeValues& GetMix() const { return stats_.mix; }
+    // How its shots reach and aim (#619 slice 2): the design's guns, the base gun first.
+    const std::vector<Ships::Gun>& GetGuns() const { return stats_.guns; }
 
     bool AddCargo(ResourceType type, int amount);  // false if it doesn't fit
     void RemoveCargo(ResourceType type, int amount);

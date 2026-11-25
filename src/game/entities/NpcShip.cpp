@@ -49,6 +49,7 @@ NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vecto
         // weaker or stronger than a pilot is the fit, in data.
         damage_ = a->ship.volley;
         mix_ = a->ship.mix;
+        guns_ = a->ship.guns;
         resist_ = a->ship.resist;
         maxArmour_ = armour_ = a->ship.armour;
         maxHull_ = hull_ = a->ship.combatHull - a->ship.armour;
@@ -118,6 +119,14 @@ void NpcShip::MoveToward(Vector2 dest, float dt, float stopDist)
 }
 
 void NpcShip::Update(float dt)
+{
+    const Vector2 before = pos_;
+    Fly(dt);
+    if (dt > 0.0f)
+        vel_ = { (pos_.x - before.x) / dt, (pos_.y - before.y) / dt };
+}
+
+void NpcShip::Fly(float dt)
 {
     if (fireTimer_ > 0.0f)
         fireTimer_ -= dt;
