@@ -1124,7 +1124,7 @@ field, a good named twice or an amount naming a good that is not there is a load
 {
     "market": { "fee": 0.02, "spread": 0.1, "elasticity": 0.7, "floor": 0.35, "ceiling": 3.0,
                 "beltMined": 0.15, "beltRegrow": 0.1,
-                "haulEvery": 120, "haulCargo": 30, "haulMargin": 0.1 },
+                "haulEvery": 120, "haulCargo": 300, "haulMargin": 0.1 },
     "goods": [
         { "id": "Iron", "name": "Iron", "tier": 0, "price": 10, "stock": 400,
           "supply": "local", "mined": true }
@@ -1152,7 +1152,7 @@ field, a good named twice or an amount naming a good that is not there is a load
 | `market.beltMined` | per hour: the share of what is in each belt the system's miners take for its market (two miners is a full crew) (#348) |
 | `market.beltRegrow` | per hour: the share of a full belt that grows back; a belt only the miners work settles at `beltRegrow / beltMined` of full |
 | `market.haulEvery` | seconds: how often at most a system with a market sends a trader next door with goods (0: nobody hauls) |
-| `market.haulCargo` | units a hauler carries at most |
+| `market.haulCargo` | room a hauler carries at most, in volume (#572): Iron is 10 a unit, so 30 units of it; Circuits are 1, so 300 |
 | `market.haulMargin` | how much more than the ask here, fees both ways included, the bid next door must pay for a unit to be carried |
 | `planets` | what a planet of that archetype grows for a market in its system, per hour |
 | `industries` | per archetype with a market: `recipes` (cycles an hour, each taking `in` and giving `out`, as far as the inputs are in stock) and `uses` (per hour) |
@@ -1446,8 +1446,8 @@ Checks: `every`, `hours` and `minAmount` more than 0; `maxAmount` at least `minA
 | `every` | 600 | seconds | how often each market looks at its stock |
 | `shortAt` | 0.5 | share | a good below this of its target is short |
 | `fillTo` | 0.8 | share | the contract asks for what brings it back to this |
-| `minAmount` | 10 | count | units, at least... |
-| `maxAmount` | 40 | count | ...and at most |
+| `minAmount` | 100 | volume | room, at least... (a good of volume 10 is asked for in tens of units, one of volume 1 in hundreds) |
+| `maxAmount` | 400 | volume | ...and at most; a good bulkier than this is never asked for |
 | `hours` | 2 | hours | due this long after it is posted |
 | `premium` | 0.5 | share | the price lies this far from what selling here fetches toward what buying here costs... |
 | `premiumShort` | 0.4 | share | ...and this much further as the stock empties |

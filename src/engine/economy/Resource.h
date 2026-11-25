@@ -87,7 +87,7 @@ struct MarketRules
     double beltMined = 0.0;
     double beltRegrow = 0.0;
     // NPC haulers (#343): a system's traders carry goods to a neighbour that pays more, one
-    // hauler every `haulEvery` seconds at most, `haulCargo` units at a time, and only while
+    // hauler every `haulEvery` seconds at most, `haulCargo` of room (volume) at a time, and only while
     // the neighbour's bid beats the ask here, the fee both ways included, by `haulMargin`.
     // 0 seconds -- nobody hauls.
     double haulEvery = 0.0;

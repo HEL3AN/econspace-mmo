@@ -190,9 +190,15 @@ void Simulation::PostContracts()
             if (open[st.id] >= r.perMarket)
                 break;
             const ResourceType g = sg.second;
-            const int          amount =
+            // Sized in room (#572), as a hold is: `minAmount` and `maxAmount` are volume, so a
+            // bulky good is asked for in fewer units, and one that does not fit at all is not.
+            const int vol = Goods::Volume(g);
+            const int most = r.maxAmount / vol;
+            if (most < 1)
+                continue;
+            const int amount =
                 std::clamp((int)std::lround(r.fillTo * st.market.Target(g) - st.market.Stock(g)),
-                           r.minAmount, r.maxAmount);
+                           std::min(most, (r.minAmount + vol - 1) / vol), most);
             const double price = ContractPrice(st, g, amount, sg.first);
             if (price <= 0.0 || price > treasury)
                 continue;

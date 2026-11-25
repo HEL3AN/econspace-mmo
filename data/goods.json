@@ -8,7 +8,7 @@
         "beltMined": 0.15,
         "beltRegrow": 0.1,
         "haulEvery": 120,
-        "haulCargo": 30,
+        "haulCargo": 300,
         "haulMargin": 0.1,
         "moduleMargin": 1.3
     },
