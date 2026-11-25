@@ -164,6 +164,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.licence = LicenceViewFor(s);  // (#431 slice 6)
         p.cargoUsed = s.ship->GetCargoUsed();
         p.cargoCap = s.ship->GetCargoCapacity();
+        p.oreCap = s.ship->GetOreCapacity();
         p.warpPhase = (int)s.ship->GetWarpPhase();
         p.warpAlign = s.ship->GetWarpAlignTimer();
         p.warpTarget = s.ship->GetWarpTarget();

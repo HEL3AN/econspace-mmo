@@ -77,7 +77,7 @@ draws nothing.
 | Field | Where | Description |
 |------|------|----------|
 | `mass` | module, section, frame | required, more than 0 |
-| `provides` | module, section, frame | optional; `thrust`, `rcs`, `cargo`, `mining`, `hull`, `damage` — each summed over the ship |
+| `provides` | module, section, frame | optional; `thrust`, `rcs`, `cargo`, `ore`, `mining`, `hull`, `damage` — each summed over the ship |
 | `cost` | module, section, frame | required; resource → positive whole amount, as a blueprint's (#39) |
 | `position` | section | `bow`, `mid` or `stern` |
 | `sockets` | section | socket kind → capacity; kinds: `top`, `edge`, `bow`, `stern`, `front`, `side`, `spine`, `bottom` — the kit's own words. A ship's end is a `bow` at the bow and a `stern` at the stern and nowhere else, so there is one stern |
@@ -113,7 +113,7 @@ All sums run over the frame, every section and every fitted module × its count.
 | top speed | `speedBase + speedPerAccel × acceleration` | `maxSpeed` |
 | stabiliser | Σ rcs / mass | `rcsAccel` |
 | turn rate | stabiliser / `rcsPerTurn` (rad/s) | `turnSpeed` |
-| hold | Σ cargo | `cargoCapacity` |
+| hold | Σ cargo + Σ ore | `cargoCapacity`; the ore part, room only mined goods may fill, is `oreCapacity` (#572) |
 | mining | Σ mining | `miningRate` |
 | parts' structure | Σ hull | `hull` |
 | fitted guns | Σ damage | `damage` (an armed role's design must have some) |

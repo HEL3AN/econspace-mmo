@@ -34,6 +34,7 @@ struct Provides
     float thrust = 0.0f;  // main drive force; over mass it is the acceleration
     float rcs = 0.0f;     // attitude force; over mass it is the stabiliser's pull and the turn
     float cargo = 0.0f;   // hold, in units of cargo
+    float ore = 0.0f;     // more hold, for mined goods only (#572, slice 12)
     float mining = 0.0f;  // ore per second
     float scan = 0.0f;    // what it adds to a scanner pass: power is times (1 + scan) (#346)
     float hull = 0.0f;    // structure points: what a hit takes away before the ship is lost
@@ -276,8 +277,9 @@ struct Stats
     float acceleration = 0.0f;  // ShipStats::thrustPower
     float maxSpeed = 0.0f;
     float rcsAccel = 0.0f;
-    float turnSpeed = 0.0f;  // rad/s
-    int   cargoCapacity = 0;
+    float turnSpeed = 0.0f;   // rad/s
+    int   cargoCapacity = 0;  // the whole hold, the ore hold included
+    int   oreCapacity = 0;    // of it, what only mined goods may fill (#572)
     float miningRate = 0.0f;
     float scan = 0.0f;    // its probes' bonus; a scanner pass is times (1 + scan)
     float hull = 0.0f;    // what its parts give: frame, sections and armour

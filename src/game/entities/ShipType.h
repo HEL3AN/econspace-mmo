@@ -16,7 +16,8 @@ struct ShipStats
     float             turnSpeed = 0.0f;    // turn rate, rad/sec
     float             maxSpeed = 0.0f;     // top speed
     float             rcsAccel = 0.0f;     // stabilizer power
-    int               cargoCapacity = 0;   // cargo hold capacity
+    int               cargoCapacity = 0;   // cargo hold capacity, the ore hold included
+    int               oreCapacity = 0;     // of it, room for mined goods only (#572)
     float             miningRate = 0.0f;   // mining rate, units/sec
     float             scan = 0.0f;         // probes: a scanner pass is times (1 + scan)
     float             hull = 0.0f;  // structure: what a hit takes once shields and armour are down

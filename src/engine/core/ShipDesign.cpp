@@ -93,11 +93,13 @@ bool ReadProvides(const json& j, Ships::Provides& p, std::string& err)
     // (#279 step 4); shields and sensors come with the stat that reads them -- accepted
     // before that, they would be numbers nothing uses.
     if (!OnlyKnownKeys(
-            pj, { "thrust", "rcs", "cargo", "mining", "hull", "armour", "damage", "scan" }, err) ||
+            pj, { "thrust", "rcs", "cargo", "ore", "mining", "hull", "armour", "damage", "scan" },
+            err) ||
         !ReadNumber(pj, "thrust", p.thrust, err) || !ReadNumber(pj, "rcs", p.rcs, err) ||
-        !ReadNumber(pj, "cargo", p.cargo, err) || !ReadNumber(pj, "mining", p.mining, err) ||
-        !ReadNumber(pj, "hull", p.hull, err) || !ReadNumber(pj, "armour", p.armour, err) ||
-        !ReadNumber(pj, "damage", p.damage, err) || !ReadNumber(pj, "scan", p.scan, err))
+        !ReadNumber(pj, "cargo", p.cargo, err) || !ReadNumber(pj, "ore", p.ore, err) ||
+        !ReadNumber(pj, "mining", p.mining, err) || !ReadNumber(pj, "hull", p.hull, err) ||
+        !ReadNumber(pj, "armour", p.armour, err) || !ReadNumber(pj, "damage", p.damage, err) ||
+        !ReadNumber(pj, "scan", p.scan, err))
     {
         err = "provides: " + err;
         return false;
@@ -417,6 +419,7 @@ void Add(Ships::Provides& sum, const Ships::Provides& p, float times = 1.0f)
     sum.thrust += p.thrust * times;
     sum.rcs += p.rcs * times;
     sum.cargo += p.cargo * times;
+    sum.ore += p.ore * times;
     sum.mining += p.mining * times;
     sum.scan += p.scan * times;
     sum.hull += p.hull * times;
@@ -982,7 +985,8 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.maxSpeed = r.speedBase + r.speedPerAccel * out.acceleration;
     out.rcsAccel = sum.rcs / mass;
     out.turnSpeed = out.rcsAccel / r.rcsPerTurn;
-    out.cargoCapacity = (int)(sum.cargo + 0.5f);
+    out.oreCapacity = (int)(sum.ore + 0.5f);
+    out.cargoCapacity = (int)(sum.cargo + 0.5f) + out.oreCapacity;
     out.miningRate = sum.mining;
     out.scan = sum.scan;
     out.hull = sum.hull;

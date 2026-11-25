@@ -15,9 +15,16 @@
 class Inventory
 {
 public:
-    int  Amount(ResourceType type) const;
-    int  Used() const;   // the room it takes: every unit times its good's volume (#472)
-    int  Units() const;  // every unit of every good, whatever room it takes
+    int Amount(ResourceType type) const;
+    int Used() const;   // the room it takes: every unit times its good's volume (#472)
+    int Units() const;  // every unit of every good, whatever room it takes
+    // An ore hold (#572, slice 12): of a container's `capacity`, `ore` is room only mined goods
+    // may take; the rest takes anything. Mined goods may also fill the general room.
+    int OreUsed() const;  // the room its mined goods take
+    // How much room a unit of `type` may still take, in the same unit as Used(): what is left
+    // of the whole, and for a good that is not mined no more than what the ore hold leaves out.
+    int  Room(int capacity, int ore, ResourceType type) const;
+    bool Fits(int capacity, int ore) const;  // all it holds is where it may be
     bool Empty() const { return goods_.empty(); }
 
     void Add(ResourceType type, int amount);  // nothing for an amount of none

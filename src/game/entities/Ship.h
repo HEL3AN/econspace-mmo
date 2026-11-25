@@ -165,6 +165,13 @@ public:
     int  GetCargoAmount(ResourceType type) const { return cargo_.Amount(type); }
     int  GetCargoUsed() const { return cargo_.Used(); }
     int  GetCargoCapacity() const { return stats_.cargoCapacity; }
+    // Of it, the room only mined goods may take (#572, slice 12).
+    int GetOreCapacity() const { return stats_.oreCapacity; }
+    // The room a unit of `type` may still take: the ore hold takes mined goods alone.
+    int RoomFor(ResourceType type) const
+    {
+        return cargo_.Room(stats_.cargoCapacity, stats_.oreCapacity, type);
+    }
     // The hold as a container (#472): what a move between containers takes from and adds to.
     // Its room is GetCargoCapacity.
     Inventory&       Hold() { return cargo_; }

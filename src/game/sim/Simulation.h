@@ -1384,6 +1384,7 @@ public:
     {
         Inventory*  goods = nullptr;
         int         capacity = 0;
+        int         ore = 0;  // of it, room for mined goods only: a ship's ore hold (#572)
         std::string name;
         bool        accepts = true;  // false: goods come out and never go in -- a wreck
         int         canId = 0;       // a can or a wreck in space: told to everyone when it changes

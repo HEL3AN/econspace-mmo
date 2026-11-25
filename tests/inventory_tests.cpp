@@ -149,3 +149,36 @@ TEST_CASE("Inventory: the agent's inventory tool reads the same containers as th
     CHECK(text.find("Storage (storage) 0 / 100: empty") != std::string::npos);
     CHECK(text.find("move_goods") != std::string::npos);
 }
+
+TEST_CASE("an ore hold takes mined goods alone, and mined goods may fill the rest too (#572)")
+{
+    const ResourceType iron = Good::Iron(), circuits = Good::Named("Circuits");
+    Inventory          hold;
+    // 100 of room, 60 of it ore-only: 40 for anything.
+    CHECK(hold.Room(100, 60, iron) == 100);
+    CHECK(hold.Room(100, 60, circuits) == 40);
+    hold.Add(iron, 7);  // 70 volume of ore: spills 10 into the general room
+    CHECK(hold.Room(100, 60, iron) == 30);
+    CHECK(hold.Room(100, 60, circuits) == 30);
+    hold.Add(circuits, 30);
+    CHECK(hold.Fits(100, 60));
+    CHECK(hold.Room(100, 60, iron) == 0);
+    CHECK_FALSE(hold.Fits(100, 90));  // an ore hold grown at the general hold's cost: no
+    CHECK(hold.Room(100, 0, circuits) == 0);
+
+    // The list a window and the agent read says the same.
+    Container c;
+    c.id = "hold";
+    c.capacity = 100;
+    c.ore = 60;
+    c.goods.assign((size_t)Goods::Count(), 0);
+    CHECK(c.Room(circuits) == 40);
+    Container to = c;
+    CHECK(InventoryList::Movable(c, to, circuits, 1000) == 0);  // same id
+    to.id = "other";
+    c.goods[(size_t)iron.Index()] = 0;
+    CHECK(InventoryList::Movable(to, c, circuits, 1000) == 0);  // nothing to give
+    to.goods = c.goods;
+    to.goods[(size_t)circuits.Index()] = 100;
+    CHECK(InventoryList::Movable(to, c, circuits, 1000) == 40);
+}

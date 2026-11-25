@@ -1126,6 +1126,7 @@ json PlayerJson(const Proto::PlayerView& p)
                { "maxAr", p.maxArmour },
                { "cargo", p.cargoUsed },
                { "cargoCap", p.cargoCap },
+               { "oreCap", p.oreCap },
                { "warp", p.warpPhase },
                { "warpAlign", p.warpAlign },
                { "warpTgt", V2(p.warpTarget) },
@@ -1284,6 +1285,7 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     p.maxArmour = Val(pj, "maxAr", 0.0f);
     p.cargoUsed = Val(pj, "cargo", 0);
     p.cargoCap = Val(pj, "cargoCap", 0);
+    p.oreCap = Val(pj, "oreCap", 0);
     p.warpPhase = Val(pj, "warp", 0);
     p.warpAlign = Val(pj, "warpAlign", 0.0f);
     p.warpTarget = pj.contains("warpTgt") ? ToV2(pj["warpTgt"]) : Vector2{ 0.0f, 0.0f };

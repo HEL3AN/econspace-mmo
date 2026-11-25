@@ -26,6 +26,9 @@ struct Container
     std::string      name;   // what the window calls it: "Hold", "Hangar", "Storage"
     std::vector<int> goods;  // how many of each good, in AllResourceTypes order
     int              capacity = 0;
+    // Of `capacity`, room only mined goods may fill: a ship's ore hold (#572, slice 12). They
+    // may fill the rest too; nothing else may fill this.
+    int ore = 0;
     // Nothing goes in or out: a hangar whose rent is owed (#472).
     bool closed = false;
     // Goods come out and never go in: a wreck, or another pilot's can.
@@ -42,6 +45,8 @@ struct Container
     int Amount(ResourceType type) const;
     int Used() const;
     int Room() const;
+    int OreUsed() const;                // the room its mined goods take
+    int Room(ResourceType type) const;  // ...for one more of `type`, the ore hold counted
 };
 
 // The hold first, then what is reachable here.
