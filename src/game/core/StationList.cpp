@@ -23,9 +23,9 @@ std::vector<MarketRow> Market(const MarketInput& in)
         r.ask = at(in.asks, i);
         r.stock = std::max(0, at(in.stock, i));
         r.hold = std::max(0, at(in.cargo, i));
-        // A module nobody has put on this shelf, and none aboard, is no row (#566): there are
-        // ten of them, and most markets have none.
-        if (Goods::Def(type).IsModule() && r.stock <= 0 && r.hold <= 0)
+        // A module nobody has put on this shelf, none aboard, and no yard here to make one, is
+        // no row (#566, #572): there are ten of them, and most markets have none.
+        if (Goods::Def(type).IsModule() && r.stock <= 0 && r.hold <= 0 && at(in.makes, i) <= 0)
             continue;
         const double paid = r.ask > 0.0f ? std::min(r.price * mul, (double)r.ask) : r.price * mul;
         r.perUnit = paid * (1.0 - fee);

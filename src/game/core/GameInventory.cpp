@@ -246,6 +246,17 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
             if (d->source != all[i].id && d->item >= 0 && d->item < Goods::Count())
                 RequestMove(d->source, all[i].id, ResourceType::FromIndex(d->item), d->amount);
 
+    // A module dragged off a socket in the Fit tab lands in any container: it leaves the draft
+    // fit, and Apply puts it in the hold or hangar as a refit does (#572).
+    for (int i = 0; i < (int)all.size(); i++)
+        if (const Ui::DragPayload* d = L.Dropped("cont", (uint32_t)i, "unfit"))
+        {
+            const size_t slash = d->source.find('/');
+            if (slash != std::string::npos)
+                ChangeFitDraft(d->source.substr(0, slash), d->source.substr(slash + 1), d->label,
+                               -d->amount);
+        }
+
     const Ui::DragPayload* dragged = Ui::Drag::Active() ? Ui::Drag::Current() : nullptr;
     auto                   containers = [&]
     {
@@ -254,7 +265,7 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
             const Container& c = all[i];
             const bool       isSel = c.id == inventorySel_;
             const bool       lit = dragged != nullptr && dragged->source != c.id &&
-                                   L.DropHover("cont", (uint32_t)i, "goods");
+                                   L.DropHover("cont", (uint32_t)i, dragged->kind);
             // A division shows what it holds against the structure's whole room, which is
             // said once above the first of them (#555): its own capacity is what the others
             // leave, and a different number on each line says nothing about the structure.

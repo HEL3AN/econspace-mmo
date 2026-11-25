@@ -42,6 +42,7 @@ struct MarketInput
 {
     std::vector<float> prices, asks;  // per good, AllResourceTypes order; missing reads 0
     std::vector<int>   stock, cargo;
+    std::vector<int>   makes;  // 1 where the market makes or uses the good (#572)
     float              tradeBonus = 1.0f;
     RepTier            standing = RepTier::Neutral;
     double             money = 0.0;

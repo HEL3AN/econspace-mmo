@@ -144,4 +144,9 @@ TEST_CASE("StationList: a module is a row only where the shelf or the hold has o
     in.stock[(size_t)laser.Index()] = 0;
     in.cargo[(size_t)laser.Index()] = 1;  // one aboard: it can be sold here
     CHECK(has(StationList::Market(in)));
+    in.cargo[(size_t)laser.Index()] = 0;
+    in.makes.assign(n, 0);
+    CHECK_FALSE(has(StationList::Market(in)));
+    in.makes[(size_t)laser.Index()] = 1;  // a yard here makes it: empty now, worth showing
+    CHECK(has(StationList::Market(in)));
 }

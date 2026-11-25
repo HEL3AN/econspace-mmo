@@ -425,6 +425,7 @@ TEST_CASE("the wire carries a purchase and the market's bid, ask and stock (#343
     s.marketAsk = { 10.5f, 15.75f };
     s.marketStock = { 400, 0 };
     s.marketTarget = { 500, 60 };
+    s.marketMakes = { 0, 1 };
     s.tradeAcks.push_back(Proto::TradeAck{ 1, 0, 0.0, 0.0, 5, 80.0, 1.6 });
     Proto::Snapshot r;
     REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), r));
@@ -434,6 +435,8 @@ TEST_CASE("the wire carries a purchase and the market's bid, ask and stock (#343
     CHECK(r.marketStock[1] == 0);
     REQUIRE(r.marketTarget.size() == 2);
     CHECK(r.marketTarget[0] == 500);
+    REQUIRE(r.marketMakes.size() == 2);
+    CHECK(r.marketMakes[1] == 1);
     REQUIRE(r.tradeAcks.size() == 1);
     CHECK(r.tradeAcks[0].bought == 5);
     CHECK(r.tradeAcks[0].cost == doctest::Approx(80.0));

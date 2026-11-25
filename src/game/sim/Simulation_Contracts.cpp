@@ -35,18 +35,6 @@
 
 namespace
 {
-// Whether a system's industries make `g` or use it up.
-bool MakesOrUses(const MarketRates& rates, ResourceType g)
-{
-    if ((size_t)g.Index() < rates.use.size() && rates.use[(size_t)g.Index()] > 0.0)
-        return true;
-    for (const Recipe& r : rates.recipes)
-        for (const auto& out : r.out)
-            if (out.first == g)
-                return true;
-    return false;
-}
-
 std::string Money(double cr)
 {
     char buf[32];
@@ -175,7 +163,7 @@ void Simulation::PostContracts()
         {
             // A module is asked for only where it is made or used: nobody posts a contract
             // for a part their own yard cannot build or use (#472 slice 10).
-            if (Goods::Def(g).IsModule() && !MakesOrUses(st.profile.rates, g))
+            if (Goods::Def(g).IsModule() && !st.profile.rates.MakesOrUses(g))
                 continue;
             const double line = r.shortAt * st.market.Target(g);
             const double stock = st.market.Stock(g);

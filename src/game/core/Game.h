@@ -255,6 +255,11 @@ private:
     // A good dragged from the inventory onto the market (#472): chosen there, with the amount
     // dragged ready to sell. Selling stays a click.
     void TakeMarketDrop(Ui::Layout& L);
+    // The draft fit puts `by` more (or fewer) of `module` on a socket group (#472 slice 10); what
+    // the Fit tab's + and - buttons and a module dragged off a socket into the inventory all go
+    // through, so there is one path and Apply is the only verb sent.
+    void ChangeFitDraft(const std::string& in, const std::string& on, const std::string& module,
+                        int by);
     // ...and onto the world in space: jettisoned into a can (#472).
     void TakeWorldDrop();
     // The hangar's rent at a station (#472): free and rented units, and the field to change it.

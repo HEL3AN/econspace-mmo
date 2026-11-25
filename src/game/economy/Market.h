@@ -14,6 +14,19 @@ struct MarketRates
     std::vector<double> use;     // by good index, units an hour
     std::vector<Recipe> recipes;
     int markets = 0;  // what trades here: the target stock is this many times a good's
+
+    // Whether the industries make `g` or use it up (#572): a module is asked for, and listed
+    // empty, only where this is so.
+    bool MakesOrUses(ResourceType g) const
+    {
+        if ((size_t)g.Index() < use.size() && use[(size_t)g.Index()] > 0.0)
+            return true;
+        for (const Recipe& r : recipes)
+            for (const auto& out : r.out)
+                if (out.first == g)
+                    return true;
+        return false;
+    }
 };
 
 // A system's market (#343): a stock of every good, and prices that follow it. The price of a
