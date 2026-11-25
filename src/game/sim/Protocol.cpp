@@ -1915,21 +1915,23 @@ json MarketJson(const Proto::Snapshot& s)
     return m;
 }
 
-// What is left of the belts (#348), as [id, ore, full] each: sent whole when any of it moves.
+// What is left of the belts (#348), as [id, ore, full, cap] each: sent whole when any of it moves.
 json BeltsJson(const Proto::Snapshot& s)
 {
     json b = json::array();
     for (const Proto::Snapshot::BeltOre& o : s.belts)
-        b.push_back({ o.id, o.ore, o.max });
+        b.push_back({ o.id, o.ore, o.max, o.cap });
     return b;
 }
 
 void ReadBelts(const json& b, Proto::Snapshot& out)
 {
     for (const json& line : b)
-        if (line.is_array() && line.size() == 3 && line[0].is_number_integer() &&
-            line[1].is_number_integer() && line[2].is_number_integer())
-            out.belts.push_back({ line[0].get<int>(), line[1].get<int>(), line[2].get<int>() });
+        if (line.is_array() && line.size() == 4 && line[0].is_number_integer() &&
+            line[1].is_number_integer() && line[2].is_number_integer() &&
+            line[3].is_number_integer())
+            out.belts.push_back(
+                { line[0].get<int>(), line[1].get<int>(), line[2].get<int>(), line[3].get<int>() });
 }
 
 void ReadMarket(const json& m, Proto::Snapshot& out)
@@ -3315,6 +3317,7 @@ static void CompleteHolds(EntitySnapshot& e, const EntityLayout& l, const Snapsh
             {
                 e.oreLeft = b.ore;
                 e.oreMax = b.max;
+                e.oreCap = b.cap;
             }
 }
 

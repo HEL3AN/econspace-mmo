@@ -1805,6 +1805,34 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
                         h.id.c_str(), h.a.c_str(), h.b.c_str(), h.open ? "open" : "scheduled",
                         h.maxMass, h.spent, h.budget, (h.closesAt - sim.Time()) / 3600.0);
     }
+    else if (verb == "field")
+    {
+        // A field with a life now (#617), for trying the mining and for events by hand:
+        // `field <system | pilot> <ore> <amount> <hours> [size]`, near the pilot or a market.
+        std::string where, ore;
+        double      amount = 0.0, hours = 0.0, size = 600.0;
+        in >> where >> ore >> amount >> hours;
+        if (!(in >> size))
+            size = 600.0;
+        const ClientSession* pilot = nullptr;
+        for (const auto& kv : sim.Sessions())  // a pilot's name: where they are
+            if (!where.empty() && kv.second.accountName == where)
+            {
+                pilot = &kv.second;
+                where = kv.second.systemId;
+            }
+        ResourceType good;
+        const bool   known = Goods::Find(ore, good) && Goods::Def(good).mined;
+        const int    id = known ? sim.PlaceField(where, good, (int)amount, hours, (float)size,
+                                                 sim.FieldSpot(where, pilot))
+                                : 0;
+        if (id == 0)
+            Log::Printf("Usage: field <system | pilot> <ore> <amount> <hours> [size] -- a mined "
+                        "good, an amount above zero, hours above zero.\n");
+        else
+            Log::Printf("A field of %.0f %s is in %s for %.1f h.\n", amount, ore.c_str(),
+                        where.c_str(), hours);
+    }
     else if (verb == "drift")
     {
         int slot = -1;
@@ -1923,6 +1951,7 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
                     "copy the world to backups/) | shutdown [seconds | cancel] | "
                     "tide | open [region] (a mouth now, from the region named or the one "
                     "nearest to breaking) | hole <system> [<to>] (a roaming hole now) | holes | "
+                    "field <system | pilot> <ore> <amount> <hours> [size] (a field with a life) | "
                     "drift <region> (into the archive now) | pause | resume "
                     "(growth) | destroy <name> (their ship is lost) | allow <name> | deny <name> | "
                     "ban <name> [reason] | unban <name> | "

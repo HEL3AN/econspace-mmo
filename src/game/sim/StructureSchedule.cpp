@@ -1,5 +1,6 @@
 #include "sim/StructureSchedule.h"
 
+#include "entities/AsteroidField.h"
 #include "entities/Derelict.h"
 #include "entities/Structure.h"
 
@@ -10,6 +11,14 @@ void StructureSchedule::Add(const std::string& systemId, const Entity& e)
         const double end = static_cast<const Derelict&>(e).GetExpiresAt();
         if (end > 0.0)
             due_.insert({ end, e.GetId(), systemId });
+        return;
+    }
+    if (e.GetKind() == EntityKind::Field)
+    {
+        // A field with a life ends when its time is up (#617).
+        const AsteroidField& f = static_cast<const AsteroidField&>(e);
+        if (f.HasLife())
+            due_.insert({ f.EndsAt(), e.GetId(), systemId });
         return;
     }
     if (e.GetKind() != EntityKind::Structure)

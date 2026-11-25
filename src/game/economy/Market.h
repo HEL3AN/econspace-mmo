@@ -54,6 +54,8 @@ public:
     static double DefaultBasePrice(ResourceType type);
 
     double Stock(ResourceType type) const;
+    // How much more of a good the shelf takes before its stock cap clips it.
+    double Room(ResourceType type) const;
     double Target(ResourceType type) const;
     void   SetStock(ResourceType type, double stock);
     // How many markets this one stands for: its target stock is that many times a good's. A
@@ -83,6 +85,19 @@ public:
     // The target stock of a good here: what the curve is drawn about (carried in the snapshot).
     double TargetOf(ResourceType type) const { return Target(type); }
 
+    // What has moved through this market since it was made, per good, for a bench to read and
+    // nothing else: not saved, never used by a rule. `wanted` is what the recipes and uses
+    // would draw at their rates if their inputs were there; `clipped` is what the stock cap
+    // took away; `mined` is what the system's crews put on the shelf, `fromFields` of it out of
+    // fields with a life; `dispersed` is ore that left such a field unmined (#617).
+    struct Flow
+    {
+        double mined = 0.0, wanted = 0.0, clipped = 0.0, dispersed = 0.0, fromFields = 0.0;
+    };
+    Flow FlowOf(ResourceType type) const;
+    void NoteMined(ResourceType type, double amount, bool fromField = false);
+    void NoteDispersed(ResourceType type, double amount);
+
 private:
     void Fit();  // sized to the registry
     // Whether a recipe's output is worth more here than its input, fee included (#566).
@@ -92,6 +107,7 @@ private:
     std::vector<double> stock_;
     std::vector<double> base_;
     std::vector<double> reserve_;  // by good index
+    std::vector<Flow>   flow_;     // by good index
     int                 markets_ = 1;
     bool                fresh_ = true;  // never stepped or loaded
 };

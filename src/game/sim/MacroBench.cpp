@@ -550,11 +550,26 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
             }
         };
         long long yardsSeen = 0;
+        // How long each market has been all but out of Iron, hour by hour (#617): the longest
+        // run is what "no market dry for more than a day" reads.
+        std::map<std::string, std::pair<int, int>> ironDry;  // system -> (run now, longest) hours
         for (int pass = 0; pass <= passes; pass++)
         {
             if (pass > 0)
                 sim.MaintainWorld(2.0f);
             tallySieges();
+            if (pass > 0 && pass % 1800 == 0)
+                for (const auto& kv : sim.Systems())
+                    if (kv.second.profile.markets > 0)
+                    {
+                        std::pair<int, int>& run = ironDry[kv.first];
+                        const ResourceType   iron = ResourceType::FromIndex(0);
+                        run.first =
+                            kv.second.market.Stock(iron) < 0.05 * kv.second.market.Target(iron)
+                                ? run.first + 1
+                                : 0;
+                        run.second = std::max(run.second, run.first);
+                    }
             // Shipyards begun and opened, as they are written (#566): the chronicle forgets.
             for (const ChronicleEntry& e : sim.Chronicle())
                 if (e.seq > yardsSeen)
@@ -819,6 +834,50 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
             for (const auto& [k, n] : by)
                 printf(" %s %.0f%%", k.c_str(), 100.0 * n / all);
             printf("\n");
+        }
+        // The flows of the ore (#617), summed over each class of region: what the crews put on
+        // the shelves against what the industries asked of them, what the stock cap threw
+        // away, and the ore that left a field unmined.
+        {
+            const int centre = sim.Skeleton().centres.front();
+            printf("\nOre flow over %.1f days, units: mined / wanted, lost at the stock cap, "
+                   "dispersed from fields\n\n",
+                   days);
+            printf("| ore | class | mined | wanted | mined/wanted | lost at cap | lost %% of "
+                   "mined | dispersed | mined from fields "
+                   "|\n|---|---|---:|---:|---:|---:|---:|---:|---:|\n");
+            for (int k = 0; k < 3; k++)
+                for (int cls = 0; cls < 2; cls++)
+                {
+                    Market::Flow f;
+                    for (const auto& kv : sim.Systems())
+                        if ((Gen::SlotOf(kv.first) == centre ? 0 : 1) == cls)
+                        {
+                            const Market::Flow g =
+                                kv.second.market.FlowOf(ResourceType::FromIndex(k));
+                            f.mined += g.mined;
+                            f.wanted += g.wanted;
+                            f.clipped += g.clipped;
+                            f.dispersed += g.dispersed;
+                            f.fromFields += g.fromFields;
+                        }
+                    printf("| %s | %s | %.0f | %.0f | %.2f | %.0f | %.1f%% | %.0f | %.0f |\n",
+                           Goods::Id(ResourceType::FromIndex(k)).c_str(),
+                           cls == 0 ? "centre" : "rest", f.mined, f.wanted,
+                           f.wanted > 0.0 ? f.mined / f.wanted : 0.0, f.clipped,
+                           f.mined > 0.0 ? 100.0 * f.clipped / f.mined : 0.0, f.dispersed,
+                           f.fromFields);
+                }
+            int dryDays = 0, trading = 0, longest = 0;
+            for (const auto& [id, run] : ironDry)
+            {
+                trading++;
+                dryDays += run.second > 24 ? 1 : 0;
+                longest = std::max(longest, run.second);
+            }
+            printf("\nMarkets out of Iron (under 5%% of target) for more than a day: %d of %d; "
+                   "the longest run %d h\n",
+                   dryDays, trading, longest);
         }
         // What the belts give against what the region asks (#584): the ore of each kind in the
         // centre's region and everywhere else.

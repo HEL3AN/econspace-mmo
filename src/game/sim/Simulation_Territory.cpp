@@ -653,6 +653,8 @@ double Simulation::SystemOutput(const SystemState& st, double hours) const
         if (e->GetKind() == EntityKind::Field)
         {
             const AsteroidField& f = static_cast<const AsteroidField&>(*e);
+            if (f.HasLife())
+                continue;  // a field with a life gives nothing of its own: it only thins (#617)
             perHour += Goods::Rules().beltRegrow * (double)f.GetOreMax() *
                        market.GetBasePrice(f.GetResource());
         }

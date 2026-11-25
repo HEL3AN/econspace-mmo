@@ -8,10 +8,10 @@
 class Entity;
 
 // When each structure next has something happen to it (#295, #353): it is finished, or its
-// time is up, and a wreck's end (#41). Entries are (instant, entity id, system). The step
-// pops what is due and touches nothing else. Not saved: remade when the static layers are
-// built, from the time lines the structures carry. An entry whose entity has gone is
-// skipped by whoever pops it.
+// time is up, a wreck's end (#41), and the end of a field with a life (#617). Entries are (instant,
+// entity id, system). The step pops what is due and touches nothing else. Not saved: remade when
+// the static layers are built, from the time lines the structures carry. An entry whose entity has
+// gone is skipped by whoever pops it.
 class StructureSchedule
 {
 public:

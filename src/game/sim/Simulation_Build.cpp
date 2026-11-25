@@ -15,6 +15,7 @@
 #include "core/Faction.h"
 #include "core/World.h"
 #include "economy/Market.h"
+#include "entities/AsteroidField.h"
 #include "entities/Derelict.h"
 #include "entities/Planet.h"
 #include "entities/Ship.h"
@@ -935,13 +936,20 @@ void Simulation::StepStructures()
         SystemState* st = SystemById(systemId);
         if (st == nullptr)
             continue;
-        Structure* t = nullptr;
-        Derelict*  wreck = nullptr;
+        Structure*     t = nullptr;
+        Derelict*      wreck = nullptr;
+        AsteroidField* field = nullptr;
         for (const auto& e : st->entities)
             if (e->GetId() == id && e->GetKind() == EntityKind::Structure)
                 t = static_cast<Structure*>(e.get());
             else if (e->GetId() == id && e->GetKind() == EntityKind::Derelict)
                 wreck = static_cast<Derelict*>(e.get());
+            else if (e->GetId() == id && e->GetKind() == EntityKind::Field)
+                field = static_cast<AsteroidField*>(e.get());
+        // A field with a life is gone at its end, mined out or not (#617): the same queue, in
+        // every system, hot or cold.
+        if (field != nullptr && field->HasLife() && time_ >= field->EndsAt())
+            RemoveStatic(systemId, id);
         // A wreck's time is up (#41): it is gone, searched or not, whether anyone is here to
         // see it or not -- this queue runs in every system on the same clock.
         if (wreck != nullptr && wreck->GetExpiresAt() > 0.0 && time_ >= wreck->GetExpiresAt())

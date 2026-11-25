@@ -104,7 +104,10 @@ namespace Save
 //    station that was destroyed (#572). A version 21 build would read it as a delivery to a place
 //    with no name, leave it waiting for ever, and write it back without saying where it was
 //    going.
-inline constexpr int WORLD_VERSION = 22;
+// 23: a field of ore may have a life (#617): an added object carries `bornAt`, `life` and its
+//    `curve`, and its state is what was `taken`. A version 22 build reads an unknown key of an
+//    object as a load error, and would drop the field and save the world without it.
+inline constexpr int WORLD_VERSION = 23;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

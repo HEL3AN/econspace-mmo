@@ -841,7 +841,13 @@ nlohmann::json StateOf(const Entity& e)
     if (e.GetKind() == EntityKind::Field)
     {
         const AsteroidField& f = static_cast<const AsteroidField&>(e);
-        if (f.GetOre() < f.GetOreMax() - 0.005)
+        // A field with a life keeps what was taken, and its cap is the clock's (#617).
+        if (f.HasLife())
+        {
+            if (f.Taken() > 0.0)
+                s["taken"] = std::round(f.Taken() * 100.0) / 100.0;
+        }
+        else if (f.GetOre() < f.GetOreMax() - 0.005)
             s["ore"] = std::round(f.GetOre() * 100.0) / 100.0;
     }
     // Its damage as of the instant it was set, and that instant (#431 D1): it mends from there.
@@ -915,6 +921,12 @@ void ApplyState(Entity& e, const nlohmann::json& s, double now)
     }
     if (e.GetKind() == EntityKind::Field && s.contains("ore") && s["ore"].is_number())
         static_cast<AsteroidField&>(e).SetOre(s["ore"].get<double>());
+    if (e.GetKind() == EntityKind::Field && s.contains("taken") && s["taken"].is_number())
+    {
+        AsteroidField& f = static_cast<AsteroidField&>(e);
+        f.SetTaken(s["taken"].get<double>());
+        f.Age(now);
+    }
     if (e.GetKind() == EntityKind::Structure)
     {
         Structure& t = static_cast<Structure&>(e);
