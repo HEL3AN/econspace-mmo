@@ -4,6 +4,7 @@
 #include "core/World.h"
 #include "economy/Resource.h"
 #include "entities/Derelict.h"
+#include "entities/ShipType.h"
 
 #include <nlohmann/json.hpp>
 
@@ -70,6 +71,14 @@ template <class T> T Clamped(const json& v)
 // `value()` does the first and throws on the second, and an exception out of a decoder is a
 // peer ending the process for everyone with one line of JSON (#341, found again by the
 // fuzzers, #518).
+std::vector<std::string> ShipIds(const std::vector<int>& keys)
+{
+    std::vector<std::string> out;
+    for (int k : keys)
+        out.push_back(ShipIdOf(k));
+    return out;
+}
+
 template <class T> T Val(const json& j, const char* key, T def)
 {
     const auto it = j.find(key);  // an end() for anything that is not an object
@@ -734,17 +743,17 @@ struct ActionWriter
     void operator()(const Act::SwitchShip& a) const
     {
         Verb("switch");
-        j["ship"] = a.ship;
+        j["ship"] = ShipIdOf(a.ship);  // by id, never by catalog index (#356)
     }
     void operator()(const Act::BuyShip& a) const
     {
         Verb("buyShip");
-        j["ship"] = a.ship;
+        j["ship"] = ShipIdOf(a.ship);  // by id, never by catalog index (#356)
     }
     void operator()(const Act::InsureShip& a) const
     {
         Verb("insure");
-        j["ship"] = a.ship;
+        j["ship"] = ShipIdOf(a.ship);  // by id, never by catalog index (#356)
     }
     void operator()(const Act::PayBounty& a) const
     {
@@ -1003,6 +1012,12 @@ bool ReadAction(const json& j, Proto::Action& out)
     auto              text = [&](const char* key, std::string& s) { return ReadText(j, key, s); };
     auto              amount = [&](int& n) { return ReadInt(j, "amt", 0, 0, ID_MAX, n); };
     auto index = [&](const char* key, int& n) { return ReadInt(j, key, -1, 0, ID_MAX, n); };
+    // A ship is named by its id (#356); one this catalog has no hull for refuses the verb.
+    auto shipKey = [&](const char* key, int& n)
+    {
+        const auto it = j.find(key);
+        return it != j.end() && it->is_string() && ShipKeyFromId(it->get<std::string>(), n);
+    };
 
     if (verb == "dock")
         out = Proto::Act::Dock{};
@@ -1095,19 +1110,19 @@ bool ReadAction(const json& j, Proto::Action& out)
     else if (verb == "switch")
     {
         Proto::Act::SwitchShip a;
-        ok = index("ship", a.ship);
+        ok = shipKey("ship", a.ship);
         out = std::move(a);
     }
     else if (verb == "buyShip")
     {
         Proto::Act::BuyShip a;
-        ok = index("ship", a.ship);
+        ok = shipKey("ship", a.ship);
         out = std::move(a);
     }
     else if (verb == "insure")
     {
         Proto::Act::InsureShip a;
-        ok = index("ship", a.ship);
+        ok = shipKey("ship", a.ship);
         out = std::move(a);
     }
     else if (verb == "payB")
@@ -1389,11 +1404,11 @@ json PlayerJson(const Proto::PlayerView& p)
                { "ordStatus", p.orderStatus },
                { "ordId", p.orderId },
                { "ordDetail", p.orderDetail },
-               { "ships", p.ownedShips },
+               { "ships", ShipIds(p.ownedShips) },
                { "shipAt", p.shipPlaces },
                { "shipHere", p.shipHere },
                { "shipDesigns", p.shipDesigns },
-               { "ship", p.shipIndex } };
+               { "ship", ShipIdOf(p.shipIndex) } };
     if (!p.livery.empty())
         j["livery"] = p.livery;
     if (p.warpViaSet)  // only during the first leg of a bent warp
@@ -1552,11 +1567,19 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     p.orderStatus = Val(pj, "ordStatus", 0);
     p.orderId = Val(pj, "ordId", 0);
     p.orderDetail = Val(pj, "ordDetail", std::string());
-    p.ownedShips = Val(pj, "ships", std::vector<int>{});
+    p.ownedShips
+        .clear();  // an id this catalog has no hull for stays as -1, so the lists beside it line up
+    for (const std::string& id : Val(pj, "ships", std::vector<std::string>{}))
+    {
+        int key = -1;
+        ShipKeyFromId(id, key);
+        p.ownedShips.push_back(key);
+    }
     p.shipPlaces = Val(pj, "shipAt", std::vector<std::string>{});
     p.shipHere = Val(pj, "shipHere", std::vector<int>{});
     p.shipDesigns = Val(pj, "shipDesigns", std::vector<std::string>{});
-    p.shipIndex = Val(pj, "ship", 0);
+    p.shipIndex = 0;
+    ShipKeyFromId(Val(pj, "ship", std::string()), p.shipIndex);
     p.livery = TextOf(pj, "livery");
     p.insured = Val(pj, "insured", std::vector<double>{});
     p.loss = Proto::LossView{};

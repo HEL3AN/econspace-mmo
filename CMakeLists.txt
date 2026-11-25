@@ -273,6 +273,7 @@ endif()
 # copy-pasted source lists, and econagent (#42) would have made it four.
 add_library(netproto STATIC
     src/game/sim/Protocol.cpp
+    src/game/sim/ShipId.cpp
     src/game/sim/Events.cpp
     src/game/sim/Chat.cpp        # what a chat line may be and who hears it (#347)
     src/game/sim/Auth.cpp       # proving an account is itself (#106) -- both sides need it

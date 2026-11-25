@@ -289,3 +289,32 @@ TEST_CASE("The snapshot names ships by key, and the hangar lists each one (#572)
     CHECK(p.shipIndex == ShipKey(0, 1));
     CHECK(ShipHull(p.shipIndex) == 0);
 }
+
+TEST_CASE("The wire names a ship by id, never by catalog index (#356)")
+{
+    const std::string design = GetShipCatalog()[1].stats.design;
+
+    Proto::Action     a = Proto::Act::BuyShip{ 1 };
+    const std::string text = Proto::EncodeAction(a);
+    CHECK(text.find("\"" + design + "\"") != std::string::npos);
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(text, back));
+    REQUIRE(std::holds_alternative<Proto::Act::BuyShip>(back));
+    CHECK(std::get<Proto::Act::BuyShip>(back).ship == 1);
+
+    // An id this catalog has no hull for is refused, never read as some other ship.
+    CHECK_FALSE(Proto::DecodeAction(R"({"t":"act","v":)" + std::to_string(Proto::PROTO_VERSION) +
+                                        R"(,"verb":"buyShip","ship":"no such hull"})",
+                                    back));
+    CHECK_FALSE(Proto::DecodeAction(R"({"t":"act","v":)" + std::to_string(Proto::PROTO_VERSION) +
+                                        R"(,"verb":"buyShip","ship":1})",
+                                    back));
+
+    Proto::Snapshot s;
+    s.player.ownedShips = { 0, ShipKey(1, 0), ShipKey(1, 1) };
+    s.player.shipIndex = ShipKey(1, 1);
+    Proto::Snapshot got;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), got));
+    CHECK(got.player.ownedShips == s.player.ownedShips);
+    CHECK(got.player.shipIndex == ShipKey(1, 1));
+}
