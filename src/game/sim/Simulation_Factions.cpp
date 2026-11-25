@@ -1102,7 +1102,7 @@ void Simulation::Think(FactionId f)
                 if (!Hostile(f, g))
                     continue;
                 const RegionOpening* o = nullptr;
-                for (const RegionOpening& r : openings_)
+                for (const RegionOpening& r : growth_.openings)
                     if (r.mouth == nid && (r.state == "unstable" || r.state == "anchored"))
                         o = &r;
                 const auto entry =
@@ -1222,7 +1222,7 @@ void Simulation::Think(FactionId f)
     // or next door to one it holds. Worth what the region behind it promises, judged on what
     // its surveyors saw of the entry system -- it looks first, if it has not; the risk is who
     // else is at the mouth, enemies the more, and the memory of losing something there.
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
     {
         if (o.state != "unstable" || (!canAnchor && !canSurvey))
             continue;

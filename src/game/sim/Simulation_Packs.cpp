@@ -88,9 +88,10 @@ void Simulation::WeaveRegionPacks()
 bool Simulation::OpenPackRegion(int slot, const std::string& id)
 {
     Gen::Region r;
-    const auto  kept = sealedIn_.find(slot);
-    if (kept != sealedIn_.end() && ReadSealedText(kept->second, regionSeed_, r) && r.pack == id)
-        sealedIn_.erase(kept);  // as it was woven, whatever the pack says now
+    const auto  kept = growth_.sealedIn.find(slot);
+    if (kept != growth_.sealedIn.end() && ReadSealedText(kept->second, regionSeed_, r) &&
+        r.pack == id)
+        growth_.sealedIn.erase(kept);  // as it was woven, whatever the pack says now
     else
     {
         // Not sealed (a world kept without its regions, a test): woven again, which gives the

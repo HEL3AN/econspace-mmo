@@ -119,11 +119,11 @@ void Simulation::Seal(const Gen::Region& region)
 Gen::Region Simulation::MakeSealed(int slot, const Gen::RegionParams& params)
 {
     Gen::Region region;
-    const auto  kept = sealedIn_.find(slot);
-    if (kept != sealedIn_.end() && ReadSealedText(kept->second, regionSeed_, region))
+    const auto  kept = growth_.sealedIn.find(slot);
+    if (kept != growth_.sealedIn.end() && ReadSealedText(kept->second, regionSeed_, region))
     {
         // As it was made, by whatever rules made it then: never written again.
-        sealedIn_.erase(kept);
+        growth_.sealedIn.erase(kept);
         return region;
     }
     // A region drifting back from the archive (S4) is sealed as it comes back: what it is
@@ -148,7 +148,7 @@ void Simulation::LogOpening(int slot, const std::string& mouth, const std::strin
     o.why = why;
     o.mouthAt = time_;
     o.lastVisit = time_;  // nobody has been in it for no time yet
-    openings_.push_back(o);
+    growth_.openings.push_back(o);
 }
 
 std::string Simulation::EntryOf(int slot)
@@ -158,7 +158,7 @@ std::string Simulation::EntryOf(int slot)
 
 const Simulation::RegionOpening* Simulation::OpeningOf(int slot) const
 {
-    for (auto it = openings_.rbegin(); it != openings_.rend(); ++it)
+    for (auto it = growth_.openings.rbegin(); it != growth_.openings.rend(); ++it)
         if (it->slot == slot)
             return it->state == "archived" || it->state == "returned" ? nullptr : &*it;
     return nullptr;
@@ -224,7 +224,7 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
 {
     using nlohmann::json;
     json log = json::array();
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
     {
         json oj = { { "slot", o.slot },   { "openedAt", o.openedAt }, { "parent", o.parent },
                     { "mouth", o.mouth }, { "state", o.state },       { "by", o.by } };
@@ -249,7 +249,7 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
     }
     j["openings"] = std::move(log);
     json tide = json::object();
-    for (const auto& kv : tides_)
+    for (const auto& kv : growth_.tides)
         tide[std::to_string(kv.first)] = { { "tide", kv.second.tide },
                                            { "time", kv.second.fromTime },
                                            { "players", kv.second.fromPlayers },
@@ -257,10 +257,10 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
                                            { "surveys", kv.second.fromSurveys },
                                            { "pending", kv.second.surveys },
                                            { "lastMouthAt", kv.second.lastMouthAt } };
-    j["growth"] = { { "paused", growthPaused_ },   { "maxRegions", maxRegions_ },
-                    { "maxSystems", maxSystems_ }, { "surplus", surplusTide_ },
-                    { "tide", std::move(tide) },   { "explored", explored_ },
-                    { "surveyed", surveyed_ } };
+    j["growth"] = { { "paused", growth_.growthPaused },   { "maxRegions", growth_.maxRegions },
+                    { "maxSystems", growth_.maxSystems }, { "surplus", growth_.surplusTide },
+                    { "tide", std::move(tide) },          { "explored", growth_.explored },
+                    { "surveyed", growth_.surveyed } };
     SaveArchive(j);  // the regions that drifted away (S4)
     SaveHoles(j);    // the roaming holes the epochs decided (S9)
     SavePacks(j);    // where the admin's packs went (S7)
@@ -276,8 +276,8 @@ void Simulation::LoadGrowth(const nlohmann::json& j)
     if (!j.contains("growth") || !j["growth"].is_object())
         return;
     const nlohmann::json& g = j["growth"];
-    growthPaused_ = g.value("paused", false);
-    surplusTide_ = std::max(0.0, g.value("surplus", 0.0));
+    growth_.growthPaused = g.value("paused", false);
+    growth_.surplusTide = std::max(0.0, g.value("surplus", 0.0));
     const nlohmann::json& tide = g.value("tide", nlohmann::json::object());
     for (auto it = tide.begin(); tide.is_object() && it != tide.end(); ++it)
     {
@@ -292,12 +292,13 @@ void Simulation::LoadGrowth(const nlohmann::json& j)
         t.fromSurveys = it.value().value("surveys", 0.0);
         t.surveys = std::max(0, it.value().value("pending", 0));
         t.lastMouthAt = it.value().value("lastMouthAt", -1.0e18);
-        tides_[slot] = t;
+        growth_.tides[slot] = t;
     }
     for (const char* key : { "explored", "surveyed" })
     {
         const nlohmann::json&  ids = g.value(key, nlohmann::json::array());
-        std::set<std::string>& into = std::string(key) == "explored" ? explored_ : surveyed_;
+        std::set<std::string>& into =
+            std::string(key) == "explored" ? growth_.explored : growth_.surveyed;
         for (const nlohmann::json& id : ids)
             if (id.is_string() && HasSystem(id.get<std::string>()))
                 into.insert(id.get<std::string>());
@@ -309,21 +310,23 @@ void Simulation::LoadGrowth(const nlohmann::json& j)
 void Simulation::SetGrowthCap(int maxRegions, int maxSystems)
 {
     if (maxRegions > 0)
-        maxRegions_ = skeleton_.slots.empty() ? maxRegions
-                                              : std::min(maxRegions, (int)skeleton_.slots.size());
+        growth_.maxRegions = skeleton_.slots.empty()
+                                 ? maxRegions
+                                 : std::min(maxRegions, (int)skeleton_.slots.size());
     if (maxSystems > 0)
-        maxSystems_ = maxSystems;
+        growth_.maxSystems = maxSystems;
 }
 
 bool Simulation::AtCap() const
 {
-    return (maxRegions_ > 0 && (int)openSlots_.size() >= maxRegions_) ||
-           (maxSystems_ > 0 && (int)universe_.systems.size() >= maxSystems_);
+    return (growth_.maxRegions > 0 && (int)openSlots_.size() >= growth_.maxRegions) ||
+           (growth_.maxSystems > 0 && (int)universe_.systems.size() >= growth_.maxSystems);
 }
 
 double Simulation::TideThreshold() const
 {
-    const double share = maxRegions_ > 0 ? (double)openSlots_.size() / maxRegions_ : 0.0;
+    const double share =
+        growth_.maxRegions > 0 ? (double)openSlots_.size() / growth_.maxRegions : 0.0;
     return WorldRules::TideRules().threshold * (1.0 + share);
 }
 
@@ -350,7 +353,7 @@ int Simulation::MouthTargetFrom(int fromSlot) const
     // The region that drifted from here is where the next mouth leads (S4), until somebody
     // anchors it; the lowest of them if more than one did.
     int drifted = -1;
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
         if (o.parent == fromSlot && o.state == "drifted" && OpeningOf(o.slot) == &o &&
             (drifted < 0 || o.slot < drifted))
             drifted = o.slot;
@@ -367,7 +370,7 @@ int Simulation::YoungMouths() const
     // Unstable, or -- where mouths are permanent at once -- under a mouth's life old.
     const double life = WorldRules::TideRules().mouthHours * HOUR;
     int          n = 0;
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
         if (o.by != "world" && o.by != "pack" &&
             (o.state == "unstable" || (o.state == "open" && time_ - o.mouthAt < life)))
             n++;
@@ -395,9 +398,9 @@ double Simulation::ExploredShare(int slot) const
         return 0.0;
     double seen = 0.0;
     for (const std::string& id : ids)
-        seen += explored_.count(id)   ? 1.0
-                : surveyed_.count(id) ? WorldRules::TideRules().surveyedWeight
-                                      : 0.0;
+        seen += growth_.explored.count(id)   ? 1.0
+                : growth_.surveyed.count(id) ? WorldRules::TideRules().surveyedWeight
+                                             : 0.0;
     return std::min(1.0, seen / (double)ids.size());
 }
 
@@ -406,17 +409,17 @@ void Simulation::NoteSurvey(const std::string& systemId)
     const int slot = Gen::SlotOf(systemId);
     if (slot < 0 || openSlots_.count(slot) == 0)
         return;
-    surveyed_.insert(systemId);
+    growth_.surveyed.insert(systemId);
     TideOf(slot).surveys++;
 }
 
 Simulation::RegionTide& Simulation::TideOf(int slot)
 {
-    auto it = tides_.find(slot);
-    if (it == tides_.end())
+    auto it = growth_.tides.find(slot);
+    if (it == growth_.tides.end())
     {
         // A region begins part way into its first tide, as the seed says for its slot.
-        it = tides_.emplace(slot, RegionTide{}).first;
+        it = growth_.tides.emplace(slot, RegionTide{}).first;
         it->second.tide =
             TideThreshold() * Gen::Rng(Gen::Key(regionSeed_, (uint64_t)slot, START_KEY)).Unit();
     }
@@ -433,8 +436,8 @@ void Simulation::StepTide(double passSeconds)
         const int slot = Gen::SlotOf(sv.second.systemId);
         if (slot < 0)
             continue;
-        playersSeen_[slot].insert(sv.first);
-        explored_.insert(sv.second.systemId);
+        growth_.playersSeen[slot].insert(sv.first);
+        growth_.explored.insert(sv.second.systemId);
         // ...and a region somebody comes to is not dead (S4).
         if (RegionOpening* o = LiveOpening(slot))
         {
@@ -457,13 +460,13 @@ void Simulation::StepTide(double passSeconds)
             TideOf(slot);
     const WorldRules::Tide& r = WorldRules::TideRules();
     const int passes = std::max(1, (int)std::lround(r.period / std::max(0.001, passSeconds)));
-    if (++tidePasses_ % passes != 0)
+    if (++growth_.tidePasses % passes != 0)
         return;
     std::map<int, std::set<int>> seen;
-    seen.swap(playersSeen_);
-    if (growthPaused_)
+    seen.swap(growth_.playersSeen);
+    if (growth_.growthPaused)
     {
-        for (auto& kv : tides_)
+        for (auto& kv : growth_.tides)
             kv.second.surveys = 0;
         return;
     }
@@ -498,23 +501,23 @@ void Simulation::StepTide(double passSeconds)
         t.fromExplore += explore;
         t.fromSurveys += surveys;
     }
-    for (auto& kv : tides_)
+    for (auto& kv : growth_.tides)
         kv.second.surveys = 0;
 
     // Where it breaks through: the most strained first, then the lower slot.
     std::vector<int> ready;
     for (int slot : edge)
-        if (tides_[slot].tide >= threshold)
+        if (growth_.tides[slot].tide >= threshold)
             ready.push_back(slot);
     std::sort(ready.begin(), ready.end(),
               [this](int a, int b)
               {
-                  const double ta = tides_.at(a).tide, tb = tides_.at(b).tide;
+                  const double ta = growth_.tides.at(a).tide, tb = growth_.tides.at(b).tide;
                   return ta != tb ? ta > tb : a < b;
               });
     for (int slot : ready)
     {
-        RegionTide& t = tides_[slot];
+        RegionTide& t = growth_.tides[slot];
         threshold = TideThreshold();
         if (t.tide < threshold)
             continue;
@@ -525,7 +528,7 @@ void Simulation::StepTide(double passSeconds)
         {
             // Nowhere to go: kept for the roaming holes (S9), and the region waits at the
             // threshold rather than gathering for ever.
-            surplusTide_ += t.tide - threshold;
+            growth_.surplusTide += t.tide - threshold;
             t.tide = threshold;
             continue;
         }
@@ -567,14 +570,14 @@ int Simulation::OpenNext(int fromSlot, const std::string& by, const std::string&
         // A slot that opens may take back a region that drifted away at the cap instead of a
         // fresh one (S4): drawn from where and how many openings in, never from when.
         bool back = false;
-        if (!archives_.empty())
+        if (!growth_.archives.empty())
         {
-            Gen::Rng rng(
-                Gen::Key(regionSeed_, RETURN_KEY, (uint64_t)slot, (uint64_t)openings_.size()));
+            Gen::Rng rng(Gen::Key(regionSeed_, RETURN_KEY, (uint64_t)slot,
+                                  (uint64_t)growth_.openings.size()));
             if (rng.Unit() < WorldRules::ArchiveRules().returnChance)
             {
-                auto pick = archives_.begin();
-                std::advance(pick, rng.Range(0, (int)archives_.size() - 1));
+                auto pick = growth_.archives.begin();
+                std::advance(pick, rng.Range(0, (int)growth_.archives.size() - 1));
                 back = BringBack(pick->first, slot, fromSlot, by, why) >= 0;
             }
         }
@@ -582,7 +585,7 @@ int Simulation::OpenNext(int fromSlot, const std::string& by, const std::string&
         {
             if (!OpenSlotFrom(slot, fromSlot, dataDir_))
                 return -1;
-            RegionOpening& o = openings_.back();
+            RegionOpening& o = growth_.openings.back();
             o.by = by;
             o.why = why;
             // Unstable until anchored, unless mouths are permanent at once (S4).
@@ -600,12 +603,12 @@ int Simulation::OpenNext(int fromSlot, const std::string& by, const std::string&
                               ? ". Unanchored, it collapses in " + Hours(o.closesAt - time_)
                               : std::string()));
         }
-        openedNow_.push_back(slot);
+        growth_.openedNow.push_back(slot);
         PublicChartsChanged();
     }
     // Word of it reaches the factions nearby, and the expeditions begin (S6).
     SendWordOfMouth(slot);
-    RegionTide& t = tides_[fromSlot];
+    RegionTide& t = growth_.tides[fromSlot];
     t = RegionTide{};
     t.lastMouthAt = time_;
     return slot;
@@ -622,8 +625,8 @@ void Simulation::MaterializeOpened(int slot)
             SeedAggregate(st, info);
             // A region back from the archive (S4): the names players gave it, and what had
             // become of what stood and lay in it, replayed as a save's changes are.
-            const auto back = returnState_.find(info.id);
-            if (back != returnState_.end())
+            const auto back = growth_.returnState.find(info.id);
+            if (back != growth_.returnState.end())
             {
                 const nlohmann::json r = nlohmann::json::parse(back->second);
                 st.agg.givenName = r.value("name", std::string());
@@ -646,7 +649,7 @@ void Simulation::MaterializeOpened(int slot)
             }
             fresh.push_back(&info);
         }
-    returnState_.clear();
+    growth_.returnState.clear();
     if (!materialized_)
         return;  // MaterializeAllSystems will build them with everything else
     for (const WorldLoader::SystemInfo* info : fresh)
@@ -656,7 +659,7 @@ void Simulation::MaterializeOpened(int slot)
     // route graph's, so it never goes through AddStatic -- but it is a change to the layer,
     // and a delta says so before any snapshot shows it (#38).
     PriceMarkets();  // the new systems' markets, and every route the mouth shortened
-    const RegionOpening& o = openings_.back();
+    const RegionOpening& o = growth_.openings.back();
     SystemState*         home = SystemById(o.mouth);
     const auto           mouths = wormholes_.find(o.mouth);
     if (home == nullptr || home->entities.empty() || mouths == wormholes_.end() ||
@@ -708,7 +711,7 @@ std::string Simulation::NativesLine(int slot) const
 std::vector<int> Simulation::TakeOpenedRegions()
 {
     std::vector<int> out;
-    out.swap(openedNow_);
+    out.swap(growth_.openedNow);
     return out;
 }
 
@@ -727,8 +730,8 @@ int Simulation::OpenMouthNow(int fromSlot, std::string& why)
         for (int slot : openSlots_)
             if (IsEdgeRegion(slot))
             {
-                const auto   t = tides_.find(slot);
-                const double tide = t == tides_.end() ? 0.0 : t->second.tide;
+                const auto   t = growth_.tides.find(slot);
+                const double tide = t == growth_.tides.end() ? 0.0 : t->second.tide;
                 if (tide > best)
                 {
                     best = tide;
@@ -749,8 +752,8 @@ int Simulation::OpenMouthNow(int fromSlot, std::string& why)
     const RegionOpening* target = OpeningOf(MouthTargetFrom(fromSlot));
     if (AtCap() && (target == nullptr || target->state != "drifted"))
     {
-        why = "the world is at its cap (" + std::to_string(maxRegions_) + " regions, " +
-              std::to_string(maxSystems_) + " systems)";
+        why = "the world is at its cap (" + std::to_string(growth_.maxRegions) + " regions, " +
+              std::to_string(growth_.maxSystems) + " systems)";
         return -1;
     }
     const int slot = OpenNext(fromSlot, "admin", std::string());
@@ -763,7 +766,7 @@ bool Simulation::RegenerateRegion(int slot, std::string& why)
 {
     why.clear();
     const RegionOpening* logged = nullptr;
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
         if (o.slot == slot)
             logged = &o;
     if (logged == nullptr)
@@ -798,7 +801,7 @@ bool Simulation::RegenerateRegion(int slot, std::string& why)
     }
     const Gen::Region region = Gen::GenerateRegion(params);
     // Every region opened from this one has its wormhole in a system of it.
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
         if (o.parent == slot && region.documents.count(o.mouth) == 0)
         {
             why = "region " + std::to_string(o.slot) + " opened from " + o.mouth +
@@ -852,7 +855,7 @@ std::string Simulation::MouthProblem(const ClientSession& s, const Entity& g) co
 
 Simulation::RegionOpening* Simulation::CrossingOf(const std::string& a, const std::string& b) const
 {
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
     {
         if (o.parent < 0 || o.state == "archived" || o.state == "returned")
             continue;
@@ -1107,9 +1110,9 @@ void Simulation::StepMouths()
 {
     const WorldRules::Mouths& m = WorldRules::MouthRules();
     // By slot, not by reference: a collapse changes the galaxy, not the log's length.
-    for (size_t i = 0; i < openings_.size(); i++)
+    for (size_t i = 0; i < growth_.openings.size(); i++)
     {
-        RegionOpening& o = openings_[i];
+        RegionOpening& o = growth_.openings[i];
         if (o.state != "unstable" || o.closesAt <= 0.0)
             continue;
         if (!o.warned && time_ >= o.closesAt - m.warnHours * HOUR && time_ < o.closesAt)
@@ -1238,7 +1241,7 @@ void Simulation::AnchorLost(SystemState& st, const std::string& owner, const std
     // The mouth it held, if no other Anchor holds it as well, is unstable again: a day to
     // anchor it anew, or it collapses.
     const Blueprint* bp = Blueprints::Find(ANCHOR_BLUEPRINT);
-    for (RegionOpening& o : openings_)
+    for (RegionOpening& o : growth_.openings)
     {
         if (o.state != "anchored" || o.parent < 0)
             continue;

@@ -12,6 +12,7 @@
 #include "sim/FactionDirector.h"
 #include "sim/StructureSchedule.h"
 #include "sim/FactionMind.h"
+#include "sim/GalaxyGrowth.h"
 #include "sim/Orders.h"
 #include "sim/ClientSession.h"
 #include "sim/Corporation.h"
@@ -218,39 +219,8 @@ public:
     // region of another seed is attached.
     bool AttachRegion(uint64_t seed, int slot, const std::string& homeId,
                       const std::string& systemsDir, int systems = 0);
-    // --- The opening log (#342 S3; Simulation_Tide.cpp) ---
-    // Every region open in the world, in the order it opened: the world is its seed plus
-    // this, then the pins, then what was changed. Saved in world.json.
-    struct RegionOpening
-    {
-        int         slot = 0;
-        double      openedAt = 0.0;  // world time
-        int         parent = -1;     // the slot whose mouth leads in; -1 for a centre
-        std::string mouth;           // the system of the parent the wormhole is in
-        // open (a centre, or a frontier the world began with: its gates stay), unstable (a
-        // mouth the tide opened, until it is anchored or collapses), anchored, drifted (its
-        // mouth collapsed: cut off, kept), archived (drifted away at the cap: not in the
-        // galaxy), returned (archived, and since brought back as another entry) -- S4.
-        std::string state = "open";
-        std::string by = "world";  // world (it opened with the world), tide, admin
-        std::string why;           // what the tide was made of, when it was the tide
-        // The mouth (#342 S4): when the present one opened -- openedAt, or a later reopening
-        // of a drifted region -- when it collapses while unstable, and whether the chronicle
-        // has said it is failing.
-        double mouthAt = 0.0;
-        double closesAt = 0.0;
-        bool   warned = false;
-        // Who anchored it, as its gates are named: a faction's name or a pilot's.
-        std::string anchoredBy;
-        double      anchoredAt = 0.0;
-        // When a player was last in it, and whether the chronicle has said it is drifting
-        // away (at the cap, S4).
-        double lastVisit = 0.0;
-        bool   fading = false;
-        // Archived: the archive it went to. Otherwise the archive it came back from; -1.
-        int archive = -1;
-    };
-    const std::vector<RegionOpening>& OpeningLog() const { return openings_; }
+    using RegionOpening = Growth::RegionOpening;
+    const std::vector<RegionOpening>& OpeningLog() const { return growth_.openings; }
     // The entry of the log that is slot `slot` now -- not one archived from it -- or null.
     const RegionOpening* OpeningOf(int slot) const;
     // The system a region's wormhole leads into: ring 1, the far side of the mouth.
@@ -362,25 +332,8 @@ public:
     bool BeamHiddenFrom(const ClientSession& s, const std::string& systemId,
                         const FireEvent& f) const;
 
-    // --- The archive (#342 S4; Simulation_Drift.cpp) ---
-    // A region that drifted away at the cap: its documents as they were sealed, and what had
-    // become of it -- what stood and lay in each system, the names players gave, its history.
-    struct ArchivedRegion
-    {
-        int         id = 0;
-        int         slot = 0;  // where it was
-        double      archivedAt = 0.0;
-        std::string text;  // the archive document, as JSON
-        // The world version of the build that sealed it, for what its changes mean when it
-        // comes back (#498): a member's structure before 18 is the corporation's.
-        int version = Save::WORLD_VERSION;
-        // Its geography as charts keep it (#431 slice 15): each system located, named and
-        // linked, under its archived id (ArchivedId) -- what a pilot who knew it still sees,
-        // marked drifted. Made from `text`, never saved apart from it.
-        std::vector<WorldLoader::SystemInfo> charts;
-        std::vector<WorldLoader::SystemLink> links;
-    };
-    const std::map<int, ArchivedRegion>& Archives() const { return archives_; }
+    using ArchivedRegion = Growth::ArchivedRegion;
+    const std::map<int, ArchivedRegion>& Archives() const { return growth_.archives; }
     // Where archive `id` is kept under `dir`.
     static std::string ArchivePath(const std::string& dir, int id);
     // Admin, and a test: region `slot` drifts away now, if it may -- a frontier with nothing
@@ -395,16 +348,8 @@ public:
     bool IsArchivedChart(const std::string& id) const;
     // Whether `systemId`'s region drifted away and was not found again: cut off, or archived.
     bool DriftedAway(const std::string& systemId) const;
-    // Every renaming of charts so far (#431 slice 15): a region's ids into the archive, or out
-    // of it into the slot it came back to (`back`: what was seen there is outdated). Sessions
-    // and corporations are renamed at once; an account saved before is renamed when it is
-    // read, from the number of renamings its save says it had seen.
-    struct ChartRename
-    {
-        std::map<std::string, std::string> ids;
-        bool                               back = false;
-    };
-    const std::vector<ChartRename>& ChartRenames() const { return chartRenames_; }
+    using ChartRename = Growth::ChartRename;
+    const std::vector<ChartRename>& ChartRenames() const { return growth_.chartRenames; }
 
     // A world file's header, read before the galaxy is made from it: its seed, the rules'
     // versions, its centres, its log and its growth settings. False when the file is missing
@@ -497,16 +442,8 @@ public:
     // Whether a pack has a part in region `slot`, or links to it: such a region never drifts.
     bool IsPackSlot(int slot) const { return packSlots_.count(slot) != 0; }
 
-    // --- The tide (#342 S3; Simulation_Tide.cpp, rules in WorldRules.h) ---
-    // What one region's tide is, and what it was made of since its last mouth.
-    struct RegionTide
-    {
-        double tide = 0.0;
-        double fromTime = 0.0, fromPlayers = 0.0, fromExplore = 0.0, fromSurveys = 0.0;
-        int    surveys = 0;            // faction surveys of the region this period
-        double lastMouthAt = -1.0e18;  // when it last opened one
-    };
-    const std::map<int, RegionTide>& Tides() const { return tides_; }
+    using RegionTide = Growth::RegionTide;
+    const std::map<int, RegionTide>& Tides() const { return growth_.tides; }
     // Where the tide breaks through now: threshold * (1 + open regions / maxRegions).
     double TideThreshold() const;
     // An open region with a free slot beside it in the skeleton.
@@ -517,15 +454,15 @@ public:
     // The cap (server settings): no slot opens once the world has this many regions or
     // systems. 0 leaves one as it was; the defaults are the skeleton's size and 2000.
     void SetGrowthCap(int maxRegions, int maxSystems);
-    int  MaxRegions() const { return maxRegions_; }
-    int  MaxSystems() const { return maxSystems_; }
+    int  MaxRegions() const { return growth_.maxRegions; }
+    int  MaxSystems() const { return growth_.maxSystems; }
     bool AtCap() const;
     // Tide that crossed the threshold at the cap and had nowhere to go, kept for the roaming
     // holes of S9.
-    double SurplusTide() const { return surplusTide_; }
+    double SurplusTide() const { return growth_.surplusTide; }
     // Admin: growth stopped -- no tide gathers and no mouth opens until it is resumed. Saved.
-    void PauseGrowth(bool paused) { growthPaused_ = paused; }
-    bool GrowthPaused() const { return growthPaused_; }
+    void PauseGrowth(bool paused) { growth_.growthPaused = paused; }
+    bool GrowthPaused() const { return growth_.growthPaused; }
     // Admin: open a mouth now from region `fromSlot` (-1: the edge region whose tide is
     // highest), whatever its tide, the gap and the young mouths; never past the cap. The slot
     // opened, or -1 with `why` saying why not.
@@ -2305,19 +2242,9 @@ private:
     void AddRegion(const Gen::Region& region);
 
     // Growth (#342 S3; Simulation_Tide.cpp).
-    std::string                  dataDir_;  // OpenGalaxy's: pins and systems for a region opening
-    std::string                  sealDir_;
-    std::vector<RegionOpening>   openings_;
-    std::map<int, std::string>   sealedIn_;     // read from files for a log replay, not yet used
-    std::map<int, RegionTide>    tides_;        // saved
-    std::set<std::string>        explored_;     // systems a player has been in (saved)
-    std::set<std::string>        surveyed_;     // ...and those a faction surveyed (saved)
-    std::map<int, std::set<int>> playersSeen_;  // sessions per region this period
-    std::vector<int>             openedNow_;
-    int                          tidePasses_ = 0;
-    int                          maxRegions_ = 0, maxSystems_ = 2000;
-    double                       surplusTide_ = 0.0;
-    bool                         growthPaused_ = false;
+    std::string  dataDir_;  // OpenGalaxy's: pins and systems for a region opening
+    std::string  sealDir_;
+    GalaxyGrowth growth_;  // the log, the tide, the archive (GalaxyGrowth.h)
     // The region of `slot`, made: read from its sealed file when the log replay has one,
     // else generated by `params` and sealed (kept, and written under SealDir).
     Gen::Region MakeSealed(int slot, const Gen::RegionParams& params);
@@ -2408,9 +2335,6 @@ private:
     void ResolveAnchor(const Plan& p);
 
     // The archive (#342 S4; Simulation_Drift.cpp).
-    std::map<int, ArchivedRegion> archives_;
-    int                           nextArchive_ = 1;
-    std::vector<ChartRename>      chartRenames_;  // saved with the archive
     // Renames `known` (keys of ClientSession::known) and `sightings` by one renaming.
     static void RenameKnowledge(std::set<std::string>&                        known,
                                 std::map<std::string, WorldLoader::Sighting>& sightings,
@@ -2421,8 +2345,7 @@ private:
     static void ChartArchive(ArchivedRegion& a);
     // A region coming back: what AttachRegion makes in place of the slot's own (null: its own),
     // and what is restored into its systems when they are built, by system id.
-    const Gen::Region*                 returning_ = nullptr;
-    std::map<std::string, std::string> returnState_;  // JSON, as text
+    const Gen::Region* returning_ = nullptr;
     // Once a period, at the cap: regions nobody comes to are warned, then drift away.
     void StepDrift();
     bool ArchiveRegion(int slot, std::string& why);

@@ -429,7 +429,7 @@ bool Simulation::ParamsFor(int slot, const std::string& homeId, const std::strin
     // times the slot has opened before, which the log says, so a world remade from its log
     // makes the same one. The first time, the slot's own.
     int before = 0;
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
         if (o.slot == slot && (o.state == "archived" || o.state == "returned"))
             before++;
     if (before > 0)
@@ -607,8 +607,8 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
     skeleton_ = Gen::GenerateGalaxySkeleton(params);
     regionSeed_ = params.seed;
     dataDir_ = dataDir;
-    if (maxRegions_ <= 0 || maxRegions_ > (int)skeleton_.slots.size())
-        maxRegions_ = (int)skeleton_.slots.size();
+    if (growth_.maxRegions <= 0 || growth_.maxRegions > (int)skeleton_.slots.size())
+        growth_.maxRegions = (int)skeleton_.slots.size();
     // A new world opens what Gen::GenerateWorld opens, in its order -- the editor, galaxydump
     // and the tests make the same regions, because the rules are one (#140). A saved one
     // opens what its log says, in the order it opened (S3), each as it was sealed.
@@ -647,7 +647,7 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
                              std::istreambuf_iterator<char>());
             Gen::Region check;
             if (ReadSealedText(text, regionSeed_, check) && check.slot == e.slot)
-                sealedIn_[e.slot] = std::move(text);
+                growth_.sealedIn[e.slot] = std::move(text);
             else
                 TraceLog(LOG_WARNING, "World: %s is not this world's region %d -- made again",
                          SealedPath(sealDir_, e.slot).c_str(), e.slot);
@@ -658,7 +658,7 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
         // stays, as history, and as the count of how often its slot has opened.
         if (e.state == "archived" || e.state == "returned")
         {
-            openings_.push_back(e);
+            growth_.openings.push_back(e);
             continue;
         }
         const bool centre = e.slot >= 0 && e.slot < (int)skeleton_.slots.size() &&
@@ -688,7 +688,7 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
             }
         }
         // As the log says, when there is one: when it opened, from where, and why.
-        RegionOpening&    now = openings_.back();
+        RegionOpening&    now = growth_.openings.back();
         const std::string mouth = now.mouth;
         const int         parent = now.parent;
         now = e;
@@ -699,10 +699,10 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
     if (log.empty())
         WeaveRegionPacks();
     // ...and one whose mouth collapsed is cut off from its parent (S4): no route, no gates.
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
         if (o.state == "drifted")
             CutMouth(o);
-    sealedIn_.clear();
+    growth_.sealedIn.clear();
     hasRegion_ = true;
     return !starts_.empty();
 }
@@ -1865,15 +1865,9 @@ void Simulation::Reset()
     migrants_.clear();
     arrivals_.clear();
     // The tide is the save's; the log and the sealed regions are the galaxy's (OpenGalaxy).
-    tides_.clear();
-    explored_.clear();
-    surveyed_.clear();
-    playersSeen_.clear();
-    surplusTide_ = 0.0;
-    growthPaused_ = false;
-    tidePasses_ = 0;
-    archives_.clear();  // the save's too (S4)
-    nextArchive_ = 1;
+    growth_.ResetTide();
+    growth_.archives.clear();  // the save's too (S4)
+    growth_.nextArchive = 1;
     legacyKnown_.clear();  // a save's (#431)
     PublicChartsChanged();
 }
@@ -1990,7 +1984,7 @@ WorldLoader::Universe Simulation::BuildIndex(const ClientSession* s) const
     // it, or a faction charted for everyone, stays on their map, marked drifted, with no way
     // there -- while its slot is empty: a region that took its place is where it was.
     const Corps::Corp* corp = s->accountName.empty() ? nullptr : corps_.Of(s->accountName);
-    for (const auto& kv : archives_)
+    for (const auto& kv : growth_.archives)
     {
         if (openSlots_.count(kv.second.slot) != 0)
             continue;

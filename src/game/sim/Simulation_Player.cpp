@@ -2161,7 +2161,7 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     j["observed"] = observed;
     // ...and how many renamings of charts it has been through (#431 slice 15), so a load reads
     // it through the ones after. Ignored by an older build: no version bump.
-    j["chartRenames"] = chartRenames_.size();
+    j["chartRenames"] = growth_.chartRenames.size();
     if (!s.accountName.empty())
         designs_.SetUsers(s.accountName, named);
 
@@ -2332,8 +2332,8 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     const json   seenRenames = j.value("chartRenames", json());
     const size_t renamesSeen =
         seenRenames.is_number_unsigned() ? seenRenames.get<size_t>() : (size_t)0;
-    for (size_t i = renamesSeen; i < chartRenames_.size(); ++i)
-        RenameKnowledge(scanned, seenThere, chartRenames_[i]);
+    for (size_t i = renamesSeen; i < growth_.chartRenames.size(); ++i)
+        RenameKnowledge(scanned, seenThere, growth_.chartRenames[i]);
     // A system of the galaxy, or one of the archive's (slice 15): kept, marked drifted.
     auto there = [&](const std::string& id) { return HasSystem(id) || IsArchivedChart(id); };
 
@@ -2365,10 +2365,10 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         const auto& pl = j["place"];
         std::string sys = pl.value("system", std::string());
         // Left in a region that went into the archive and came back since: where it is now.
-        for (size_t i = renamesSeen; i < chartRenames_.size(); ++i)
+        for (size_t i = renamesSeen; i < growth_.chartRenames.size(); ++i)
         {
-            const auto to = chartRenames_[i].ids.find(sys);
-            if (to != chartRenames_[i].ids.end())
+            const auto to = growth_.chartRenames[i].ids.find(sys);
+            if (to != growth_.chartRenames[i].ids.end())
                 sys = to->second;
         }
         if (!sys.empty() && HasSystem(sys))
