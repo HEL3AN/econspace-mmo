@@ -44,11 +44,10 @@ std::vector<HangarRow> Hangar(const std::vector<ShipType>& catalog, const std::v
 {
     const float            mul = ShipPriceMultiplier(standing);
     std::vector<HangarRow> rows;
-    for (int i = 0; i < (int)catalog.size(); i++)
+    auto                   fill = [&](HangarRow& r, int hull)
     {
-        const ShipType& t = catalog[i];
-        HangarRow       r;
-        r.index = i;
+        const ShipType& t = catalog[(size_t)hull];
+        r.index = hull;
         r.name = t.name;
         r.speed = t.stats.maxSpeed;
         r.cargo = t.stats.cargoCapacity;
@@ -57,12 +56,35 @@ std::vector<HangarRow> Hangar(const std::vector<ShipType>& catalog, const std::v
         r.hull = t.stats.hull;
         r.damage = t.stats.damage;
         r.price = t.price * mul;
-        const bool mine = i == 0 || std::find(owned.begin(), owned.end(), i) != owned.end();
-        r.berth = i == current ? Berth::Current : mine ? Berth::Owned : Berth::ForSale;
-        r.affordable = r.berth != Berth::ForSale || money >= r.price;
         // Each ship has a hold of its own (#472 slice 8): what this one carries stays aboard it.
         r.holdFits = true;
         (void)cargoUsed;
+    };
+    // The ships the account owns, one row each (#572) -- two of a hull are two rows -- and then
+    // every hull there is to buy, as many of each as the pilot can pay for.
+    std::vector<int> mine = owned;
+    if (std::find(mine.begin(), mine.end(), 0) == mine.end())
+        mine.insert(mine.begin(), 0);  // the starter is always the pilot's
+    for (int key : mine)
+    {
+        const int hull = ShipHull(key);
+        if (hull < 0 || hull >= (int)catalog.size())
+            continue;
+        HangarRow r;
+        fill(r, hull);
+        r.key = key;
+        if (key / SHIP_STRIDE > 0)
+            r.name += " #" + std::to_string(key / SHIP_STRIDE + 1);
+        r.berth = key == current ? Berth::Current : Berth::Owned;
+        r.affordable = true;
+        rows.push_back(r);
+    }
+    for (int i = 0; i < (int)catalog.size(); i++)
+    {
+        HangarRow r;
+        fill(r, i);
+        r.berth = Berth::ForSale;
+        r.affordable = money >= r.price;
         rows.push_back(r);
     }
     return rows;

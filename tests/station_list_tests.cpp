@@ -76,18 +76,25 @@ TEST_CASE(
 
     // Flying the second hull, owning the third, with little money and a full small hold.
     const int  cargoUsed = catalog[1].stats.cargoCapacity;
-    const auto rows = StationList::Hangar(catalog, { 1, 2 }, 1, 100.0, cargoUsed, RepTier::Neutral);
-    REQUIRE(rows.size() == catalog.size());
-
-    CHECK(rows[0].berth == StationList::Berth::Owned);  // the starter is always owned
-    CHECK(rows[1].berth == StationList::Berth::Current);
-    CHECK(rows[2].berth == StationList::Berth::Owned);
-    CHECK(rows[2].affordable);  // owned: switching is free
-    for (size_t i = 3; i < rows.size(); i++)
+    const auto all = StationList::Hangar(catalog, { 1, 2 }, 1, 100.0, cargoUsed, RepTier::Neutral);
+    // One row for each ship owned -- the starter always is -- then one for each hull on sale
+    // (#572: an account may own several of a hull, so what is owned is not taken off the list).
+    REQUIRE(all.size() == 3 + catalog.size());
+    CHECK(all[0].berth == StationList::Berth::Owned);  // the starter is always owned
+    CHECK(all[0].key == 0);
+    CHECK(all[1].berth == StationList::Berth::Current);
+    CHECK(all[1].key == 1);
+    CHECK(all[2].berth == StationList::Berth::Owned);
+    CHECK(all[2].affordable);  // owned: switching is free
+    const std::vector<StationList::HangarRow> rows(all.begin(), all.begin() + 3);
+    for (size_t i = 3; i < all.size(); i++)
     {
-        CHECK(rows[i].berth == StationList::Berth::ForSale);
-        CHECK(rows[i].price == doctest::Approx(catalog[i].price));
-        CHECK_FALSE(rows[i].affordable);
+        const size_t hull = i - 3;
+        CHECK(all[i].berth == StationList::Berth::ForSale);
+        CHECK(all[i].key == -1);
+        CHECK(all[i].index == (int)hull);
+        CHECK(all[i].price == doctest::Approx(catalog[hull].price));
+        CHECK(all[i].affordable == (100.0 >= all[i].price));  // the starter costs nothing
     }
     CHECK(rows[1].index == 1);
     CHECK(rows[1].name == catalog[1].name);
@@ -99,15 +106,16 @@ TEST_CASE(
     CHECK(rows[1].damage == doctest::Approx(catalog[1].stats.damage));
 
     // A hold smaller than what is carried is said before the server refuses it (#219).
-    for (const StationList::HangarRow& r : rows)
+    for (const StationList::HangarRow& r : all)
         CHECK(r.holdFits == (r.cargo >= cargoUsed));
 
     // Standing prices the hull, by the same table the server charges by (#109).
-    const auto hated = StationList::Hangar(catalog, {}, 0, 1e9, 0, RepTier::Hated);
-    const auto allied = StationList::Hangar(catalog, {}, 0, 1e9, 0, RepTier::Allied);
-    const int  last = (int)catalog.size() - 1;
+    const auto   hated = StationList::Hangar(catalog, {}, 0, 1e9, 0, RepTier::Hated);
+    const auto   allied = StationList::Hangar(catalog, {}, 0, 1e9, 0, RepTier::Allied);
+    const size_t last = hated.size() - 1;  // the last hull on sale
+    const int    hull = (int)catalog.size() - 1;
     CHECK(hated[last].price ==
-          doctest::Approx(catalog[last].price * ShipPriceMultiplier(RepTier::Hated)));
+          doctest::Approx(catalog[hull].price * ShipPriceMultiplier(RepTier::Hated)));
     CHECK(allied[last].price < hated[last].price);
     CHECK(allied[last].affordable);
 }

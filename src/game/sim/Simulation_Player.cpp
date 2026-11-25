@@ -135,9 +135,10 @@ int Simulation::HomeOf(const ClientSession& s, std::string& systemId) const
 double Simulation::ValueOf(const ClientSession& s, int catalogIndex, const SystemState& st) const
 {
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    if (catalogIndex < 0 || catalogIndex >= (int)catalog.size())
+    const int                    hull = ShipHull(catalogIndex);  // `catalogIndex` is a ship's key
+    if (hull < 0 || hull >= (int)catalog.size())
         return 0.0;
-    const ShipType&         t = catalog[catalogIndex];
+    const ShipType&         t = catalog[hull];
     const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
     const Ships::Design*    stock = ships.FindDesign(t.stats.design);
     const Ships::Design*    flown = designs_.Find(s.DesignOf(catalogIndex));
@@ -154,9 +155,10 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     if (!s.ship)
         return;
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    const int                    hull = s.currentShip;
-    const bool                   known = hull >= 0 && hull < (int)catalog.size();
-    const std::string            hullName = known ? catalog[hull].name : std::string("ship");
+    const int                    hull = s.currentShip;  // a ship's key
+    const int                    index = ShipHull(hull);
+    const bool                   known = index >= 0 && index < (int)catalog.size();
+    const std::string            hullName = known ? catalog[index].name : std::string("ship");
     const std::string            starter = catalog.empty() ? std::string("ship") : catalog[0].name;
     SystemState*                 here = SystemOf(s);
     const std::string            where = SystemName(s.systemId);
@@ -193,7 +195,7 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
         // (#472 slice 10); the hull's own is the hull's, and an NPC ship drops none.
         const Ships::Catalogue& designs = Archetypes::ShipCatalogue();
         if (known)
-            if (const Ships::Design* stockDesign = designs.FindDesign(catalog[hull].stats.design))
+            if (const Ships::Design* stockDesign = designs.FindDesign(catalog[index].stats.design))
                 if (const Ships::Design* flown = designs_.Find(s.DesignOf(hull)))
                     for (const auto& [moduleId, n] : Ships::ModulesBeyond(*stockDesign, *flown))
                     {
@@ -293,9 +295,9 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
 bool Simulation::InsureShip(ClientSession& s, int catalogIndex)
 {
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    if (catalogIndex < 0 || catalogIndex >= (int)catalog.size())
+    if (ShipHull(catalogIndex) < 0 || ShipHull(catalogIndex) >= (int)catalog.size())
         return false;
-    const std::string name = catalog[catalogIndex].name;
+    const std::string name = catalog[ShipHull(catalogIndex)].name;
     auto              refuse = [&](const std::string& why)
     {
         s.RecordEvent(Ev::Kind::Notice, "Insurance refused: " + why);
@@ -949,9 +951,9 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
 bool Simulation::SwitchShip(ClientSession& s, int catalogIndex)
 {
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    if (!s.ship || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
+    if (!s.ship || ShipHull(catalogIndex) < 0 || ShipHull(catalogIndex) >= (int)catalog.size())
         return false;
-    const ShipType& t = catalog[catalogIndex];
+    const ShipType& t = catalog[ShipHull(catalogIndex)];
     if (!s.Owns(catalogIndex))
     {
         // Not theirs; the client asking nicely does not make it so.
@@ -1087,17 +1089,11 @@ bool Simulation::PayBounty(ClientSession& s, FactionId faction)
 bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
 {
     const std::vector<ShipType>& catalog = GetShipCatalog();
+    // `catalogIndex` is a hull: as many of one kind as the pilot can pay for, each its own ship
+    // with its own key, design, hold and policy (#572).
     if (!s.ship || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
         return false;
     const ShipType& t = catalog[catalogIndex];
-    // A ship already in the hangar is switched to for nothing (SwitchShip). Buying it again
-    // used to charge the full price a second time and hand back what the account already had.
-    if (s.Owns(catalogIndex))
-    {
-        s.RecordEvent(Ev::Kind::Notice,
-                      "Purchase refused: you already own a " + t.name + "; switch to it instead");
-        return false;
-    }
     if (!s.IsDocked())
     {
         s.RecordEvent(Ev::Kind::Notice, "Purchase refused: dock at a shipyard first");
@@ -1125,8 +1121,9 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
         return false;
     }
     s.account.AddMoney(-price);
-    s.ownedShips.push_back(catalogIndex);
-    s.shipDesigns[catalogIndex] = t.stats.design;  // a new ship is the stock one
+    const int key = s.NextKey(catalogIndex);
+    s.ownedShips.push_back(key);
+    s.shipDesigns[key] = t.stats.design;  // a new ship is the stock one
     // The ship flown so far stays here with what it carries; the new one has an empty hold.
     ClientSession::Berth left;
     left.place = PlaceKeyHere(s);
@@ -1134,7 +1131,7 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
     s.berths[s.currentShip] = std::move(left);
     s.ship->Refit(t.stats);
     s.ship->ClearCargo();
-    s.currentShip = catalogIndex;
+    s.currentShip = key;
     s.RecordEvent(Ev::Kind::Notice,
                   "Bought a " + t.name + " for " + Credits(price) + "; now flying it");
     return true;
@@ -1145,10 +1142,10 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
     if (!s.ship)
         return false;
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    const int                    hull = s.currentShip;
-    if (hull < 0 || hull >= (int)catalog.size())
+    const int                    hull = s.currentShip;  // a ship's key
+    if (ShipHull(hull) < 0 || ShipHull(hull) >= (int)catalog.size())
         return false;
-    const std::string name = catalog[hull].name;
+    const std::string name = catalog[ShipHull(hull)].name;
     auto              refuse = [&](const std::string& why)
     {
         s.RecordEvent(Ev::Kind::Notice, "Refit refused: " + why);
@@ -1169,7 +1166,7 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
         return refuse("this station has no shipyard");
 
     const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
-    const Ships::Design*    stock = ships.FindDesign(catalog[hull].stats.design);
+    const Ships::Design*    stock = ships.FindDesign(catalog[ShipHull(hull)].stats.design);
     const Ships::Design*    now = designs_.Find(s.DesignOf(hull));
     if (stock == nullptr || now == nullptr)
         return false;
@@ -1307,7 +1304,7 @@ bool Simulation::SaveDesign(ClientSession& s, const std::string& name,
         return false;
     };
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    const int                    hull = s.currentShip;
+    const int                    hull = ShipHull(s.currentShip);
     if (!s.ship || hull < 0 || hull >= (int)catalog.size())
         return false;
     std::string why;
@@ -1385,7 +1382,7 @@ bool Simulation::ApplyDesign(ClientSession& s, const std::string& name)
     const std::vector<ShipType>& catalog = GetShipCatalog();
     if (hull < 0 || hull >= (int)catalog.size())
         return refuse("design '" + name + "' is for no hull in the hangar");
-    if (hull != s.currentShip)
+    if (hull != ShipHull(s.currentShip))
         return refuse("design '" + name + "' is for the " + catalog[hull].name +
                       "; switch to one first");
     // Its fit, as a player would send it: one price and one set of rules for both (#109).
@@ -2426,7 +2423,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 idx = v.value("hull", -1);
                 design = v.value("design", std::string());
             }
-            if (idx < 0 || idx >= hulls || s.Owns(idx))
+            if (idx < 0 || ShipHull(idx) >= hulls || s.Owns(idx))
                 continue;
             s.ownedShips.push_back(idx);
             if (version >= 10 && v.is_object() && v.contains("at") && !foreign)
@@ -2442,17 +2439,17 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                     }
                 s.berths[idx] = std::move(b);
             }
-            const std::string stock = GetShipCatalog()[idx].stats.design;
+            const std::string stock = GetShipCatalog()[ShipHull(idx)].stats.design;
             // A design the server no longer has -- or one that is not this hull's -- is
             // not flown as something else: the ship is its hull's stock design again, and
             // the player is told.
             if (design.empty() || design == stock)
                 continue;
             ShipStats stats;
-            if (designs_.Find(design) == nullptr || HullOf(design) != idx ||
+            if (designs_.Find(design) == nullptr || HullOf(design) != ShipHull(idx) ||
                 !ShipStatsFor(design, stats))
             {
-                s.RecordEvent(Ev::Kind::Notice, "Your " + GetShipCatalog()[idx].name +
+                s.RecordEvent(Ev::Kind::Notice, "Your " + GetShipCatalog()[ShipHull(idx)].name +
                                                     "'s fit is no longer valid; it is back to "
                                                     "its stock fit");
                 continue;
@@ -2519,7 +2516,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             s.berths[hull] = ClientSession::Berth();
     if (s.ship)
     {
-        ShipStats stats = GetShipCatalog()[s.currentShip].stats;
+        ShipStats stats = GetShipCatalog()[ShipHull(s.currentShip)].stats;
         ShipStatsFor(s.DesignOf(s.currentShip), stats);
         s.ship->Refit(stats);
     }

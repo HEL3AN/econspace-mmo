@@ -371,7 +371,7 @@ const Ships::Design* CurrentHull(const View& view)
 {
     if (view.snapshot == nullptr)
         return nullptr;
-    const int                    i = view.snapshot->player.shipIndex;
+    const int                    i = ShipHull(view.snapshot->player.shipIndex);  // a ship's key
     const std::vector<ShipType>& catalog = GetShipCatalog();
     if (i < 0 || i >= (int)catalog.size())
         return nullptr;
@@ -626,7 +626,7 @@ std::vector<SavedDesignRow> SavedDesigns(const View& view)
         if (r.known)
         {
             r.hull = catalog[(size_t)r.hullIndex].name;
-            r.thisHull = r.hullIndex == view.snapshot->player.shipIndex;
+            r.thisHull = r.hullIndex == ShipHull(view.snapshot->player.shipIndex);
             r.flown = r.thisHull && now != nullptr && now->id == e.design;
             if (r.thisHull)
                 r.quote = QuoteFit(view, Ships::PlayerLines(*d));
@@ -962,14 +962,6 @@ std::string DescribeHangar(const View& view)
     const Proto::PlayerView&     p = view.snapshot->player;
     const std::vector<ShipType>& catalog = GetShipCatalog();
 
-    auto owns = [&p](int i)
-    {
-        for (int o : p.ownedShips)
-            if (o == i)
-                return true;
-        return false;
-    };
-
     // Outside a station the prices are the catalog's: what a station charges depends on who
     // owns it, and there is no station to ask.
     const FactionId sf = DockedFaction(view);
@@ -982,64 +974,75 @@ std::string DescribeHangar(const View& view)
             ? Fmt("HANGAR at %s, owned by %s -- money %.0f cr\n",
                   StationName(view, p.dockedStationId).c_str(), FactionName(sf).c_str(), p.money)
             : Fmt("HANGAR -- money %.0f cr; dock at a station to buy or switch ships\n", p.money);
-    for (size_t i = 0; i < catalog.size(); i++)
+    // What the account owns, ship by ship (#572): each has its own key, which switch_ship and
+    // insure_ship take; the hull's name says what it is, and "#2" the second of a kind.
+    for (size_t k = 0; k < p.ownedShips.size(); k++)
     {
-        const ShipType& t = catalog[i];
+        const int key = p.ownedShips[k];
+        const int hull = ShipHull(key);
+        if (hull < 0 || hull >= (int)catalog.size())
+            continue;
+        const ShipType& t = catalog[(size_t)hull];
         std::string     status;
-        if ((int)i == p.shipIndex)
+        if (key == p.shipIndex)
             status = "FLYING";
-        else if (owns((int)i))
-        {
-            status = "owned, switch_ship for free";
-            for (size_t k = 0; k < p.ownedShips.size(); k++)
-                if (p.ownedShips[k] == (int)i && k < p.shipHere.size() && !p.shipHere[k])
-                    status =
-                        "owned, parked at " +
-                        (k < p.shipPlaces.size() ? p.shipPlaces[k] : std::string("elsewhere")) +
-                        " -- switch there";
-        }
-        else if (p.docked)
-            status = Fmt("for sale %.0f cr%s", t.price * mul,
-                         p.money >= t.price * mul ? "" : " (cannot afford)");
+        else if (k < p.shipHere.size() && !p.shipHere[k])
+            status = "owned, parked at " +
+                     (k < p.shipPlaces.size() ? p.shipPlaces[k] : std::string("elsewhere")) +
+                     " -- switch there";
         else
-            status = Fmt("list price %.0f cr", t.price);
+            status = "owned, switch_ship for free";
         // The hull's numbers are its design's (#279 step 5), the ones the server flies it by
         // -- and an owned one's are its own, refitted or not (#279 fitting).
         ShipStats st = t.stats;
-        for (size_t k = 0; k < p.ownedShips.size() && k < p.shipDesigns.size(); k++)
-            if (p.ownedShips[k] == (int)i && p.shipDesigns[k] != t.stats.design &&
-                StatsOfDesign(p.shipDesigns[k], st))
-                status += ", refitted";
+        if (k < p.shipDesigns.size() && p.shipDesigns[k] != t.stats.design &&
+            StatsOfDesign(p.shipDesigns[k], st))
+            status += ", refitted";
+        const std::string name =
+            t.name + (key / SHIP_STRIDE > 0 ? Fmt(" #%d", key / SHIP_STRIDE + 1) : std::string());
         out += Fmt("  [%d] %-8s speed %.0f  turn %.1f  cargo %d  mining %.1f/s  hull %.0f  "
                    "guns %.0f/shot  %s\n",
-                   (int)i, t.name.c_str(), st.maxSpeed, st.turnSpeed, st.cargoCapacity,
-                   st.miningRate, st.hull, st.damage, status.c_str());
+                   key, name.c_str(), st.maxSpeed, st.turnSpeed, st.cargoCapacity, st.miningRate,
+                   st.hull, st.damage, status.c_str());
         // What losing it would cost, and what insurance would do about it (#344).
-        if (owns((int)i))
-        {
-            const InsuranceQuote q = QuoteInsurance(view, (int)i);
-            std::string          line = Fmt("       worth %.0f cr here; ", q.value);
-            if (q.cover > 0.0)
-                line += Fmt("insured for %.0f cr (pays %.0f if lost)", q.cover,
-                            InsurancePayout(q.cover, q.value));
-            else if (q.value > 0.0)
-                line += "NOT insured";
-            else
-                line += "free to replace";
-            if (q.problem.empty())
-                line += Fmt("; insure_ship covers %.0f for %.0f cr", q.value, q.premium);
-            out += line + "\n";
-        }
+        const InsuranceQuote q = QuoteInsurance(view, key);
+        std::string          line = Fmt("       worth %.0f cr here; ", q.value);
+        if (q.cover > 0.0)
+            line += Fmt("insured for %.0f cr (pays %.0f if lost)", q.cover,
+                        InsurancePayout(q.cover, q.value));
+        else if (q.value > 0.0)
+            line += "NOT insured";
+        else
+            line += "free to replace";
+        if (q.problem.empty())
+            line += Fmt("; insure_ship covers %.0f for %.0f cr", q.value, q.premium);
+        out += line + "\n";
+    }
+    // ...and every hull there is to buy, as many of each as the pilot can pay for.
+    out += "  FOR SALE (buy_ship by name; owning several of a kind is fine):\n";
+    for (size_t i = 0; i < catalog.size(); i++)
+    {
+        const ShipType&   t = catalog[i];
+        const std::string status = p.docked
+                                       ? Fmt("for sale %.0f cr%s", t.price * mul,
+                                             p.money >= t.price * mul ? "" : " (cannot afford)")
+                                       : Fmt("list price %.0f cr", t.price);
+        out +=
+            Fmt("  [%d] %-8s speed %.0f  turn %.1f  cargo %d  mining %.1f/s  hull %.0f  "
+                "guns %.0f/shot  %s\n",
+                (int)i, t.name.c_str(), t.stats.maxSpeed, t.stats.turnSpeed, t.stats.cargoCapacity,
+                t.stats.miningRate, t.stats.hull, t.stats.damage, status.c_str());
     }
     out += "  Losing a ship loses its hull, its fit and its cargo; the starter is free and "
            "always yours.\n";
     return out;
 }
 
-InsuranceQuote QuoteInsurance(const View& view, int hull)
+InsuranceQuote QuoteInsurance(const View& view, int shipKey)
 {
     InsuranceQuote               q;
     const std::vector<ShipType>& catalog = GetShipCatalog();
+    const int hull = ShipHull(shipKey);  // the ship's hull; its key tells it apart
     if (view.snapshot == nullptr || hull < 0 || hull >= (int)catalog.size())
     {
         q.problem = "no such hull";
@@ -1050,7 +1053,7 @@ InsuranceQuote QuoteInsurance(const View& view, int hull)
     q.hull = t.name;
     std::string design = t.stats.design;
     for (size_t k = 0; k < p.ownedShips.size(); k++)
-        if (p.ownedShips[k] == hull)
+        if (p.ownedShips[k] == shipKey)
         {
             q.owned = true;
             if (k < p.shipDesigns.size())

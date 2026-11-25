@@ -35,8 +35,9 @@ void Prediction::Reconcile(Ship& ship, const Proto::PlayerView& p, const HoldFn&
             if (p.ownedShips[i] == p.shipIndex)
                 design = p.shipDesigns[i];
         const std::vector<ShipType>& catalog = GetShipCatalog();
-        if (design.empty() && p.shipIndex >= 0 && p.shipIndex < (int)catalog.size())
-            design = catalog[p.shipIndex].stats.design;
+        if (design.empty() && ShipHull(p.shipIndex) >= 0 &&
+            ShipHull(p.shipIndex) < (int)catalog.size())
+            design = catalog[(size_t)ShipHull(p.shipIndex)].stats.design;
         ShipStats stats;
         if (ship.GetStats().design != design && StatsOfDesign(design, stats))
             ship.Refit(stats);

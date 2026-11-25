@@ -59,6 +59,21 @@ bool StatsOfDesign(const std::string& design, ShipStats& out);
 // flies has one; -1 for a design that is no hull's.
 int HullOf(const std::string& design);
 
+// Ships are told apart by a key (#572): the hull's catalog index for the first of a kind, and
+// `index + SHIP_STRIDE * n` for the n-th more of it. Every per-ship map -- the hangar's berths,
+// designs and policies, the account's `ships` -- is keyed by it, so an account's first ship of a
+// type has the key it always had and an older save reads unchanged. What the catalog knows is
+// the hull.
+constexpr int SHIP_STRIDE = 1000;
+inline int    ShipHull(int key)
+{
+    return key >= 0 ? key % SHIP_STRIDE : -1;
+}
+inline int ShipKey(int hull, int copy)
+{
+    return hull + copy * SHIP_STRIDE;
+}
+
 // What a station charges for a ship, as a multiple of the catalog price, given the buyer's
 // standing with the station's owner. One function because three places need the same number
 // (#109): the server charges it, the hangar screen shows it, and an agent quotes it before

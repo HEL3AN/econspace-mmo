@@ -136,7 +136,13 @@ inline constexpr int WORLD_VERSION = 22;
 //    it. A version 10 build knows no such mission and would keep one it could never hand in.
 // 12: a mission may be a raid job (#345): a bounty on a lawless faction's base going up. A
 //    version 11 build knows no such mission and would keep one it could never hand in.
-inline constexpr int ACCOUNT_VERSION = 12;
+// 13: an account may own several ships of one hull (#572): a ship's `hull` in `ships`, `ship`
+//    and `insurance` is its key -- the hull's catalog index, plus 1000 for each earlier ship of
+//    the same hull. A version 12 build reads a key past the catalog as no hull it knows and
+//    drops the ship, and a second ship of a hull it already has as nothing at all, then saves
+//    the account so. An older file's keys are hull indices, which is what a first ship's key
+//    is: it is read unchanged.
+inline constexpr int ACCOUNT_VERSION = 13;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 // corps.json, the players' corporations (#347). 1: the first.

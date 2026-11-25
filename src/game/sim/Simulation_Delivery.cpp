@@ -292,8 +292,11 @@ std::vector<Proto::AssetView> Simulation::AssetsFor(const ClientSession& s) cons
     {
         Proto::AssetView a;
         a.kind = "ship";
-        a.name = b.first >= 0 && b.first < (int)catalog.size() ? catalog[(size_t)b.first].name
-                                                               : std::string("Ship");
+        const int hull = ShipHull(b.first);
+        a.name = hull >= 0 && hull < (int)catalog.size() ? catalog[(size_t)hull].name
+                                                         : std::string("Ship");
+        if (b.first / SHIP_STRIDE > 0)
+            a.name += " #" + std::to_string(b.first / SHIP_STRIDE + 1);
         const size_t cut = b.second.place.find('|');
         if (cut != std::string::npos)
         {

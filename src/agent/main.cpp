@@ -594,7 +594,12 @@ int ShipArg(const Rpc::Json& args)
     }
     else if (args.contains("ship") && args["ship"].is_string())
     {
-        const std::string want = Lower(args["ship"].get<std::string>());
+        std::string  want = Lower(args["ship"].get<std::string>());
+        const size_t at = want.rfind('#');  // "scout #2": the second of the hull (#572)
+        if (at != std::string::npos)
+            want = want.substr(0, at);
+        while (!want.empty() && want.back() == ' ')
+            want.pop_back();
         for (size_t i = 0; i < catalog.size(); i++)
             if (Lower(catalog[i].name) == want)
                 return (int)i;
@@ -605,10 +610,46 @@ int ShipArg(const Rpc::Json& args)
     throw Rpc::Error{ Rpc::INVALID_PARAMS, "ship is a name from hangar; known: " + known };
 }
 
-bool OwnsShip(int index)
+// How many ships of a hull the account has (#572), and which one a name means: "Scout" the one
+// not flown that is here, else the first; "Scout #2" the second of that hull.
+int CountOf(int hull)
+{
+    int n = 0;
+    for (int o : g_session.Snapshot().player.ownedShips)
+        if (ShipHull(o) == hull)
+            n++;
+    return n;
+}
+
+int ShipKeyArg(const Rpc::Json& args, int hull)
+{
+    const Proto::PlayerView& p = g_session.Snapshot().player;
+    int                      copy = -1;
+    if (args.contains("ship") && args["ship"].is_string())
+    {
+        const std::string s = args["ship"].get<std::string>();
+        const size_t      at = s.rfind('#');
+        if (at != std::string::npos)
+            copy = std::atoi(s.c_str() + at + 1) - 1;
+    }
+    if (copy >= 0)
+        return ShipKey(hull, copy);
+    int first = -1;
+    for (size_t k = 0; k < p.ownedShips.size(); k++)
+        if (ShipHull(p.ownedShips[k]) == hull)
+        {
+            if (first < 0)
+                first = p.ownedShips[k];
+            if (p.ownedShips[k] != p.shipIndex && (k >= p.shipHere.size() || p.shipHere[k]))
+                return p.ownedShips[k];
+        }
+    return first >= 0 ? first : hull;
+}
+
+bool OwnsKey(int key)
 {
     for (int o : g_session.Snapshot().player.ownedShips)
-        if (o == index)
+        if (o == key)
             return true;
     return false;
 }
@@ -1707,9 +1748,7 @@ std::vector<Tool> BuildTools()
               RequireDocked("buying a ship");
               const int       i = ShipArg(args);
               const ShipType& t = GetShipCatalog()[i];
-              if (OwnsShip(i))
-                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
-                                    "you already own a " + t.name + "; use switch_ship" };
+              const int ownedBefore = CountOf(i);  // as many of a kind as can be paid for (#572)
               const Proto::PlayerView& p = g_session.Snapshot().player;
               const FactionId          sf = Obs::DockedFaction(CurrentView());
               const float              standing = (size_t)sf.Index() < p.reputation.size()
@@ -1728,7 +1767,7 @@ std::vector<Tool> BuildTools()
               std::string why;
               if (!Confirm(c, why))
                   return "buy_ship: " + why;
-              if (!OwnsShip(i))
+              if (CountOf(i) <= ownedBefore)
                   return Refused("buy_ship", seq,
                                  "the server did not sell it; call hangar to see the price and "
                                  "your money as they are now");
@@ -1749,11 +1788,12 @@ std::vector<Tool> BuildTools()
           {
               RequireLive();
               RequireDocked("switching ships");
-              const int       i = ShipArg(args);
-              const ShipType& t = GetShipCatalog()[i];
+              const int       hull = ShipArg(args);
+              const int       i = ShipKeyArg(args, hull);  // the ship's key (#572)
+              const ShipType& t = GetShipCatalog()[hull];
               if (g_session.Snapshot().player.shipIndex == i)
                   return "switch_ship: already flying the " + t.name;
-              if (!OwnsShip(i))
+              if (!OwnsKey(i))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "you do not own a " + t.name + "; buy_ship first" };
               {
@@ -1793,7 +1833,7 @@ std::vector<Tool> BuildTools()
           {
               RequireLive();
               RequireDocked("buying insurance");
-              const int                 i = ShipArg(args);
+              const int                 i = ShipKeyArg(args, ShipArg(args));
               const Obs::InsuranceQuote q = Obs::QuoteInsurance(CurrentView(), i);
               if (!q.problem.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, q.problem };
