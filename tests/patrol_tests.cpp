@@ -794,6 +794,7 @@ TEST_CASE("a declaration is not a licence: a guard that fires first on a lawful 
     REQUIRE(Enemy(h.sim, "anna", "Syndicate").Ok());
     auto victim = std::make_unique<NpcShip>(Vector2{ gpos.x + 150.0f, gpos.y }, syndicate,
                                             NpcRole::Trader, std::vector<Vector2>{});
+    victim->SetId(900100);  // an id of its own: a lock is on an id (#619)
     h.St().entities.push_back(std::move(victim));
     std::vector<Simulation::PlayerPresence> players;
     for (int i = 0; i < 60 * 20; i++)
