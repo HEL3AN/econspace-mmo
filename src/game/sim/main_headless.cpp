@@ -4145,16 +4145,22 @@ int main(int argc, char** argv)
         std::vector<int> crowds;
         double           seconds = 20.0;
         uint64_t         seed = 1;
+        int              npcs = 0;
+        bool             brute = false;
         for (int i = 2; i < argc; i++)
             if (std::string(argv[i]) == "--seconds" && i + 1 < argc)
                 seconds = atof(argv[++i]);
             else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
                 seed = std::strtoull(argv[++i], nullptr, 10);
+            else if (std::string(argv[i]) == "--npcs" && i + 1 < argc)
+                npcs = std::max(0, atoi(argv[++i]));
+            else if (std::string(argv[i]) == "--brute")
+                brute = true;
             else if (atoi(argv[i]) > 0)
                 crowds.push_back(atoi(argv[i]));
         if (crowds.empty())
             crowds = { 10, 50, 100, 250 };
-        return NetBench(crowds, seconds, seed);
+        return NetBench(crowds, seconds, seed, npcs, brute);
     }
     // econserver fleetbench [--days D] [--systems N] [--every H] [seed ...]: the long run of
     // factions that buy their ships (#464), as a table every H world hours; exit 1 if a

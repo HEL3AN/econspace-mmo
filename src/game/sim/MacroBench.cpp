@@ -240,7 +240,7 @@ struct NetRow
     double bytes = 0.0;  // per snapshot sent
 };
 
-NetRow RunCrowd(int pilots, double seconds, uint64_t seed)
+NetRow RunCrowd(int pilots, double seconds, uint64_t seed, int npcs, bool brute)
 {
     const std::string dataDir = DataDir::Path();
     NetRow            row;
@@ -273,6 +273,30 @@ NetRow RunCrowd(int pilots, double seconds, uint64_t seed)
         crowd.push_back(
             &sim.CreateSession(at, { centre.x + r * std::cos(a), centre.y + r * std::sin(a) },
                                GetShipCatalog()[0].stats));
+    }
+
+    // ...and, if asked, a fleet of NPCs there too: pirates and a lawful faction's police, spread
+    // over the area the crowd is in, so each has someone to look for.
+    sim.UseTargetGrid(!brute);
+    if (npcs > 0)
+    {
+        SystemState*           st = sim.SystemOf(*crowd.front());
+        std::vector<FactionId> law;
+        for (const std::string& id : Factions::MajorIds())
+        {
+            FactionId f;
+            if (Factions::Find(id, f))
+                law.push_back(f);
+        }
+        for (int i = 0; i < npcs; i++)
+        {
+            const float   a = 2.39996f * (float)i;
+            const float   r = 800.0f + 60000.0f * (float)((i * 7919) % npcs) / (float)npcs;
+            const Vector2 p{ centre.x + r * std::cos(a), centre.y + r * std::sin(a) };
+            const bool    pirate = i % 2 == 0;
+            sim.SpawnNpcInto(*st, p, pirate ? Factions::Pirates() : law[(size_t)i % law.size()],
+                             pirate ? NpcRole::Pirate : NpcRole::Police, { centre });
+        }
     }
 
     const float dt = 1.0f / 60.0f;
@@ -338,18 +362,19 @@ NetRow RunCrowd(int pilots, double seconds, uint64_t seed)
 }
 }  // namespace
 
-int NetBench(const std::vector<int>& crowds, double seconds, uint64_t seed)
+int NetBench(const std::vector<int>& crowds, double seconds, uint64_t seed, int npcs, bool brute)
 {
     if (!LoadRegistries())
         return 1;
-    printf("netbench: seed %llu, %.0f s simulated per crowd, every pilot in one system\n",
-           (unsigned long long)seed, seconds);
+    printf("netbench: seed %llu, %.0f s simulated per crowd, every pilot in one system, "
+           "%d NPC ship(s) added, targeting by %s\n",
+           (unsigned long long)seed, seconds, npcs, brute ? "every ship (no grid)" : "a grid");
     std::vector<NetRow> rows;
     for (int n : crowds)
     {
         printf("  %d pilot(s) ...", n);
         fflush(stdout);
-        rows.push_back(RunCrowd(n, seconds, seed));
+        rows.push_back(RunCrowd(n, seconds, seed, npcs, brute));
         printf(" %.2f ms/tick (worst %.1f)\n", rows.back().tickMs, rows.back().worstTickMs);
     }
     // Markdown, so the table can be pasted where it is discussed.

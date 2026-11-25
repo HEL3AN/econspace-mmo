@@ -1068,6 +1068,11 @@ public:
     void StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
                        std::vector<FireEvent>* fires);
 
+    // Whether NPC targeting reads a spatial grid or every ship and pilot in the system (#350).
+    // The two are identical in result -- the grid only prunes, and is walked in the same order
+    // -- so this exists for the test that says so and for a benchmark's "before".
+    void UseTargetGrid(bool on) { targetGrid_ = on; }
+
     // Fixed defences (#193): anything `defensive` -- a station, or a finished structure whose
     // archetype is armed (#39) -- fires at the nearest hostile ship within its radius plus
     // its range, once a second, for its archetype's damage per second. Hostile means what it
@@ -2090,6 +2095,7 @@ public:
     }
 
 private:
+    bool            targetGrid_ = true;  // see UseTargetGrid
     Corps::Registry corps_;
     DesignStore     designs_;
     bool            designsChanged_ = false;

@@ -566,6 +566,7 @@ add_executable(tests
     tests/events_tests.cpp         # the journal's kinds come back from their names (#487)
     tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
     tests/defence_tests.cpp        # rules of engagement for a structure (#340)
+    tests/crowd_tests.cpp          # a crowd in one system: the spatial grid answers as the full loop does (#350)
     tests/ship_design_tests.cpp    # ship designs and the stats derived from them (#279)
     tests/desk_tests.cpp           # the window manager: z-order, the mouse, Esc, layout (#297)
     tests/theme_tests.cpp          # the UI theme's strict loading, and the scale (#297)
