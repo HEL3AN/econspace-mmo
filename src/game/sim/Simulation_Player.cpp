@@ -93,6 +93,22 @@ int StationIdOf(const std::map<std::string, SystemState>& systems, const nlohman
 }  // namespace
 
 // Credits as a pilot reads them.
+// A ship's key from a saved field (#356): its id (`ShipIdOf`) since account version 14, a catalog
+// index before -- which is what a first ship's key was, so it is read unchanged. `fallback` for a
+// field that is absent, or an id this catalog has no hull for.
+static int ReadShipKey(const nlohmann::json& j, const char* field, int fallback)
+{
+    const auto it = j.find(field);
+    if (it == j.end())
+        return fallback;
+    if (it->is_number_integer())
+        return it->get<int>();
+    int key = fallback;
+    if (it->is_string() && ShipKeyFromId(it->get<std::string>(), key))
+        return key;
+    return fallback;
+}
+
 static std::string Credits(double cr)
 {
     return std::to_string((long long)std::llround(cr)) + " cr";
@@ -2098,7 +2114,7 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     for (int hull : s.ownedShips)
     {
         const std::string design = s.DesignOf(hull);
-        json              entry = { { "hull", hull }, { "design", design } };
+        json              entry = { { "hull", ShipIdOf(hull) }, { "design", design } };
         // A parked ship's place and what it holds (#472 slice 8).
         if (const auto b = s.berths.find(hull); b != s.berths.end())
         {
@@ -2113,12 +2129,12 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
         named.insert(design);
     }
     j["ships"] = ships;
-    j["ship"] = s.currentShip;
+    j["ship"] = ShipIdOf(s.currentShip);
     // Insurance and home (#344): fields an older build ignores, so no version bump (#20).
     json insurance = json::array();
     for (const auto& [hull, cover] : s.insurance)
         if (s.Owns(hull))
-            insurance.push_back({ { "hull", hull }, { "cover", cover } });
+            insurance.push_back({ { "hull", ShipIdOf(hull) }, { "cover", cover } });
     j["insurance"] = insurance;
     if (!s.livery.empty())  // (#516): a field an older build ignores
         j["livery"] = s.livery;
@@ -2451,7 +2467,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 idx = v.get<int>();
             else if (version >= 5 && v.is_object())
             {
-                idx = v.value("hull", -1);
+                idx = ReadShipKey(v, "hull", -1);
                 design = v.value("design", std::string());
             }
             if (idx < 0 || ShipHull(idx) >= hulls || s.Owns(idx))
@@ -2534,7 +2550,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         {
             if (!v.is_object())
                 continue;
-            const int    hull = v.value("hull", -1);
+            const int    hull = ReadShipKey(v, "hull", -1);
             const double cover = v.value("cover", 0.0);
             if (s.Owns(hull) && cover > 0.0)
                 s.insurance[hull] = cover;
@@ -2543,7 +2559,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         if (const int home = StationIdOf(systems_, j.value("home", json())))
             s.homeStationId = home;
 
-    const int wanted = j.value("ship", 0);
+    const int wanted = ReadShipKey(j, "ship", 0);
     s.currentShip = s.Owns(wanted) ? wanted : s.ownedShips.front();
     // Every owned hull but the flown one is parked (#472 slice 8): one with no berth is from
     // an account written before ships had places, and is wherever the pilot docks.

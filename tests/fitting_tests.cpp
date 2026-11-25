@@ -272,7 +272,8 @@ TEST_CASE("an account's ships are designs, and older accounts load as stock ones
         }
         CHECK(j["version"] == Save::ACCOUNT_VERSION);
         REQUIRE(j["ships"].size() == 2);
-        CHECK(j["ships"][1]["hull"] == 1);
+        CHECK(j["ships"][1]["hull"] ==
+              GetShipCatalog()[1].stats.design);  // by id, not index (#356)
         CHECK(j["ships"][1]["design"] == GetShipCatalog()[1].stats.design);
     };
     SUBCASE("a version 3 account's hull indices are its hulls' stock designs")
