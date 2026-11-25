@@ -1840,6 +1840,9 @@ public:
     void CreditRaid(ClientSession& s, const std::string& systemId, const std::string& siteKey);
     // A survey job was just taken: the faction's survey waits for the pilot until its deadline.
     void SurveyTaken(const Mission& m);
+    // A plan's job taken or done is history, and where it matters news (#345): a raid or a siege
+    // broken is the feed's, the rest the chronicle's.
+    void JobNews(const ClientSession& s, const Mission& m, bool done);
     // The besieged side's strength at a siege that a pilot can find there as ships -- its
     // pirates, or the police flying its flag -- in ships; 0 when it is numbers only (#407).
     float DefendersShown(const Plan& p) const;

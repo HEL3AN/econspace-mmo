@@ -1588,6 +1588,8 @@ bool Simulation::AcceptMission(ClientSession& s, int offerId)
         s.missions.Active().back().deadline = time_ + WorldRules::JobRules().surveyWindow;
         SurveyTaken(s.missions.Active().back());
     }
+    if (IsPlanJob(taken.type))
+        JobNews(s, taken, false);
     s.RecordEvent(Ev::Kind::Notice, "Mission taken -- " + what);
     // ...and so is a station's own work (#425): off its board for everyone docked there, whose
     // boards are shown again without it. Theirs keep every other number.
