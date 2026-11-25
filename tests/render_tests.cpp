@@ -176,3 +176,19 @@ TEST_CASE("an entity built without the registry has no look, and that is disting
         }
     }
 }
+
+TEST_CASE("a mouth's life is what is left of it, read from the time it closes (#618)")
+{
+    LoadRegistry();
+    const double H = 3600.0;
+    CHECK(Render::MouthLife(Render::MOUTH_FRESH_HOURS * 2 * H) == doctest::Approx(1.0f));
+    CHECK(Render::MouthLife(Render::MOUTH_FRESH_HOURS * H) == doctest::Approx(1.0f));
+    CHECK(Render::MouthLife(Render::MOUTH_FRESH_HOURS * H * 0.5) == doctest::Approx(0.5f));
+    CHECK(Render::MouthLife(0.0) == doctest::Approx(0.0f));
+    CHECK(Render::MouthLife(-5.0) == doctest::Approx(0.0f));  // overdue: nothing left
+
+    JumpGate mouth({ 0.0f, 0.0f }, 150.0f, "Unstable Mouth", "reach");
+    CHECK(mouth.Describe().endsAt == 0.0);  // a gate that stays has no end to show
+    mouth.SetClosesAt(5000.0);
+    CHECK(mouth.Describe().endsAt == doctest::Approx(5000.0));
+}

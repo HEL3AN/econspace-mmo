@@ -107,6 +107,11 @@ static Camera2D NoView()
 void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& view,
              IBackend& backend, double clock)
 {
+    const double now = clock >= 0.0 ? clock : LocalClock();
+    for (Item& it : items)
+        if (it.endsAt > 0.0)
+            it.intensity = MouthLife(it.endsAt - now);
+
     // Stable, so that two items on the same layer keep the order the world gave them.
     // Without that a backend would reshuffle overlapping objects between frames.
     std::stable_sort(items.begin(), items.end(),
@@ -118,12 +123,17 @@ void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& 
     // system would get.
     backend.SetView(view);
     backend.SetLighting(lighting);
-    backend.SetClock(clock >= 0.0 ? clock : LocalClock());
+    backend.SetClock(now);
 
     backend.Begin();
     for (const Item& it : items)
         backend.Draw(it);
     backend.End();
+}
+
+float MouthLife(double secondsLeft)
+{
+    return (float)std::fmax(0.0, std::fmin(1.0, secondsLeft / (MOUTH_FRESH_HOURS * 3600.0)));
 }
 
 void MarkSettled(std::vector<Item>& items)

@@ -67,6 +67,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - The server's untrusted input is fuzzed: the frame reader, every decoder and the login, by libFuzzer targets in `tests/fuzz/` that ClusterFuzzLite runs on pull requests and weekly. The first run found that a client could be ended by one line of JSON with a field of the wrong type; decoders now read such a field as its default (#518).
 
 ### The look
+- An unstable mouth and a roaming hole are drawn as weather: a small dark throat with a thin uneven rim, one to three torn arms of gas falling in, a lensed sky; no ring, ticks or chevrons. Each hole differs by its seed, and its look is what is left of it -- wide and bright fresh, thin, dim and reddening as it closes (#618).
 - The screen treatment no longer leaves a black curved frame or a red and cyan line at the screen's edge (#426).
 - Planets are round at any zoom, and their bands end at the limb rather than in a straight edge (#426).
 - A planet's orbit line fades out as you close in on the planet, and the system's edge is a HUD line again (#426).
