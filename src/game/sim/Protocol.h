@@ -37,7 +37,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    86;  // 86: one-shot verbs leave the per-tick Command for their own message, an Action (#354):
+    87;  // 87: a ship is named by its id (#356) -- `ship` of the buy, switch and insure verbs and
+         // the view's `ships` and `ship` -- the hull's stock design, `<design>#<n>` for the n-th
+         // more, never a catalog index;
+         // 86: one-shot verbs leave the per-tick Command for their own message, an Action (#354):
          // `act` with a `verb` tag, applied in order with the commands and never a tick;
          // 85: a CorpView lists the corporation's `offices` at NPC stations (#572);
          // 84: the player view carries `oreCap`, the ore hold inside the hold (#572, slice 12);
