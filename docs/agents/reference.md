@@ -377,6 +377,21 @@ Sell charts to the faction whose station you are docked at (#346, #431). What is
 |---|---|---|---|
 | `system` | string | yes | a system's id or name, or 'all' |
 
+### `deal_act`
+
+A direct trade with another pilot docked at the same station (#473): goods, credits and charts swapped in one step, the server standing between you so that neither can cheat. Steps: 'open' with a pilot's name -- they open one with you to accept; observe shows TRADE lines for both sides' offers and invitations. 'put' adds to your side (resource and amount, from a container if not the hold; credits; chart: a system you charted yourself), 'withdraw' takes the same back out. Any change by either side clears both confirmations and moves the revision. 'confirm' needs the revision observe showed (rev) and is refused if the offer has moved; when both have confirmed, everything moves at once or nothing does. 'cancel' ends it; undocking, or either pilot leaving the station, ends it too. The market's fee is split between you and goes to the station's owner; nothing else is taken. A chart is a copy: you keep yours, and the buyer is shown only what is new to them until the trade is done. A chart you buy is second-hand, may be resold to a pilot, and is never bought by a faction. What goods and modules a hold has no room for goes to your hangar there.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `action` | string | yes | open, put, withdraw, confirm or cancel |
+| `amount` | number |  | put/withdraw: how many of it |
+| `chart` | string |  | put/withdraw: a system's id or name from your own charts |
+| `credits` | number |  | put/withdraw: whole credits |
+| `from` | string |  | put: the container the goods are in (default 'hold') |
+| `resource` | string |  | put/withdraw: a good by name, e.g. 'Iron' |
+| `rev` | number |  | confirm: the revision observe showed for the trade |
+| `with` | string |  | open: the pilot's name |
+
 ### `name_system`
 
 Name a system you discovered -- from anywhere, you need not be there (pass system; without it, the one you are in). Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. Only the discoverer may name it -- never a later owner or corporation. A system its people live in keeps their name, and one a faction charted before any pilot came keeps the faction's name or its designation. The rules: 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; no word the server's filter refuses; not a name another system has or its natives use, whatever the case. A refusal says which rule failed. The server's admin may rename or clear a name; you are told in your journal.

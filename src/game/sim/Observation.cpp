@@ -1066,6 +1066,41 @@ std::string DescribeAssets(const std::vector<Proto::AssetView>& assets)
     return out;
 }
 
+std::string DescribeTrade(const Proto::TradeView& t)
+{
+    std::string out;
+    for (const std::string& who : t.invites)
+        out += "TRADE  " + who + " asks to trade: deal_act open with " + who + " to accept\n";
+    if (!t.asking.empty())
+        out += "TRADE  you asked " + t.asking + " to trade; it opens when they accept\n";
+    if (t.with.empty())
+        return out;
+    auto side = [&](const Proto::TradeSideView& v, const char* who)
+    {
+        std::string line = Fmt("       %s offers: ", who);
+        std::string items;
+        auto add = [&](const std::string& part) { items += (items.empty() ? "" : ", ") + part; };
+        for (const Exchange::GoodLine& g : v.goods)
+            add(Fmt("%d %s", g.amount, ResourceName(ResourceType::FromIndex(g.type)).c_str()) +
+                (g.from.empty() || g.from == "hold" ? "" : " (from " + g.from + ")"));
+        if (v.credits > 0)
+            add(Fmt("%lld cr", v.credits));
+        for (const Exchange::ChartLine& c : v.charts)
+            add("a chart: " + c.text);
+        line += items.empty() ? "nothing" : items;
+        line += v.confirmed ? "  [CONFIRMED]" : "  [not confirmed]";
+        return line + "\n";
+    };
+    out += Fmt("TRADE  with %s, revision %d (a confirm must carry it; any change moves it); fee "
+               "%.0f cr each\n",
+               t.with.c_str(), t.rev, t.fee);
+    out += side(t.mine, "you");
+    out += side(t.theirs, t.with.c_str());
+    if (!t.problem.empty())
+        out += "       not settled: " + t.problem + "\n";
+    return out;
+}
+
 std::string DescribeHangar(const View& view)
 {
     if (view.snapshot == nullptr)

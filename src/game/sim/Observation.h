@@ -74,6 +74,10 @@ std::string DescribeHangar(const View& view);
 // more (#472).
 // Everything the pilot keeps, place by place, as the server sent it on request (#472 slice 9).
 std::string DescribeAssets(const std::vector<Proto::AssetView>& assets);
+// A direct trade with another pilot (#473): both sides' bundles as the server describes them,
+// who has confirmed, the revision a confirm must carry and the fee. What the Trade window shows.
+// Empty when there is no trade, no invitation and no request of one's own.
+std::string DescribeTrade(const Proto::TradeView& trade);
 std::string DescribeInventory(const View& view, const std::string& account = std::string());
 
 // --- Fitting (#279) ---------------------------------------------------------------------

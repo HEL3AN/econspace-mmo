@@ -383,6 +383,9 @@ void HostStepWorld(Simulation& sim, float dt, Simulation::FireMap& fires)
     }
 
     sim.MaintainWorld(dt);
+    // The ledger of trades between pilots (#473): who gave what to whom, where and when.
+    for (const std::string& line : sim.TakeTradeLog())
+        Log::Printf("%s\n", line.c_str());
 }
 
 // Receives client inputs from the transport and applies EACH command as one player tick

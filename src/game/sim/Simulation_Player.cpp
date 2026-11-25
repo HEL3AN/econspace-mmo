@@ -376,6 +376,13 @@ ClientSession& Simulation::CreateSession(const std::string& systemId, Vector2 po
 
 void Simulation::DestroySession(int id)
 {
+    // A trade is between two who are here (#473): whoever it was with is told, and an invitation
+    // to a pilot who is gone is forgotten.
+    if (ClientSession* gone = Session(id))
+        CancelTrade(*gone, gone->accountName + " left");
+    for (auto& kv : sessions_)
+        if (kv.second.trade.with == id)
+            kv.second.trade = ClientSession::Trade{};
     sessions_.erase(id);
 }
 
@@ -1788,6 +1795,8 @@ void Simulation::StepPlayerUndock(ClientSession& s)
                     break;
                 }
     s.RecordEvent(Ev::Kind::Undocked, "Undocked");
+    if (s.trade.with != 0)
+        CancelTrade(s, s.accountName + " undocked");  // a trade is between two docked pilots
     s.dockedStationId = 0;
 }
 
@@ -2159,6 +2168,17 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     for (const auto& [system, sighting] : s.sightings)
         observed[system] = WorldLoader::ToJson(sighting);
     j["observed"] = observed;
+    // ...which of those charts were bought from a pilot, and how often they sold each (#473):
+    // fields an older build ignores, so no version bump -- and it would read a copy as its own.
+    if (!s.secondHand.empty())
+    {
+        json bought = json::object();
+        for (const auto& [system, how] : s.secondHand)
+            bought[system] = { { "from", how.from }, { "at", how.at }, { "hops", how.hops } };
+        j["secondHand"] = bought;
+    }
+    if (!s.chartSales.empty())
+        j["chartSales"] = s.chartSales;
     // ...and how many renamings of charts it has been through (#431 slice 15), so a load reads
     // it through the ones after. Ignored by an older build: no version bump.
     j["chartRenames"] = growth_.chartRenames.size();
@@ -2332,8 +2352,19 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     const json   seenRenames = j.value("chartRenames", json());
     const size_t renamesSeen =
         seenRenames.is_number_unsigned() ? seenRenames.get<size_t>() : (size_t)0;
+    std::map<std::string, ClientSession::Provenance> boughtCharts;
+    if (!foreign && j.contains("secondHand") && j["secondHand"].is_object())
+        for (auto b = j["secondHand"].begin(); b != j["secondHand"].end(); ++b)
+            if (b.value().is_object())
+            {
+                ClientSession::Provenance how;
+                how.from = b.value().value("from", std::string());
+                how.at = b.value().value("at", 0.0);
+                how.hops = b.value().value("hops", 1);
+                boughtCharts[b.key()] = std::move(how);
+            }
     for (size_t i = renamesSeen; i < growth_.chartRenames.size(); ++i)
-        RenameKnowledge(scanned, seenThere, growth_.chartRenames[i]);
+        RenameKnowledge(scanned, seenThere, growth_.chartRenames[i], &boughtCharts);
     // A system of the galaxy, or one of the archive's (slice 15): kept, marked drifted.
     auto there = [&](const std::string& id) { return HasSystem(id) || IsArchivedChart(id); };
 
@@ -2349,6 +2380,15 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                            : there(key.substr(0, key.find('/'))))
             s.known.insert(key);
     }
+    s.secondHand.clear();
+    for (auto& [system, how] : boughtCharts)
+        if (s.known.count(ChartKey(system)) != 0)
+            s.secondHand[system] = std::move(how);
+    s.chartSales.clear();
+    if (!foreign && j.contains("chartSales") && j["chartSales"].is_object())
+        for (auto c = j["chartSales"].begin(); c != j["chartSales"].end(); ++c)
+            if (c.value().is_number_integer() && there(c.key()))
+                s.chartSales[c.key()] = c.value().get<int>();
     // ...and what they saw there (#431 slice 14): this world's, of systems it still has.
     s.sightings.clear();
     s.liveSystems.clear();

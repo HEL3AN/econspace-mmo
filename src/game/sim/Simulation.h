@@ -161,6 +161,47 @@ public:
     // offer -- to the faction docked at. False, with a Notice saying why, when nothing sold.
     bool SellCharts(ClientSession& s, const std::string& which);
 
+    // --- Exchange between pilots (#473, documents/player_exchange.md; Simulation_Exchange.cpp) ---
+    // What a chart given to another pilot would be worth to them: the copy is of exactly what the
+    // giver has of the system (their record, bought or found), and what the receiver has already
+    // is worth nothing. The server computes it for each side, so a listing cannot lie.
+    struct ChartGift
+    {
+        std::string              system;
+        bool                     charted = false;    // the giver has it on their own record
+        bool                     geography = false;  // the system is on none of the receiver's maps
+        bool                     fresher = false;    // a look newer than any the receiver has
+        double                   seenAt = -1.0;      // the giver's look, when
+        int                      stations = 0, structures = 0;
+        std::vector<std::string> finds;           // hidden things the receiver has not found
+        double                   closing = -1.0;  // the soonest a roaming hole among them closes
+        int                      hops = 0;        // copies between a finder and the giver
+        int                      sold = 0;        // times the giver has sold this system
+        // Nothing the receiver lacks.
+        bool Worthless() const { return !geography && !fresher && finds.empty(); }
+    };
+    ChartGift ChartGiftFor(const ClientSession& from, const ClientSession& to,
+                           const std::string& systemId) const;
+    // "new to you: 1 system, 3 stations, 1 find; observed 20 h ago; ..." -- what the receiver is
+    // told before they accept; no name and no place, which are the goods themselves.
+    std::string ChartGiftText(const ChartGift& g) const;
+    // A direct trade (Act::Deal): open, put, withdraw, confirm, cancel. Answers in the journal.
+    void ApplyDeal(ClientSession& s, const Proto::Act::Deal& a);
+    // The trade `s` is in as the server describes it to them, or who asks to trade with them.
+    Proto::TradeView TradeViewFor(const ClientSession& s) const;
+    // Ends the trade `s` is in (and whatever invitation they sent), telling the other side why.
+    void CancelTrade(ClientSession& s, const std::string& why);
+    // Every coarse pass: a trade whose pilots are no longer docked at one station is over.
+    void StepTrades();
+    // What the server's log says of trades done since it was last asked, oldest first: who gave
+    // what to whom, where and when (the ledger an admin reads).
+    std::vector<std::string> TakeTradeLog()
+    {
+        std::vector<std::string> out;
+        out.swap(tradeLog_);
+        return out;
+    }
+
     // What decides `s`'s map, as a key: equal keys, the same map. The host sends the index
     // when it differs from the one it last sent.
     std::vector<long long> KnowledgeKey(const ClientSession& s) const;
@@ -2336,9 +2377,10 @@ private:
 
     // The archive (#342 S4; Simulation_Drift.cpp).
     // Renames `known` (keys of ClientSession::known) and `sightings` by one renaming.
-    static void RenameKnowledge(std::set<std::string>&                        known,
-                                std::map<std::string, WorldLoader::Sighting>& sightings,
-                                const ChartRename&                            r);
+    static void RenameKnowledge(std::set<std::string>&                            known,
+                                std::map<std::string, WorldLoader::Sighting>&     sightings,
+                                const ChartRename&                                r,
+                                std::map<std::string, ClientSession::Provenance>* bought = nullptr);
     // A renaming into the log, and onto every session and corporation now.
     void RenameCharts(ChartRename r);
     // An archive's `charts` and `links`, from its document.
@@ -2515,7 +2557,23 @@ private:
         std::vector<FactionId>   outposts;  // factions' finished outposts they saw
         std::vector<std::string> finds;     // their resolved signatures there, by key
     };
-    ChartReport ReportOf(const ClientSession& s, const std::string& systemId) const;
+    // `ownOnly`: a chart bought from a pilot (ClientSession::secondHand) is not what they found
+    // themselves, so a faction never pays for it (#473); an exchange between pilots takes both.
+    ChartReport ReportOf(const ClientSession& s, const std::string& systemId,
+                         bool ownOnly = true) const;
+    // Exchange between pilots (Simulation_Exchange.cpp).
+    const Entity* DockEntity(const ClientSession& s) const;
+    // What a trade of the two offers costs the pair at the station's market: the fee rate on the
+    // dearer side's value, goods at the market's mid price. Each pays half.
+    double TradeFee(const ClientSession& a, const ClientSession& b) const;
+    // Everything a trade needs to be true, checked on copies; with `commit` written back as one
+    // step. The reason it cannot be done, or empty.
+    std::string SettleTrade(ClientSession& a, ClientSession& b, bool commit);
+    void        TradeLog(const ClientSession& a, const ClientSession& b, const std::string& gave,
+                         const std::string& got);
+    // `to` is given a copy of what `from` has of a system.
+    void GrantChart(ClientSession& from, ClientSession& to, const std::string& systemId);
+    std::vector<std::string> tradeLog_;
     // Whether a system is public by where it is: hand-written space and the centres.
     bool                 PublicByPlace(const std::string& systemId) const;
     static constexpr int SETTLE_STEPS = 3;

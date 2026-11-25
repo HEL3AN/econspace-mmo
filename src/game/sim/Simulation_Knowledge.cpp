@@ -248,6 +248,7 @@ bool Simulation::Knows(const ClientSession& s, const std::string& systemId) cons
 
 bool Simulation::Learn(ClientSession& s, const std::string& systemId)
 {
+    s.secondHand.erase(systemId);  // a visit of their own: the chart is theirs now (#473)
     if (!HasSystem(systemId) || OnPublicCharts(systemId) ||
         !s.known.insert(ChartKey(systemId)).second)
         return false;
@@ -572,8 +573,8 @@ bool Simulation::ChartBuyer(const ClientSession& s, FactionId& f) const
     return false;
 }
 
-Simulation::ChartReport Simulation::ReportOf(const ClientSession& s,
-                                             const std::string&   systemId) const
+Simulation::ChartReport Simulation::ReportOf(const ClientSession& s, const std::string& systemId,
+                                             bool ownOnly) const
 {
     ChartReport        r;
     const SystemState* st = SystemById(systemId);
@@ -581,7 +582,8 @@ Simulation::ChartReport Simulation::ReportOf(const ClientSession& s,
         return r;
     // Only a system they went to themselves: a key of their own charts, which nothing but their
     // own arrival writes -- not their corporation's charts, nor the public ones.
-    r.charted = s.known.count(ChartKey(systemId)) != 0;
+    r.charted = s.known.count(ChartKey(systemId)) != 0 &&
+                !(ownOnly && s.secondHand.count(systemId) != 0);  // a copy is not a find (#473)
     if (!r.charted)
         return r;
     const auto seen = s.sightings.find(systemId);
@@ -631,7 +633,9 @@ Simulation::ChartOffer Simulation::ChartOfferFor(const ClientSession& s, Faction
     const ChartReport  r = ReportOf(s, systemId);
     if (st == nullptr || !r.charted)
     {
-        o.why = "it is not on your own charts";
+        o.why = s.secondHand.count(systemId) != 0
+                    ? "you bought this chart: a faction pays only for what you found yourself"
+                    : "it is not on your own charts";
         return o;
     }
     o.seenAt = r.at;

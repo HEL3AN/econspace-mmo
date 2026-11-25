@@ -1741,6 +1741,7 @@ bool Simulation::StepPass(MaintainCost* cost, std::chrono::steady_clock::time_po
                 StepHangars();       // hangar rent due at the stations (#472)
                 StepOffices();       // corporation offices at NPC stations (#572)
                 StepShipments();     // freight arriving (#472)
+                StepTrades();        // trades whose pilots have parted (#473)
                 StepObservations();  // what stands where somebody is, onto their maps (#431)
                 // Last, when no pass over the systems is under way: what it opens adds systems.
                 StepTide(MAINT_STEP);

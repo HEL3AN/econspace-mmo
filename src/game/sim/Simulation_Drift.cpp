@@ -740,10 +740,21 @@ void Simulation::ChartArchive(ArchivedRegion& a)
                                  ArchivedId(a.id, l[1].get<std::string>()));
 }
 
-void Simulation::RenameKnowledge(std::set<std::string>&                        known,
-                                 std::map<std::string, WorldLoader::Sighting>& sightings,
-                                 const ChartRename&                            r)
+void Simulation::RenameKnowledge(std::set<std::string>&                            known,
+                                 std::map<std::string, WorldLoader::Sighting>&     sightings,
+                                 const ChartRename&                                r,
+                                 std::map<std::string, ClientSession::Provenance>* bought)
 {
+    if (bought != nullptr)  // a bought chart's mark follows its system (#473)
+    {
+        std::map<std::string, ClientSession::Provenance> moved;
+        for (auto& [system, how] : *bought)
+        {
+            const auto to = r.ids.find(system);
+            moved[to != r.ids.end() ? to->second : system] = std::move(how);
+        }
+        *bought = std::move(moved);
+    }
     std::set<std::string> out;
     for (const std::string& key : known)
     {
@@ -772,7 +783,7 @@ void Simulation::RenameCharts(ChartRename r)
     for (auto& kv : sessions_)
     {
         ClientSession& s = kv.second;
-        RenameKnowledge(s.known, s.sightings, r);
+        RenameKnowledge(s.known, s.sightings, r, &s.secondHand);
         TouchKnown(s);
     }
     corps_.RenameCharts(r.ids, r.back);
