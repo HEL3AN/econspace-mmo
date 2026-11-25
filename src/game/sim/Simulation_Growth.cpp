@@ -150,7 +150,7 @@ void Simulation::SendWordOfMouth(int slot)
         }
         if (!holds)
             continue;
-        FactionMind& m = minds_[f];
+        FactionMind& m = director_.Mind(f);
         if (beyond != nullptr)
             m.intel[entry] = Observe(*beyond);
         if (mouth != nullptr)
@@ -171,7 +171,7 @@ void Simulation::SendWordOfMouth(int slot)
 Simulation::Drawn Simulation::DrawnBy(FactionId f)
 {
     Drawn                  d;
-    std::map<int, double>& heard = minds_[f].expeditions;
+    std::map<int, double>& heard = director_.Mind(f).expeditions;
     for (auto it = heard.begin(); it != heard.end();)
     {
         const RegionOpening* o = OpeningOf(it->first);
@@ -238,7 +238,7 @@ int Simulation::StationsIn(int slot) const
                         n++;
                 }
         }
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Upgrade && Gen::SlotOf(kv.second.target) == slot &&
             IsStationBlueprint(Blueprints::Find(kv.second.blueprint)))
             n++;
@@ -332,7 +332,7 @@ std::string Simulation::GrowthFor(FactionId f, const SystemState& st, const Stru
 bool Simulation::ShipyardWanted(const std::string& systemId) const
 {
     const int slot = Gen::SlotOf(systemId);
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Upgrade &&
             kv.second.blueprint == Outposts::SHIPYARD_BLUEPRINT &&
             Gen::SlotOf(kv.second.target) == slot)
@@ -351,7 +351,7 @@ bool Simulation::ShipyardWanted(const std::string& systemId) const
 
 bool Simulation::RegionWantsYard(int slot) const
 {
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Upgrade &&
             kv.second.blueprint == Outposts::SHIPYARD_BLUEPRINT &&
             Gen::SlotOf(kv.second.target) == slot)
@@ -367,13 +367,13 @@ int Simulation::BeginYard(FactionId f, const std::string& systemId)
     SystemState*     st = SystemById(systemId);
     const Blueprint* bp = Blueprints::Find(Outposts::SHIPYARD_BLUEPRINT);
     const float      cost = BlueprintCost(Outposts::SHIPYARD_BLUEPRINT);
-    FactionMind&     mind = minds_[f];
+    FactionMind&     mind = director_.Mind(f);
     if (st == nullptr || bp == nullptr || cost <= 0.0f || mind.stock < cost || !st->agg.claimed ||
         st->agg.controller != f || st->profile.markets <= 0 ||
         !RegionWantsYard(Gen::SlotOf(systemId)) ||
         StationsIn(Gen::SlotOf(systemId)) >= WorldRules::GrowthRules().stationsPerRegion)
         return 0;
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Upgrade && kv.second.target == systemId)
             return 0;
     // Beside what it holds: a spot where its outposts would stand.
@@ -392,7 +392,7 @@ int Simulation::BeginYard(FactionId f, const std::string& systemId)
     mind.stock -= cost;
 
     Plan p;
-    p.id = nextPlanId_++;
+    p.id = director_.Plans().NewId();
     p.kind = Plan::Kind::Upgrade;
     p.faction = f;
     p.target = systemId;
@@ -404,8 +404,8 @@ int Simulation::BeginYard(FactionId f, const std::string& systemId)
     // convoy step took the plan for one that could not set out and dropped it a pass later, the
     // region wanted a yard again, and one system got five (#584).
     p.arrived = true;
-    plans_[p.id] = p;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Put(p);
+    director_.Plans().Schedule(p);
     Record("upgrade", f, systemId,
            FactionName(f) + " began a shipyard in " + SystemName(systemId) +
                ", where its people have a market and nowhere in the region to refit");
@@ -417,12 +417,12 @@ int Simulation::BeginUpgrade(FactionId f, const std::string& systemId, const std
     SystemState*     st = SystemById(systemId);
     const Blueprint* bp = Blueprints::Find(blueprint);
     const float      cost = BlueprintCost(blueprint);
-    FactionMind&     mind = minds_[f];
+    FactionMind&     mind = director_.Mind(f);
     if (st == nullptr || bp == nullptr || bp->onto.empty() || cost <= 0.0f || mind.stock < cost)
         return 0;
     // Its own finished outpost there, of a kind this is built onto -- and nothing growing there
     // already.
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Upgrade && kv.second.target == systemId)
             return 0;
     Structure* onto = nullptr;
@@ -444,7 +444,7 @@ int Simulation::BeginUpgrade(FactionId f, const std::string& systemId, const std
     mind.stock -= cost;
 
     Plan p;
-    p.id = nextPlanId_++;
+    p.id = director_.Plans().NewId();
     p.kind = Plan::Kind::Upgrade;
     p.faction = f;
     p.target = systemId;
@@ -452,7 +452,7 @@ int Simulation::BeginUpgrade(FactionId f, const std::string& systemId, const std
     p.blueprint = blueprint;
     p.startedAt = time_;
     p.legAt = time_;
-    Plan& kept = plans_[p.id] = p;
+    Plan& kept = director_.Plans().Put(p);
     Record("upgrade", f, systemId,
            FactionName(f) + " is making its " + Outposts::Noun(onto->GetBuilds()) + " in " +
                SystemName(systemId) + " " + Called(*bp));
@@ -464,25 +464,25 @@ int Simulation::BeginAnchor(FactionId f, int slot)
 {
     RegionOpening* o = LiveOpening(slot);
     const float    cost = AnchorCost();
-    FactionMind&   mind = minds_[f];
+    FactionMind&   mind = director_.Mind(f);
     if (o == nullptr || o->state != "unstable" || cost <= 0.0f || mind.stock < cost ||
         !AnchorAt(*o, false).empty() || !HasSystem(o->mouth))
         return 0;
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Anchor && kv.second.faction == f &&
             kv.second.target == o->mouth)
             return 0;
     mind.stock -= cost;
 
     Plan p;
-    p.id = nextPlanId_++;
+    p.id = director_.Plans().NewId();
     p.kind = Plan::Kind::Anchor;
     p.faction = f;
     p.target = o->mouth;
     p.slot = slot;
     p.startedAt = time_;
     p.legAt = time_;
-    Plan& kept = plans_[p.id] = p;
+    Plan& kept = director_.Plans().Put(p);
     Announce("anchor", f, o->mouth,
              FactionName(f) + " sent for an Anchor to hold the mouth in " + SystemName(o->mouth));
     DispatchConvoy(kept);
@@ -500,7 +500,7 @@ bool Simulation::StartUpgrade(Plan& p)
         std::find(bp->onto.begin(), bp->onto.end(), was->id) == bp->onto.end())
     {
         // What it brought is put by: the stock is paid back.
-        minds_[p.faction].stock += BlueprintCost(p.blueprint);
+        director_.Mind(p.faction).stock += BlueprintCost(p.blueprint);
         Record("upgrade", p.faction, p.target,
                FactionName(p.faction) + "'s convoy came to " + SystemName(p.target) +
                    " to find nothing to build on");
@@ -517,7 +517,7 @@ bool Simulation::StartUpgrade(Plan& p)
     st->profile = ProfileOf(*st);
     ScheduleStructure(st->id, *t);
     p.dueAt = time_ + bp->buildSeconds;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Schedule(p);
     const long long minutes = (long long)std::lround(bp->buildSeconds / 60.0);
     Announce("upgrade", p.faction, p.target,
              FactionName(p.faction) + " began making its " + what + " in " + SystemName(p.target) +
@@ -537,8 +537,8 @@ void Simulation::ResolveUpgrade(const Plan& p)
     {
         Plan later = p;
         later.dueAt = std::max(t->GetCompletesAt(), time_);
-        plans_[later.id] = later;
-        due_.insert({ later.dueAt, later.id });
+        director_.Plans().Put(later);
+        director_.Plans().Schedule(later);
         return;
     }
     if (Outposts::IsMarket(t->GetBuilds()))
@@ -622,7 +622,7 @@ float Simulation::ConvoyDanger(FactionId f, const std::string& systemId, bool tr
     // What it believes: what it saw there, or -- where it has never looked -- a ship's worth of
     // whatever might be there, at middling security; and where it lost something, the memory
     // of that.
-    const FactionMind& mind = minds_[f];
+    const FactionMind& mind = director_.Mind(f);
     if (!sees)
     {
         const auto seen = mind.intel.find(systemId);
@@ -754,7 +754,7 @@ bool Simulation::DispatchConvoy(Plan& p)
     if (!HasSystem(p.target))
         return false;
     const WorldRules::Convoys& r = WorldRules::ConvoyRules();
-    FactionMind&               mind = minds_[p.faction];
+    FactionMind&               mind = director_.Mind(p.faction);
     const double               retry = r.retryMinutes * 60.0;
     // Pilots already waiting with it where it would set out stand in for escort it lacks.
     ConvoyChart c = ChartConvoy(p.faction, p.target, 0.0f, p.waits);
@@ -818,7 +818,7 @@ void Simulation::SendHome(const Plan& p, int hops)
     if (p.force < MIN_RETURN || p.lent.empty() || !HasSystem(p.lent.front().from))
         return;
     Plan r;
-    r.id = nextPlanId_++;
+    r.id = director_.Plans().NewId();
     r.kind = Plan::Kind::Return;
     r.faction = p.faction;
     r.from = p.route.empty() || p.leg < 0 ? p.target : p.route[(size_t)p.leg];
@@ -826,8 +826,8 @@ void Simulation::SendHome(const Plan& p, int hops)
     r.startedAt = time_;
     r.dueAt = time_ + std::max(1, hops) * WorldRules::ConvoyRules().hop;
     r.force = p.force;
-    plans_[r.id] = r;
-    due_.insert({ r.dueAt, r.id });
+    director_.Plans().Put(r);
+    director_.Plans().Schedule(r);
 }
 
 void Simulation::TallyConvoy(const Plan& p, long long ConvoyTally::* what)
@@ -841,7 +841,7 @@ void Simulation::LoseConvoy(Plan& p, const std::string& how)
     const std::string where = p.route.empty() || p.leg < 0 ? p.target : p.route[(size_t)p.leg];
     UnfieldConvoy(p);
     SendHome(p, std::max(1, p.leg));
-    minds_[p.faction].lostAt[where] = time_;  // it thinks twice before sending one that way
+    director_.Mind(p.faction).lostAt[where] = time_;  // it thinks twice before sending one that way
     const double retry = WorldRules::ConvoyRules().retryMinutes * 60.0;
     Announce("convoy", p.faction, where,
              FactionName(p.faction) + " lost its convoy bound for " + SystemName(p.target) +
@@ -864,7 +864,7 @@ void Simulation::TurnBackConvoy(Plan& p, const std::string& where, const std::st
     const std::string at = p.ConvoyAt();
     UnfieldConvoy(p);
     SendHome(p, std::max(1, p.leg));
-    minds_[p.faction].lostAt[where] = time_;
+    director_.Mind(p.faction).lostAt[where] = time_;
     const double retry = WorldRules::ConvoyRules().retryMinutes * 60.0;
     char         left[96];
     std::snprintf(left, sizeof left,
@@ -901,7 +901,7 @@ bool Simulation::ArriveConvoy(Plan& p)
     // What it lost on the way is made up from the faction's stock, as far as that goes.
     if (begun && p.freight < 1.0f)
     {
-        float& stock = minds_[p.faction].stock;
+        float& stock = director_.Mind(p.faction).stock;
         stock = std::max(0.0f, stock - (1.0f - p.freight) * FreightPrice(p));
     }
     return begun;  // `freight` stays what it came with: the record of how it went
@@ -967,7 +967,7 @@ void Simulation::StepConvoys()
 {
     const WorldRules::Convoys& r = WorldRules::ConvoyRules();
     std::vector<int>           over;
-    for (auto& kv : plans_)
+    for (auto& kv : director_.Plans().All())
     {
         Plan& p = kv.second;
         if (!p.OnTheWay())
@@ -1055,12 +1055,12 @@ void Simulation::StepConvoys()
             FieldConvoy(*there, p, true);
     }
     for (int id : over)
-        plans_.erase(id);  // in no due entry: a convoy is stepped, not due
+        director_.Plans().All().erase(id);  // in no due entry: a convoy is stepped, not due
 }
 
 void Simulation::FieldConvoys(SystemState& st)
 {
-    for (auto& kv : plans_)
+    for (auto& kv : director_.Plans().All())
         if (kv.second.OnTheWay() && kv.second.leg >= 0 &&
             kv.second.route[(size_t)kv.second.leg] == st.id)
             FieldConvoy(st, kv.second, false);

@@ -1579,7 +1579,8 @@ bool Simulation::AcceptMission(ClientSession& s, int offerId)
         return false;
     }
     // A plan's job is the plan's (#345): over when it is, even for a board drawn before.
-    if (IsPlanJob(offers[offerIndex].type) && plans_.count(offers[offerIndex].planId) == 0)
+    if (IsPlanJob(offers[offerIndex].type) &&
+        director_.Plans().All().count(offers[offerIndex].planId) == 0)
     {
         s.RecordEvent(Ev::Kind::Notice, "Mission not taken: offer " + std::to_string(offerId) +
                                             " is over -- what it was for is done");
@@ -2615,7 +2616,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 if (mj.contains("against") && mj["against"].is_string())
                     Factions::Find(mj["against"].get<std::string>(), m.against);
                 m.giverStationId = StationIdOf(systems_, giver);
-                if (plans_.count(m.planId) == 0 && m.progress < m.targetCount)
+                if (director_.Plans().All().count(m.planId) == 0 && m.progress < m.targetCount)
                 {
                     s.RecordEvent(Ev::Kind::Notice,
                                   "Job dropped -- " + m.title + ": what it was for is over");

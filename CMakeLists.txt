@@ -337,6 +337,7 @@ add_library(simcore STATIC
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
     src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
+    src/game/sim/FactionDirector.cpp      # what the factions' macro layer owns: minds, plans, chronicle (#353)
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
     src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
     src/game/sim/Simulation_Defence.cpp   # a structure's rules of engagement, and its owner (#340)

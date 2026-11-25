@@ -484,7 +484,7 @@ Proto::GalaxyState Simulation::GalaxyStateFor(const ClientSession&      s,
     {
         out.chartBuyer = true;
         out.chartFaction = buyer;
-        out.chartTreasury = std::floor(minds_[buyer].treasury);
+        out.chartTreasury = std::floor(director_.Mind(buyer).treasury);
         for (const ChartOffer& o : ChartOffers(s, buyer))
             for (Proto::GalaxySystemStat& g : out.systems)
                 if (g.id == o.system)
@@ -642,7 +642,7 @@ Simulation::ChartOffer Simulation::ChartOfferFor(const ClientSession& s, Faction
         return o;
     }
     const WorldRules::Charts& rules = WorldRules::ChartRules();
-    const FactionMind&        mind = minds_[f];
+    const FactionMind&        mind = director_.Mind(f);
     const auto                k = mind.intel.find(systemId);
     const Intel*              known = k == mind.intel.end() ? nullptr : &k->second;
     double                    value = 0.0;
@@ -675,7 +675,7 @@ Simulation::ChartOffer Simulation::ChartOfferFor(const ClientSession& s, Faction
     // Rare is worth more: every other faction with a picture of it makes it less so.
     int others = 0;
     for (FactionId g : Factions::All())
-        if (g != f && minds_[g].intel.count(systemId) != 0)
+        if (g != f && director_.Mind(g).intel.count(systemId) != 0)
             others++;
     value /= 1.0 + rules.rarity * others;
     o.price = (int)std::min(1.0e9, std::floor(value));
@@ -737,7 +737,7 @@ bool Simulation::SellCharts(ClientSession& s, const std::string& which)
         offers.push_back(std::move(o));
     }
 
-    FactionMind& mind = minds_[f];
+    FactionMind& mind = director_.Mind(f);
     int          sold = 0;
     double       paid = 0.0;
     std::string  last, shortOf;

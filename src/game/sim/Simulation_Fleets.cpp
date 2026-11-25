@@ -681,7 +681,7 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
     for (const std::string& d : *day)
         fits.push_back({ d, std::string(), std::string(), 0.0f });
 
-    double&      treasury = minds_[f].treasury;
+    double&      treasury = director_.Mind(f).treasury;
     const double fee = Goods::Rules().fee;
     // As many of `design` as the markets within reach have the goods of, none of them dear, and
     // the treasury the money for: up to `n`, and bought (#566). The whole ship leaves the
@@ -810,7 +810,7 @@ float Simulation::RefitFleets(SystemState& st, FactionId f, double rate)
     const int                 slot = Gen::SlotOf(st.id);
     const auto                known = styles_.find(slot);
     const Ships::Style        style = known != styles_.end() ? known->second : RegionStyle(slot);
-    double&                   treasury = minds_[f].treasury;
+    double&                   treasury = director_.Mind(f).treasury;
 
     // The fleets of a holding that bought them: the role its ships fly day to day, and the
     // warships it would lend a siege.

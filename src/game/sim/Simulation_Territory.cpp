@@ -448,7 +448,7 @@ void Simulation::PayFee(const FeeTo& to, double fee)
     if (!(fee > 0.0))
         return;
     if (to.toFaction)
-        minds_[to.faction].treasury += fee;
+        director_.Mind(to.faction).treasury += fee;
     else if (!to.corp.empty())
         corps_.Credit(to.corp, fee, "fees");
     else if (!to.account.empty())
@@ -776,7 +776,7 @@ bool Simulation::PayRent(const std::string& party, const std::string& holder, do
     }
     FactionId f;
     if (FactionKey(holder, f))
-        minds_[f].treasury += rent;
+        director_.Mind(f).treasury += rent;
     else
     {
         const Corps::Corp* payer = IsPilotParty(party) ? nullptr : corps_.Find(party);

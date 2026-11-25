@@ -9,6 +9,7 @@
 #include "sim/SystemState.h"
 #include "sim/Protocol.h"
 #include "sim/Events.h"
+#include "sim/FactionDirector.h"
 #include "sim/FactionMind.h"
 #include "sim/Orders.h"
 #include "sim/ClientSession.h"
@@ -578,12 +579,12 @@ public:
     Intel Observe(const SystemState& st) const;
     // What a faction knows (#295): its holdings, where its ships are, and what its surveys
     // brought back, each as of when it was seen.
-    const FactionMind& MindOf(FactionId f) const { return minds_[f]; }
+    const FactionMind& MindOf(FactionId f) const { return director_.Mind(f); }
     // ...and for a test, to plant a belief or a stock. What is planted before the first
     // macro pass stands; the seeding only adds what is missing.
-    FactionMind& MindOf(FactionId f) { return minds_[f]; }
+    FactionMind& MindOf(FactionId f) { return director_.Mind(f); }
     // Surveys, settlements and sieges under way, by id (#295).
-    const std::map<int, Plan>& Plans() const { return plans_; }
+    const std::map<int, Plan>& Plans() const { return director_.Plans().All(); }
     // The delivery contracts short markets have open, by id (#343, #407).
     const std::map<int, Contract>& Contracts() const { return contracts_; }
     // A holding keeps this share of its capacity at home; only what is above it can reach out
@@ -815,7 +816,7 @@ public:
                                 const std::string& systemId) const;
     // The world's history, oldest first, capped (#295). Everything the news feed says is
     // here too, with a time and a sequence number; surveys are here and not in the feed.
-    const std::vector<ChronicleEntry>& Chronicle() const { return chronicle_; }
+    const std::vector<ChronicleEntry>& Chronicle() const { return director_.History().Entries(); }
     // Counts what a system's static layer holds (#295). Called when the layer is built
     // and whenever it changes; see SystemProfile.
     static SystemProfile ProfileOf(const SystemState& st);
@@ -2600,12 +2601,7 @@ private:
     // its holdings and their neighbours the first time the faction step runs, when the
     // static layers they are read from exist -- or, for an older save, the first time
     // after it is loaded.
-    PerFaction<FactionMind> minds_;
-    bool                    mindsSeeded_ = false;
-    std::map<int, Plan>     plans_;
-    // Plans by when they are due, then by id: a pass pops what is due and looks at
-    // nothing else. Not saved -- remade from plans_.
-    std::set<std::pair<double, int>> due_;
+    FactionDirector director_;
     // FighterOf by faction id and role, for the catalogue load it was derived from. Not saved.
     mutable std::map<std::pair<std::string, int>, Ships::Fighter> fighters_;
     mutable unsigned                                              fightersFrom_ = 0;
@@ -2637,14 +2633,11 @@ private:
     // told once in the corporation's journal, and again only after a replacement is paid.
     // Not saved -- a restart may say it once more.
     std::set<std::pair<std::string, std::string>> patrolShort_;
-    int                                           nextPlanId_ = 1;
     // Delivery contracts (#343, #407), by id. Saved. When markets last looked at what they are
     // short of, as a stretch of the contracts rules' `every`: transient, so a restart looks.
-    std::map<int, Contract>     contracts_;
-    int                         nextContractId_ = 1;
-    double                      contractSlot_ = -1.0;
-    std::vector<ChronicleEntry> chronicle_;
-    long long                   chronicleSeq_ = 0;
+    std::map<int, Contract> contracts_;
+    int                     nextContractId_ = 1;
+    double                  contractSlot_ = -1.0;
     // Stations' own work (#425, StationWork), by station id: each offer with the world time
     // it is taken off at. Numbered from nextOfferId_, below Offers::CONTRACT_BASE.
     struct StationOffer

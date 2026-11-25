@@ -56,8 +56,6 @@ constexpr uint64_t SURVEY_KEY = 0x5E5u;
 constexpr int RESOLVE_PER_PASS = 4;
 // A faction may have one survey under way, and one more for every this many holdings.
 constexpr int PLANS_PER_HOLDINGS = 8;
-// How much history is kept, in memory and in the save.
-constexpr size_t CHRONICLE_KEEP = 200;
 // What one holding yields a faction's stock per period (#295): a base, plus as much again
 // for a prosperous system and for one rich in ore. An outpost costs about ten periods of
 // what three ordinary holdings yield.
@@ -283,17 +281,7 @@ Intel Simulation::Observe(const SystemState& st) const
 void Simulation::Record(const std::string& kind, std::optional<FactionId> faction,
                         const std::string& system, const std::string& text)
 {
-    ChronicleEntry e;
-    e.seq = ++chronicleSeq_;
-    e.time = time_;
-    e.kind = kind;
-    e.faction = faction;
-    e.system = system;
-    e.text = text;
-    chronicle_.push_back(std::move(e));
-    if (chronicle_.size() > CHRONICLE_KEEP)
-        chronicle_.erase(chronicle_.begin(),
-                         chronicle_.begin() + (long)(chronicle_.size() - CHRONICLE_KEEP));
+    director_.History().Record(time_, kind, faction, system, text);
 }
 
 // What every faction knows when the world begins (#295): the systems it holds and the ones
@@ -301,13 +289,13 @@ void Simulation::Record(const std::string& kind, std::optional<FactionId> factio
 // the wormhole, not even that.
 void Simulation::SeedMinds()
 {
-    mindsSeeded_ = true;
+    director_.SetSeeded(true);
     for (auto& kv : systems_)
     {
         const SystemAggregate& a = kv.second.agg;
         if (!a.claimed)
             continue;
-        FactionMind& m = minds_[a.controller];
+        FactionMind& m = director_.Mind(a.controller);
         m.intel[kv.first] = Observe(kv.second);
         // A world begins with its factions able to man what they hold (#464): what a holding
         // pays in `foundingHours`, in the treasury, since the ships are bought now.
@@ -352,7 +340,7 @@ void Simulation::ResolveSurvey(const Plan& p)
     if (st == systems_.end())
         return;  // the galaxy no longer has it; the survey comes back with nothing
     const Intel seen = Observe(st->second);
-    minds_[p.faction].intel[p.target] = seen;
+    director_.Mind(p.faction).intel[p.target] = seen;
     NoteSurvey(p.target);  // the region's tide feels it (#342 S3)
     Record("survey", p.faction, p.target,
            FactionName(p.faction) + " surveyed " + SystemName(p.target) + ": " +
@@ -367,7 +355,7 @@ int Simulation::BeginSurvey(FactionId f, const std::string& from, const std::str
     Gen::Rng rng(Gen::Key(SURVEY_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(to),
                           (uint64_t)(time_ / 60.0)));
     Plan     p;
-    p.id = nextPlanId_++;
+    p.id = director_.Plans().NewId();
     p.kind = Plan::Kind::Survey;
     p.faction = f;
     p.from = from;
@@ -375,8 +363,8 @@ int Simulation::BeginSurvey(FactionId f, const std::string& from, const std::str
     p.startedAt = time_;
     // ...after the time the faction gives pilots to offer to survey it for pay (#345).
     p.dueAt = time_ + SURVEY_TIME + rng.Range(0, SURVEY_JITTER) + WorldRules::JobRules().surveyWait;
-    plans_[p.id] = p;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Put(p);
+    director_.Plans().Schedule(p);
     return p.id;
 }
 
@@ -384,18 +372,16 @@ int Simulation::BeginSurvey(FactionId f, const std::string& from, const std::str
 // budget ran out is simply a pass late; nothing is lost.
 void Simulation::ResolveDuePlans()
 {
-    for (int budget = RESOLVE_PER_PASS; budget > 0 && !due_.empty(); budget--)
+    for (int budget = RESOLVE_PER_PASS; budget > 0; budget--)
     {
-        const auto next = due_.begin();
-        if (next->first > time_)
+        const std::optional<int> id = director_.Plans().PopDue(time_);
+        if (!id)
             break;
-        const int id = next->second;
-        due_.erase(next);
-        const auto it = plans_.find(id);
-        if (it == plans_.end())
+        const Plan* found = director_.Plans().Find(*id);
+        if (found == nullptr)
             continue;
-        const Plan p = it->second;
-        plans_.erase(it);
+        const Plan p = *found;
+        director_.Plans().Erase(*id);
         switch (p.kind)
         {
             case Plan::Kind::Survey: ResolveSurvey(p); break;
@@ -416,7 +402,7 @@ bool Simulation::Settle(FactionId f, const std::string& from, const std::string&
 {
     SystemState* st = SystemById(to);
     const float  cost = OutpostCost();
-    FactionMind& mind = minds_[f];
+    FactionMind& mind = director_.Mind(f);
     if (st == nullptr || cost <= 0.0f || mind.stock < cost)
         return false;
     const Intel& seen = mind.intel[to] = Observe(*st);
@@ -452,7 +438,7 @@ bool Simulation::Settle(FactionId f, const std::string& from, const std::string&
     mind.stock -= cost;
 
     Plan p;
-    p.id = nextPlanId_++;
+    p.id = director_.Plans().NewId();
     p.kind = Plan::Kind::Settle;
     p.faction = f;
     p.from = from;
@@ -460,8 +446,8 @@ bool Simulation::Settle(FactionId f, const std::string& from, const std::string&
     p.startedAt = time_;
     p.dueAt = time_ + bp->buildSeconds;
     p.site = StaticKey(to, id);
-    plans_[p.id] = p;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Put(p);
+    director_.Plans().Schedule(p);
     Record("settle", f, to,
            FactionName(f) + " began " + Outposts::Called(purpose) + " in " + SystemName(to));
     return true;
@@ -495,8 +481,8 @@ void Simulation::ResolveSettle(const Plan& p)
         // Not yet after all -- its time line says later. Wait for it.
         Plan later = p;
         later.dueAt = std::max(site->GetCompletesAt(), time_);
-        plans_[later.id] = later;
-        due_.insert({ later.dueAt, later.id });
+        director_.Plans().Put(later);
+        director_.Plans().Schedule(later);
         return;
     }
     SystemAggregate& a = st->agg;
@@ -519,7 +505,7 @@ void Simulation::ResolveSettle(const Plan& p)
         return;
     }
     TakeControl(p.target, p.faction);
-    minds_[p.faction].intel[p.target] = Observe(*st);
+    director_.Mind(p.faction).intel[p.target] = Observe(*st);
     Outposts::Purpose purpose = Outposts::Purpose::Open;
     Outposts::PurposeOf(site->GetBuilds(), purpose);
     Announce("settle", p.faction, p.target,
@@ -544,7 +530,7 @@ void Simulation::StepFactions()
         a.lostPirates = a.lostPolice = 0.0f;
     }
 
-    if (!mindsSeeded_)
+    if (!director_.Seeded())
         SeedMinds();
     ResolveDuePlans();
     StepSieges();
@@ -588,13 +574,13 @@ void Simulation::StepFactions()
         const auto  n = kept.find(a.controller);
         const float storable =
             STOCK_OUTPOSTS * OutpostCost() + reserve * (n == kept.end() ? 0.0f : (float)n->second);
-        float& stock = minds_[a.controller].stock;
+        float& stock = director_.Mind(a.controller).stock;
         stock = std::min(storable, stock + INCOME_BASE * (1.0f + a.prosperity + ore));
         // ...and money to its treasury (#464): holding space is what pays for the ships
         // that hold it, so a faction that holds anything can always rebuild some of it.
-        minds_[a.controller].treasury += WorldRules::StyleRules().holdingIncome *
-                                         (0.5 + 0.5 * (double)a.prosperity) * FACTION_PERIOD *
-                                         MAINT_STEP_SECONDS / 3600.0;
+        director_.Mind(a.controller).treasury += WorldRules::StyleRules().holdingIncome *
+                                                 (0.5 + 0.5 * (double)a.prosperity) *
+                                                 FACTION_PERIOD * MAINT_STEP_SECONDS / 3600.0;
     }
 
     // Once a period, holdings recover towards capacity -- less what they have lent a siege and
@@ -609,7 +595,7 @@ void Simulation::StepFactions()
         if (home != systems_.end() && home->second.agg.claimed && home->second.agg.controller == f)
             lent[id] += force;
     };
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
     {
         if (kv.second.kind == Plan::Kind::Siege || kv.second.kind == Plan::Kind::Response ||
             kv.second.OnTheWay())
@@ -718,7 +704,7 @@ void Simulation::StepFactions()
 void Simulation::Think(FactionId f)
 {
     const Temperament& t = Factions::TemperamentOf(f);
-    FactionMind&       mind = minds_[f];
+    FactionMind&       mind = director_.Mind(f);
 
     // What it sees for itself is never out of date -- and is not saved, for that reason.
     int holdings = 0, outposts = 0;
@@ -742,10 +728,10 @@ void Simulation::Think(FactionId f)
     std::set<std::string> surveying, settling, upgrading;
     bool                  besieging = false, anchoring = false;
     float                 owed = 0.0f;  // what convoys waiting to set out have yet to make good
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.faction == f && kv.second.OnTheWay() && kv.second.leg < 0)
             owed += std::max(0.0f, 1.0f - kv.second.freight) * FreightPrice(kv.second);
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
             surveying.insert(kv.second.target);
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Settle)

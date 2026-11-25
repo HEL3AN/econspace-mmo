@@ -132,7 +132,7 @@ Structure* Simulation::StructureByKey(SystemState& st, const std::string& key) c
 float Simulation::SiegeForceIn(const std::string& systemId, FactionId f) const
 {
     float force = 0.0f;
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Siege && kv.second.faction == f &&
             kv.second.target == systemId && kv.second.arrived)
             force += kv.second.force;
@@ -143,7 +143,7 @@ float Simulation::LentFrom(const std::string& systemId, FactionId f) const
 {
     // Lent to a siege, the whole of it until the siege is over; on the way home, what is left.
     float away = 0.0f;
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
     {
         const Plan& p = kv.second;
         if (p.faction != f)
@@ -201,7 +201,7 @@ void Simulation::StepUpkeep()
             if (t == nullptr)
                 continue;
             const FactionId   f = owners[i];
-            FactionMind&      mind = minds_[f];
+            FactionMind&      mind = director_.Mind(f);
             const float       due = u.share * CostOf(t->GetBlueprint());
             const float       hull = t->MaxHull(time_);
             const std::string key = kv.first + "/" + StaticKey(kv.first, ids[i]);
@@ -287,14 +287,14 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     }
     if (sent.empty())
         return;
-    minds_[f].stock -= SiegeCost();
+    director_.Mind(f).stock -= SiegeCost();
 
     // How long they will stay is drawn from what is decided -- this faction, that system, this
     // minute of the world's clock -- never from how many draws came before.
     Gen::Rng rng(Gen::Key(SIEGE_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(to),
                           (uint64_t)(time_ / 60.0)));
     Plan     p;
-    p.id = nextPlanId_++;
+    p.id = director_.Plans().NewId();
     p.kind = Plan::Kind::Siege;
     p.faction = f;
     p.from = sent.front().from;  // the nearest
@@ -316,17 +316,17 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
             p.resist[l][t] = fighter.resist[l][t] / force;
     for (size_t t = 0; t < p.mix.size(); ++t)
         p.mix[t] = fighter.dps > 0.0f ? fighter.mix[t] / fighter.dps : 0.0f;
-    plans_[p.id] = p;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Put(p);
+    director_.Plans().Schedule(p);
     char ships[32];
     std::snprintf(ships, sizeof ships, "%.0f", std::max(1.0, std::round((double)force)));
     Record("siege", f, to,
            FactionName(f) + " sent " + ships + " ships from " + whence + " against " +
                Against(p, t) + " in " + SystemName(to));
-    if (p.arrivesAt <= time_ && !ArriveSiege(plans_[p.id]))
+    if (p.arrivesAt <= time_ && !ArriveSiege(director_.Plans()[p.id]))
     {
-        RecallSiege(plans_[p.id]);
-        plans_.erase(p.id);
+        RecallSiege(director_.Plans()[p.id]);
+        director_.Plans().All().erase(p.id);
     }
 }
 
@@ -586,7 +586,7 @@ void Simulation::SendHome(const Plan& p, double hop)
         if (back < MIN_RETURN || !HasSystem(l.from))
             continue;
         Plan r;
-        r.id = nextPlanId_++;
+        r.id = director_.Plans().NewId();
         r.kind = Plan::Kind::Return;
         r.faction = p.faction;
         r.from = p.target;
@@ -594,8 +594,8 @@ void Simulation::SendHome(const Plan& p, double hop)
         r.startedAt = time_;
         r.dueAt = time_ + l.hops * hop;
         r.force = back;
-        plans_[r.id] = r;
-        due_.insert({ r.dueAt, r.id });
+        director_.Plans().Put(r);
+        director_.Plans().Schedule(r);
     }
 }
 
@@ -608,7 +608,7 @@ void Simulation::ResolveReturn(const Plan& p)
 
 void Simulation::FieldSieges(SystemState& st)
 {
-    for (auto& kv : plans_)
+    for (auto& kv : director_.Plans().All())
         if (kv.second.kind == Plan::Kind::Siege && kv.second.target == st.id)
             FieldSiege(st, kv.second, false);
 }
@@ -649,7 +649,7 @@ void Simulation::StepSieges()
 {
     const Blueprints::Siege& r = Blueprints::SiegeRules();
     std::vector<int>         over;
-    for (auto& kv : plans_)
+    for (auto& kv : director_.Plans().All())
     {
         Plan& p = kv.second;
         if (p.kind != Plan::Kind::Siege)
@@ -781,11 +781,11 @@ void Simulation::StepSieges()
     }
     for (int id : over)
     {
-        const auto it = plans_.find(id);
-        if (it == plans_.end())
+        const auto it = director_.Plans().All().find(id);
+        if (it == director_.Plans().All().end())
             continue;
         SiegeOver(it->second);  // its jobs (#345)
         RecallSiege(it->second);
-        plans_.erase(it);  // its due entry finds nothing
+        director_.Plans().All().erase(it);  // its due entry finds nothing
     }
 }
