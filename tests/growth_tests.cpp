@@ -53,6 +53,12 @@ void Make(Simulation& sim, uint64_t seed, const std::string& seal = std::string(
     REQUIRE(sim.OpenGalaxy(Params(seed), DATA, log));
     sim.InitGalaxy();
     sim.MaterializeAllSystems(DATA + "systems/");
+    // A ship is bought from the shelves now (#566), and these cases are about what factions
+    // do with the ships they have, not about whether the markets can build them: every shelf
+    // is full of everything.
+    for (const auto& kv : sim.Systems())
+        for (ResourceType g : AllResourceTypes())
+            sim.SystemById(kv.first)->market.SetStock(g, 1.0e5);
 }
 
 void RunMinutes(Simulation& sim, double minutes)
@@ -1168,4 +1174,48 @@ TEST_CASE("a faction grows a shipyard by need: after a station, none within reac
         CHECK(FirstGrowth(sim, f, h, 10).empty());
         CHECK(sim.BeginUpgrade(f, h.system, Outposts::SHIPYARD_BLUEPRINT) == 0);
     }
+}
+
+TEST_CASE("any faction that holds a market in a region with no yard grows one, once (#566)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    // A held market, in a region made to have no yard.
+    SystemState* held = nullptr;
+    for (auto& kv : sim.Systems())
+        if (kv.second.agg.claimed && kv.second.profile.markets > 0)
+        {
+            held = sim.SystemById(kv.first);
+            break;
+        }
+    REQUIRE(held != nullptr);
+    const int slot = Gen::SlotOf(held->id);
+    for (const auto& kv : sim.Systems())
+        if (Gen::SlotOf(kv.first) == slot)
+            sim.SystemById(kv.first)->profile.shipyards = 0;
+    REQUIRE(sim.RegionWantsYard(slot));
+    const FactionId f = held->agg.controller;
+
+    // Without the means, nothing; with them, a yard is begun and paid for from the stock.
+    sim.MindOf(f).stock = 1.0f;
+    CHECK(sim.BeginYard(f, held->id) == 0);
+    sim.MindOf(f).stock = 1000.0f;
+    const int plan = sim.BeginYard(f, held->id);
+    REQUIRE(plan != 0);
+    CHECK(sim.MindOf(f).stock < 1000.0f);
+    // One a region: it is on its way, so nobody begins a second.
+    CHECK_FALSE(sim.RegionWantsYard(slot));
+    CHECK(sim.BeginYard(f, held->id) == 0);
+    // It takes its time, and then there is a yard where there was none.
+    const Blueprint* bp = Blueprints::Find("shipyard");
+    REQUIRE(bp != nullptr);
+    RunMinutes(sim, bp->buildSeconds / 60.0 + 2.0);
+    bool yard = false;
+    for (const auto& kv : sim.Systems())
+        if (Gen::SlotOf(kv.first) == slot)
+            yard = yard || kv.second.profile.shipyards > 0;
+    CHECK(yard);
+    CHECK_FALSE(sim.RegionWantsYard(slot));
 }

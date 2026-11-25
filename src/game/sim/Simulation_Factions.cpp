@@ -19,6 +19,7 @@
 // an enemy.
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
+#include "gen/Region.h"
 
 #include "core/Blueprint.h"
 #include "core/World.h"
@@ -649,7 +650,13 @@ void Simulation::StepFactions()
                 // 2026-10-23). What it has above what it keeps leaves as before. Pirates buy
                 // too, at the markets that deal with them, and take what they beat (slice 6):
                 // a gang does not breed where it holds, so it cannot spread past its ships.
-                const float step = t.growth * (keep - p);
+                // Ships it bought elsewhere and that are still on their way count as its own
+                // (#566): a holding does not order again what is already coming.
+                float coming = 0.0f;
+                for (const FleetOrder& o : fleetOrders_)
+                    if (o.faction == f && o.system == kv.first)
+                        coming += o.n;
+                const float step = t.growth * (keep - p - coming);
                 if (step > 0.0f)
                 {
                     orders.push_back({ keep > 0.0f ? p / keep : 1.0f, &kv.second, f, step });
@@ -670,6 +677,7 @@ void Simulation::StepFactions()
     // thinnest holdings before topping up the full ones. Ties by system id, the map's order.
     std::stable_sort(orders.begin(), orders.end(),
                      [](const Order& x, const Order& y) { return x.held < y.held; });
+    StepFleetOrders();  // ships bought away from home that have come in (#566)
     for (const Order& o : orders)
         o.st->agg.presence[o.f] += BuyShips(*o.st, o.f, o.want);
 
@@ -749,11 +757,49 @@ void Simulation::Think(FactionId f)
     // reaches for nothing new until they recover (#464): its ships are bought now, and a
     // poor faction must not spend itself out of the map.
     const bool weak = Defensive(f);
-    const bool canSettle =
+    bool       canSettle =
         !weak && (int)settling.size() < works && cost > 0.0f && mind.stock >= cost + reserve;
     // One siege at a time, paid for like a settlement (slice 5).
     const Blueprints::Siege& siege = Blueprints::SiegeRules();
     const bool canSiege = !weak && !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
+    // A yard where a market is held and the region has none to refit at (#566): a need, not a
+    // taste, so it is seen to before the turn weighs anything else -- any faction's, a native
+    // people's and a gang's too where it holds a market, from whatever it holds, a generated
+    // station as well as an outpost it founded. One a region, by the same gates as a yard grown
+    // from an outpost (#432): after a station to bring pilots, where enough passes through or is
+    // mined, none within reach, and room in the region's budget of stations. No reserve is asked
+    // of it: it keeps no outposts for one to be set by, and what it can store is no more than a
+    // yard costs.
+    bool savingForYard = false;
+    if ((int)upgrading.size() < works && BlueprintCost(Outposts::SHIPYARD_BLUEPRINT) > 0.0f)
+    {
+        const WorldRules::Growth& g = WorldRules::GrowthRules();
+        for (auto& kv : systems_)
+        {
+            const SystemState& st = kv.second;
+            if (!st.agg.claimed || st.agg.controller != f || st.profile.markets <= 0 ||
+                upgrading.count(kv.first) != 0 || !RegionWantsYard(Gen::SlotOf(kv.first)))
+                continue;
+            const int   stations = StationsIn(Gen::SlotOf(kv.first));
+            const float busy = std::max(std::clamp(st.agg.prosperity, 0.0f, 1.0f),
+                                        std::min(1.0f, st.profile.belts / 3.0f));
+            if (stations < g.shipyardAfter || stations >= g.stationsPerRegion ||
+                busy < (float)g.shipyardNeed || !ShipyardWanted(kv.first))
+                continue;
+            if (mind.stock >= BlueprintCost(Outposts::SHIPYARD_BLUEPRINT))
+            {
+                if (BeginYard(f, kv.first) != 0)
+                    return;
+                continue;
+            }
+            // A need it cannot yet pay: it saves for it rather than spend what it has on
+            // something it wants less, as a people with no place to refit would (#566).
+            savingForYard = true;
+            break;
+        }
+    }
+    if (savingForYard)
+        canSettle = false;  // a war does not wait for a yard, new outposts and upgrades do
     // ...and what each of its own warships would take off the wall a second.
     const float dps = WarshipDps(f);
     // What the ships a siege is expected to lose cost it (#568): the share of the force it
@@ -1241,7 +1287,7 @@ void Simulation::Think(FactionId f)
     // Growing an outpost (#342 S6): a market where none is near, a station where a market
     // stands and enough passes through or is mined -- by what it needs, against what is there
     // against it. The lawful build markets; a hidden base is not one to trade at.
-    if ((int)upgrading.size() < works && Factions::IsLawful(f))
+    if ((int)upgrading.size() < works && Factions::IsLawful(f) && !savingForYard)
         for (auto& kv : systems_)
         {
             const SystemState& st = kv.second;

@@ -636,6 +636,13 @@ public:
     // Whether a faction would want a shipyard for `systemId` (#432): none in its region,
     // standing or going up, and none within the growth rules' `shipyardReach` jumps.
     bool ShipyardWanted(const std::string& systemId) const;
+    // Whether region `slot` has no shipyard, standing or going up (#566): the one rule for every
+    // region, whoever holds a market in it -- a native people included.
+    bool RegionWantsYard(int slot) const;
+    // `f` begins a shipyard beside a station or market it holds at `systemId`: paid from its
+    // stock as any growth is, built in the blueprint's time, a station of its own when it is
+    // done. The plan's id, or 0.
+    int BeginYard(FactionId f, const std::string& systemId);
     // How many jumps from `systemId` the nearest market is -- a station's, or an outpost
     // market's: 0 where it has one, -1 where none is within reach.
     int MarketJumps(const std::string& systemId);
@@ -708,6 +715,22 @@ public:
     // system (#464, slice 6) -- so a gang far from any such market buys nothing and grows
     // only by what it takes.
     SystemState* BuyingMarket(const std::string& systemId, bool pirates = false);
+    // Every market a purchase at `systemId` may shop at (#566): its own first, then the ring of
+    // neighbours out to the growth rules' market reach, each with its distance in jumps -- the
+    // ones BuyingMarket would pass over for a gang (a law is over them) left out.
+    std::vector<std::pair<SystemState*, int>> MarketsWithin(const std::string& systemId,
+                                                            bool               pirates);
+    // Ships a holding bought where it could, and that are on their way home (#566): counted
+    // nowhere on the road, as a lent ship is, and added to the holding's fleets when they come.
+    struct FleetOrder
+    {
+        std::string system;
+        FactionId   faction = Factions::Unaffiliated();
+        std::string design, war;  // what flies there day to day, and what it is in a siege
+        float       n = 0.0f;
+        double      arrivesAt = 0.0;
+    };
+    const std::vector<FleetOrder>& FleetOrders() const { return fleetOrders_; }
     // What the pirates here take from the police they beat in a cold exchange (#464, slice 6):
     // `captureShare` of the ships they destroyed, each flown on as a pirate ship in the
     // family of the guns it was shot down with. The ships are the lawful faction's loss, paid
@@ -716,9 +739,14 @@ public:
     // What a ship of `design` costs at `st`'s market's ask, in credits; 0 for one that does
     // not derive.
     double ShipPriceAt(const SystemState& st, const std::string& design) const;
-    // What a design's guns -- the modules of a weapon family -- are made of: what a purchase
-    // takes from the market (BuyShips).
+    // What a design's guns -- the modules of a weapon family -- are, as module goods (#566):
+    // what a purchase takes off the market's shelf (BuyShips). Everything else a ship is made
+    // of, its frame, sections and other parts, is PartsCost: raw goods, off the same shelf.
     static Ships::Cost GunCost(const std::string& design);
+    const Ships::Cost& PartsCost(const std::string& design) const;
+    // The module goods a ship of `design` carries as guns, and so what its wreck may hold:
+    // `share` of each, the fraction left over decided by `key`, never by a draw (#566).
+    static Inventory WreckModules(const std::string& design, double share, int key);
     // Whether `f`'s holdings stand below the style rules' `defensiveBelow` of what they keep:
     // a faction so weakened plans nothing new until it recovers.
     bool Defensive(FactionId f) const;
@@ -2515,8 +2543,16 @@ private:
     std::map<int, Ships::Style> styles_;
     // What each design is made of (Ships::Stats::cost), by id, for the catalogue load named.
     mutable std::map<std::string, Ships::Cost> designCosts_;
-    mutable unsigned                           designCostsFrom_ = 0;
-    const Ships::Cost&                         DesignCost(const std::string& design) const;
+    mutable std::map<std::string, Ships::Cost> designParts_;
+    std::vector<FleetOrder>                    fleetOrders_;
+    // Ships bought elsewhere that have come home (StepFactions, each pass).
+    void StepFleetOrders();
+    // `n` ships of `design` join `st`'s fleets: its day-to-day force and what it would lend a
+    // siege, `total` being the warships there before them.
+    void JoinBought(SystemState& st, FactionId f, const std::string& design, const std::string& war,
+                    float n, float total);
+    mutable unsigned   designCostsFrom_ = 0;
+    const Ships::Cost& DesignCost(const std::string& design) const;
     // Reckons every open region's style, and logs where a region's leading family or line
     // changed -- and every region the first time.
     void StepStyles();

@@ -1020,11 +1020,11 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
     StepNpcCombat(st, players, fires);
     StepStationDefence(st, players, fires, dt);
 
-    // Cleanup of the fallen. A hauler leaves what it carried in its wreck (#343).
+    // Cleanup of the fallen. A hauler leaves what it carried in its wreck (#343), and any ship
+    // a share of its guns (#566).
     std::vector<const NpcShip*> wrecked;
     for (const auto& e : st.entities)
-        if (e->GetKind() == EntityKind::Npc && !static_cast<const NpcShip&>(*e).IsAlive() &&
-            static_cast<const NpcShip&>(*e).GetCargoAmount() > 0)
+        if (e->GetKind() == EntityKind::Npc && !static_cast<const NpcShip&>(*e).IsAlive())
             wrecked.push_back(static_cast<const NpcShip*>(e.get()));
     for (const NpcShip* n : wrecked)
         LeaveCargoWreck(st, *n);

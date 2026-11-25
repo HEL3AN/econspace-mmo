@@ -31,7 +31,10 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    12;  // 12: derelict caches, hidden until scanned (#346);
+    13;  // 13: Iron, Ice and Crystal at a capital's belts and in every system a native people has a
+         // market in
+         // (#566);
+         // 12: derelict caches, hidden until scanned (#346);
          // 11: rich belts, hidden until scanned (#346);
          // 10: natives name the systems they live in, in their culture (#431 slice 3);
          // 9: a centre's station in a planet's path orbits it (#377);

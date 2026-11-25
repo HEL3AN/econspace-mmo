@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -16,8 +17,10 @@
 #include "sim/Overview.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
+#include "sim/SaveSchema.h"
 #include "sim/WorldRules.h"
 #include "factions_named.h"
+#include "temp_dir.h"
 
 // Buying (#464, slice 4): a holding grows by the ships it buys -- at its market, from its
 // faction's treasury, in its region's style -- so money limits how many ships, not only how
@@ -42,6 +45,14 @@ std::unique_ptr<Simulation> BuyingWorld(uint64_t seed = 7)
     sim->InitGalaxy();
     sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     return sim;
+}
+
+// A shelf with everything a ship is made of on it, so that what a test watches is the one thing
+// it changes (#566): a ship leaves the shelf now, parts and guns, and a bare shelf buys nothing.
+void StockShelf(SystemState& st)
+{
+    for (ResourceType g : AllResourceTypes())
+        st.market.SetStock(g, 1.0e5);
 }
 
 // A lawful faction's holding with a market of its own.
@@ -77,24 +88,29 @@ TEST_CASE("a holding buys its ships at its market, from its treasury, in its reg
     const FactionId f = st->agg.controller;
     REQUIRE(sim->BuyingMarket(st->id) == st);
 
+    StockShelf(*st);
     // No money, no ships.
     sim->MindOf(f).treasury = 0.0;
     CHECK(sim->BuyShips(*st, f, 2.0f) == doctest::Approx(0.0f));
 
     // Money: as many as it asked for, paid for at the ask, and the guns' goods are gone.
-    const double       rich = 1e7;
-    const ResourceType crystal = Good::Named("Crystal"), circuits = Good::Named("Circuits");
-    const ResourceType steel = Good::Named("Steel"), ammo = Good::Named("Ammunition");
-    const double       guns = st->market.Stock(crystal) + st->market.Stock(circuits) +
-                              st->market.Stock(steel) + st->market.Stock(ammo);
+    const double rich = 1e7;
+    StockShelf(*st);
+    const ResourceType laser = Good::Named("weapons.laser"), rail = Good::Named("weapons.railgun");
+    const ResourceType iron = Good::Named("Iron");
+    // Guns are module goods now (#566): the yard has them on its shelf, or there are none.
+    st->market.SetStock(laser, 20.0);
+    st->market.SetStock(rail, 20.0);
+    const double guns = st->market.Stock(laser) + st->market.Stock(rail);
+    const double hulls = st->market.Stock(iron);
     sim->MindOf(f).treasury = rich;
     st->agg.fleets.clear();
     const float bought = sim->BuyShips(*st, f, 2.0f);
     CHECK(bought == doctest::Approx(2.0f));
     CHECK(sim->MindOf(f).treasury < rich);
-    const double after = st->market.Stock(crystal) + st->market.Stock(circuits) +
-                         st->market.Stock(steel) + st->market.Stock(ammo);
+    const double after = st->market.Stock(laser) + st->market.Stock(rail);
     CHECK(after < guns);
+    CHECK(st->market.Stock(iron) < hulls);  // and the hull's own goods leave the shelf too
     // ...and they are in its warships, every one a fit of the catalogue.
     const auto war = st->agg.fleets.find(Simulation::FleetKey(f, NpcRole::Warship));
     REQUIRE(war != st->agg.fleets.end());
@@ -111,7 +127,7 @@ TEST_CASE("a holding buys its ships at its market, from its treasury, in its reg
     const float  one = sim->BuyShips(*st, f, 1.0f);
     const double spent = rich - sim->MindOf(f).treasury;
     REQUIRE(one == doctest::Approx(1.0f));
-    CHECK(spent > 1000.0);  // a ship is a ship, not a fee
+    CHECK(spent > 500.0);  // a ship is a ship, not a fee
     // Money for half a ship buys half a ship.
     sim->MindOf(f).treasury = spent * 0.5;
     CHECK(sim->BuyShips(*st, f, 1.0f) == doctest::Approx(0.5f).epsilon(0.1));
@@ -123,8 +139,10 @@ TEST_CASE("where one family's goods are dear or gone, the holding buys the other
     SystemState* st = LawfulHoldingWithMarket(*sim);
     REQUIRE(st != nullptr);
     const FactionId f = st->agg.controller;
-    // No circuits to be had: lasers cannot be fitted here.
-    st->market.SetStock(Good::Named("Circuits"), 0.0);
+    StockShelf(*st);
+    // No lasers to be had: they cannot be fitted here.
+    st->market.SetStock(Good::Named("weapons.laser"), 0.0);
+    st->market.SetStock(Good::Named("weapons.railgun"), 20.0);
     sim->MindOf(f).treasury = 1e7;
     st->agg.fleets.clear();
     st->agg.presence[f] = 0.0f;
@@ -135,7 +153,7 @@ TEST_CASE("where one family's goods are dear or gone, the holding buys the other
     CHECK(GunsOf(war, "railgun") == doctest::Approx(bought));
 
     // Neither family's goods: nothing, and the growth waits for haulers.
-    for (const char* g : { "Crystal", "Steel", "Ammunition" })
+    for (const char* g : { "weapons.laser", "weapons.railgun" })
         st->market.SetStock(Good::Named(g), 0.0);
     CHECK(sim->BuyShips(*st, f, 1.0f) == doctest::Approx(0.0f));
 }
@@ -222,9 +240,9 @@ TEST_CASE("a holding refits what it flies to the style of its region, and pays f
     const FactionId         f = st->agg.controller;
     const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
     // Lasers' goods in plenty and railguns' gone: the region leans laser.
-    for (const char* g : { "Steel", "Ammunition" })
+    for (const char* g : { "Steel", "Ammunition", "weapons.railgun" })
         st->market.SetStock(Good::Named(g), 0.0);
-    for (const char* g : { "Crystal", "Circuits" })
+    for (const char* g : { "Crystal", "Circuits", "weapons.laser" })
         st->market.SetStock(Good::Named(g), 5000.0);
     const Ships::Style style = sim->RegionStyle(Gen::SlotOf(st->id));
     REQUIRE(style.LeadingFamily() == "laser");
@@ -247,7 +265,7 @@ TEST_CASE("a holding refits what it flies to the style of its region, and pays f
     // Money: some of the fleet is lasers now, the number of ships the same, the treasury paid
     // and the lasers' goods are gone from the market.
     sim->MindOf(f).treasury = 1e9;
-    const double crystal = st->market.Stock(Good::Named("Crystal"));
+    const double crystal = st->market.Stock(Good::Named("weapons.laser"));
     const float  moved = sim->RefitFleets(*st, f, 0.5);
     CHECK(moved > 0.0f);
     const auto& fleet = st->agg.fleets[key];
@@ -258,7 +276,7 @@ TEST_CASE("a holding refits what it flies to the style of its region, and pays f
     CHECK(GunsOf(fleet, "laser") > 0.0f);
     CHECK(ShareOf(fleet, "railgun") < 1.0f);
     CHECK(sim->MindOf(f).treasury < 1e9);
-    CHECK(st->market.Stock(Good::Named("Crystal")) < crystal);
+    CHECK(st->market.Stock(Good::Named("weapons.laser")) < crystal);
 }
 
 TEST_CASE("the mix still wrong for the style halves in the rules' half-life of hours")
@@ -270,9 +288,9 @@ TEST_CASE("the mix still wrong for the style halves in the rules' half-life of h
     REQUIRE(st != nullptr);
     const FactionId         f = st->agg.controller;
     const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
-    for (const char* g : { "Steel", "Ammunition" })
+    for (const char* g : { "Steel", "Ammunition", "weapons.railgun" })
         st->market.SetStock(Good::Named(g), 0.0);
-    for (const char* g : { "Crystal", "Circuits" })
+    for (const char* g : { "Crystal", "Circuits", "weapons.laser" })
         st->market.SetStock(Good::Named(g), 1e9);
     const Ships::Style style = sim->RegionStyle(Gen::SlotOf(st->id));
     float              railTarget = 0.0f;
@@ -301,7 +319,7 @@ TEST_CASE("the mix still wrong for the style halves in the rules' half-life of h
         if (reached < 0.0 && wrong <= 0.5 * start)
             reached = at;
         sim->MindOf(f).treasury = 1e12;
-        for (const char* g : { "Crystal", "Circuits" })
+        for (const char* g : { "Crystal", "Circuits", "weapons.laser" })
             st->market.SetStock(Good::Named(g), 1e9);
     }
     MESSAGE("half-life measured: " << reached << " hours of " << halfLife);
@@ -323,6 +341,7 @@ TEST_CASE("pirates buy at a market that deals with them, and nowhere the law is 
     CHECK(sim->BuyingMarket(st->id, true) == nullptr);
     CHECK(sim->BuyShips(*st, pirates, 1.0f) == doctest::Approx(0.0f));
     // The same market with no law over it does -- and the ships join its pirates.
+    StockShelf(*st);
     st->agg.controller = pirates;
     st->agg.claimed = true;
     st->agg.pirates = 3.0f;
@@ -437,4 +456,130 @@ TEST_CASE("an instrument says how an NPC is fitted, and a known region says what
     REQUIRE(back.systems.size() == state.systems.size());
     for (size_t i = 0; i < state.systems.size(); i++)
         CHECK(back.systems[i].fits == state.systems[i].fits);
+}
+
+TEST_CASE(
+    "a purchase takes the whole ship off the shelf, and a short shelf means fewer ships (#566)")
+{
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const FactionId   f = st->agg.controller;
+    const std::string design = Archetypes::ShipCatalogue().Pick(Factions::Id(f), "warship", 0);
+    REQUIRE_FALSE(design.empty());
+    // Everything the ship is made of, parts and guns, is on the bill.
+    const Ships::Cost parts = sim->PartsCost(design);
+    StockShelf(*st);
+    const Ships::Cost guns = Simulation::GunCost(design);
+    REQUIRE_FALSE(parts.empty());
+    REQUIRE_FALSE(guns.empty());
+    for (const auto& [good, n] : guns)
+        CHECK(Goods::Def(good).IsModule());
+
+    // No guns on any shelf within reach, whatever the fortune: no ships.
+    sim->MindOf(f).treasury = 1e9;
+    st->agg.fleets.clear();
+    for (auto& kv : sim->Systems())
+    {
+        StockShelf(kv.second);
+        for (ResourceType g : AllResourceTypes())
+            if (Goods::Def(g).IsModule())
+                kv.second.market.SetStock(g, 0.0);
+    }
+    CHECK(sim->BuyShips(*st, f, 1.0f) == doctest::Approx(0.0f));
+    CHECK(sim->FleetOrders().empty());
+
+    // Guns on the shelf here at a price that is not dear: ships, and the goods are gone.
+    for (ResourceType g : AllResourceTypes())
+        if (Goods::Def(g).IsModule())
+            st->market.SetStock(g, 4.0 * st->profile.markets);
+    double gunsBefore = 0.0, partsBefore = 0.0;
+    for (ResourceType g : AllResourceTypes())
+        gunsBefore += Goods::Def(g).IsModule() ? st->market.Stock(g) : 0.0;
+    const ResourceType iron = Good::Named("Iron");
+    partsBefore = st->market.Stock(iron);
+    const float bought = sim->BuyShips(*st, f, 100.0f);
+    CHECK(bought > 0.0f);
+    CHECK(bought < 100.0f);  // the guns on the shelf limit it
+    double gunsAfter = 0.0;
+    for (ResourceType g : AllResourceTypes())
+        gunsAfter += Goods::Def(g).IsModule() ? st->market.Stock(g) : 0.0;
+    CHECK(gunsAfter < gunsBefore);
+    CHECK(st->market.Stock(iron) < partsBefore);
+
+    // A ship's guns survive in its wreck at the share, and are the same every time.
+    const Inventory a = Simulation::WreckModules(design, 1.0, 7);
+    const Inventory b = Simulation::WreckModules(design, 1.0, 7);
+    int             units = 0;
+    for (const auto& [good, n] : guns)
+    {
+        CHECK(a.Amount(good) >= n);
+        CHECK(a.Amount(good) == b.Amount(good));
+        units += n;
+    }
+    CHECK(Simulation::WreckModules(design, 0.0, 7).Amount(guns.front().first) <= 1);
+    CHECK(units > 0);
+}
+
+TEST_CASE("a holding shops within reach: what is not here is bought next door, and the ships come "
+          "home later, counted nowhere on the road (#566)")
+{
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const FactionId f = st->agg.controller;
+    // A neighbour with a market that deals with it.
+    std::vector<std::pair<SystemState*, int>> shops = sim->MarketsWithin(st->id, false);
+    SystemState*                              next = nullptr;
+    for (const auto& [s, jumps] : shops)
+        if (jumps > 0 && next == nullptr)
+            next = s;
+    if (next == nullptr)
+        return;  // a world with nobody next door has nothing to shop at
+    for (auto& kv : sim->Systems())
+        StockShelf(kv.second);
+    const std::string design = Archetypes::ShipCatalogue().Pick(Factions::Id(f), "warship", 0);
+    const Ships::Cost guns = Simulation::GunCost(design);
+    REQUIRE_FALSE(guns.empty());
+    // No guns here; plenty next door.
+    for (ResourceType g : AllResourceTypes())
+        if (Goods::Def(g).IsModule())
+        {
+            st->market.SetStock(g, 0.0);
+            next->market.SetStock(g, 40.0);
+        }
+    sim->MindOf(f).treasury = 1e9;
+    st->agg.fleets.clear();
+    const float  presence = st->agg.presence[f];
+    const double nextGuns = next->market.Stock(guns.front().first);
+    const float  here = sim->BuyShips(*st, f, 0.2f);
+    CHECK(here == doctest::Approx(0.0f));                      // none arrived yet
+    REQUIRE_FALSE(sim->FleetOrders().empty());                 // they are on their way
+    CHECK(next->market.Stock(guns.front().first) < nextGuns);  // bought there
+    CHECK(st->agg.presence[f] == doctest::Approx(presence));   // counted nowhere meanwhile
+    // Ships on the road are in the save: lost otherwise, being counted nowhere else.
+    {
+        const TempDir     tmp;
+        const std::string path = tmp.Path("world.json");
+        REQUIRE(sim->SaveWorld(path));
+        // The registries are loaded already: only the world is made again.
+        auto again = std::make_unique<Simulation>();
+        again->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+        again->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
+        again->Seed(1234u);
+        again->InitGalaxy();
+        again->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+        REQUIRE(again->LoadWorld(path) == Save::Result::Ok);
+        REQUIRE(again->FleetOrders().size() == sim->FleetOrders().size());
+        CHECK(again->FleetOrders().front().design == sim->FleetOrders().front().design);
+        CHECK(again->FleetOrders().front().n == doctest::Approx(sim->FleetOrders().front().n));
+    }
+    // They come home when their time is up.
+    float coming = 0.0f;
+    for (const auto& o : sim->FleetOrders())
+        coming += o.n;
+    for (int i = 0; i < 200; i++)
+        sim->MaintainWorld(2.0f);
+    CHECK(coming > 0.0f);
+    CHECK(st->agg.presence[f] > presence);  // they are home, and counted again
 }

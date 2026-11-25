@@ -442,6 +442,7 @@ const Ships::Cost& Simulation::DesignCost(const std::string& design) const
     if (designCostsFrom_ != Archetypes::Generation())
     {
         designCosts_.clear();
+        designParts_.clear();
         designCostsFrom_ = Archetypes::Generation();
     }
     auto it = designCosts_.find(design);
@@ -468,18 +469,63 @@ Ships::Cost Simulation::GunCost(const std::string& design)
         for (const Ships::FitLine& l : d->fit)
             if (const Ships::ModulePart* m = c.FindModule(l.module);
                 m != nullptr && c.FamilyOfModule(l.module) != nullptr)
-                for (const auto& [good, n] : m->cost)
-                    units[good.Index()] += n * l.count;
+            {
+                ResourceType g;
+                if (ModuleGood(m->id, g))
+                    units[g.Index()] += l.count;
+            }
     Ships::Cost out;
     for (const auto& [i, n] : units)
         out.emplace_back(ResourceType::FromIndex(i), n);
     return out;
 }
 
+const Ships::Cost& Simulation::PartsCost(const std::string& design) const
+{
+    const Ships::Cost& all = DesignCost(design);  // also drops both caches when data changed
+    auto               it = designParts_.find(design);
+    if (it != designParts_.end())
+        return it->second;
+    // The whole cost less what the guns are made of: a gun is bought as a module good, whose
+    // own parts the yard that made it has already paid.
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Ships::Design*    d = c.FindDesign(design);
+    std::map<int, int>      units;
+    for (const auto& [good, n] : all)
+        units[good.Index()] += n;
+    if (d != nullptr)
+        for (const Ships::FitLine& l : d->fit)
+            if (const Ships::ModulePart* m = c.FindModule(l.module);
+                m != nullptr && c.FamilyOfModule(l.module) != nullptr)
+            {
+                ResourceType g;
+                if (!ModuleGood(m->id, g))
+                    continue;
+                for (const auto& [good, n] : m->cost)
+                    units[good.Index()] -= n * l.count;
+            }
+    Ships::Cost out;
+    for (const auto& [i, n] : units)
+        if (n > 0)
+            out.emplace_back(ResourceType::FromIndex(i), n);
+    return designParts_.emplace(design, std::move(out)).first->second;
+}
+
+Inventory Simulation::WreckModules(const std::string& design, double share, int key)
+{
+    Inventory    out;
+    const double frac = (double)((uint32_t)key * 2654435761u % 1000u) / 1000.0;
+    for (const auto& [good, n] : GunCost(design))
+        out.Add(good, (int)std::floor((double)n * share + frac));
+    return out;
+}
+
 double Simulation::ShipPriceAt(const SystemState& st, const std::string& design) const
 {
     double price = 0.0;
-    for (const auto& [good, n] : DesignCost(design))
+    for (const auto& [good, n] : PartsCost(design))
+        price += st.market.Ask(good) * (double)n;
+    for (const auto& [good, n] : GunCost(design))
         price += st.market.Ask(good) * (double)n;
     return price;
 }
@@ -532,11 +578,83 @@ SystemState* Simulation::BuyingMarket(const std::string& systemId, bool pirates)
     return nullptr;
 }
 
+std::vector<std::pair<SystemState*, int>> Simulation::MarketsWithin(const std::string& systemId,
+                                                                    bool               pirates)
+{
+    std::vector<std::pair<SystemState*, int>> out;
+    SystemState*                              here = SystemById(systemId);
+    if (here == nullptr)
+        return out;
+    auto deals = [&](const SystemState& s)
+    {
+        FactionId law;
+        return s.profile.markets > 0 && (!pirates || !LawIn(s, law));
+    };
+    if (deals(*here))
+        out.emplace_back(here, 0);
+    // Out a ring at a time, in the galaxy's own order of neighbours: the same one every time.
+    std::set<std::string>    seen = { systemId };
+    std::vector<std::string> ring = { systemId };
+    for (int d = 1; d <= WorldRules::GrowthRules().marketReach && !ring.empty(); d++)
+    {
+        std::vector<std::string> next;
+        for (const std::string& id : ring)
+            for (const std::string& n : Neighbors(id))
+                if (seen.insert(n).second)
+                {
+                    SystemState* s = SystemById(n);
+                    if (s == nullptr)
+                        continue;
+                    if (deals(*s))
+                        out.emplace_back(s, d);
+                    next.push_back(n);
+                }
+        ring = std::move(next);
+    }
+    return out;
+}
+
+void Simulation::JoinBought(SystemState& st, FactionId f, const std::string& design,
+                            const std::string& war, float n, float total)
+{
+    // They join what flies here -- its pirates, or its police where they fly under its flag --
+    // and what it would lend a siege, in the same fit.
+    const NpcRole    role = f == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police;
+    SystemAggregate& a = st.agg;
+    if (role == NpcRole::Pirate)
+        Join(a.fleets[KeyFor(f, role)], f, role, a.pirates, design, n);
+    else if (a.policeFaction == f)
+        Join(a.fleets[KeyFor(f, role)], f, role, a.police, design, n);
+    Join(a.fleets[KeyFor(f, NpcRole::Warship)], f, NpcRole::Warship, total, war, n);
+}
+
+void Simulation::StepFleetOrders()
+{
+    for (size_t i = 0; i < fleetOrders_.size();)
+    {
+        FleetOrder& o = fleetOrders_[i];
+        if (o.arrivesAt > time_)
+        {
+            ++i;
+            continue;
+        }
+        if (SystemState* st = SystemById(o.system))
+        {
+            const float before = st->agg.presence[o.faction];
+            JoinBought(*st, o.faction, o.design, o.war, o.n, before);
+            st->agg.presence[o.faction] += o.n;
+        }
+        fleetOrders_.erase(fleetOrders_.begin() + (long)i);
+    }
+}
+
 float Simulation::BuyShips(SystemState& st, FactionId f, float want)
 {
-    // Its own market, else the nearest within the growth rules' market reach (#464).
-    SystemState* shop = BuyingMarket(st.id, f == Factions::Pirates());
-    if (!(want > 0.0f) || shop == nullptr)
+    // Its own market and those within the growth rules' market reach (#464, #566): each good
+    // is bought where it is on a shelf at a price that is not dear, nearest first.
+    const std::vector<std::pair<SystemState*, int>> shops =
+        MarketsWithin(st.id, f == Factions::Pirates());
+    if (!(want > 0.0f) || shops.empty())
         return 0.0f;
     const WorldRules::Styles& rules = WorldRules::StyleRules();
     const Ships::Catalogue&   cat = Archetypes::ShipCatalogue();
@@ -554,7 +672,8 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
     const Ships::Style style = known != styles_.end() ? known->second : RegionStyle(slot);
 
     // Every fit, by its share, then the doctrine's own designs last, for whatever no fit could
-    // be had for.
+    // be had for: the fit follows what the shelves within reach hold (#566), the share of a
+    // fit that cannot be had going to the next that can.
     std::vector<Fit> fits = StyleFits(cat, *day, style);
     float            shares = 0.0f;
     for (const Fit& x : fits)
@@ -562,36 +681,91 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
     for (const std::string& d : *day)
         fits.push_back({ d, std::string(), std::string(), 0.0f });
 
-    double& treasury = minds_[f].treasury;
-    // As many of `design` as the market has the goods of its guns for, none of them dear, and
-    // the treasury the money for: up to `n`, and bought. The whole ship is paid for at the ask
-    // -- money limits how many -- but only its guns leave the market: the hull and its parts
-    // are the faction's own yards' work from bulk ore, and the guns are what a region's market
-    // decides (#186, a call the design left free: Iron, which every hull is, runs short
-    // everywhere, and would stop every faction alike rather than lean any).
-    auto buy = [&](const std::string& design, float n) -> float
+    double&      treasury = minds_[f].treasury;
+    const double fee = Goods::Rules().fee;
+    // As many of `design` as the markets within reach have the goods of, none of them dear, and
+    // the treasury the money for: up to `n`, and bought (#566). The whole ship leaves the
+    // shelves -- its frame, sections and parts as raw goods, its guns as module goods -- each
+    // good at the nearest market that has it, at that market's ask, and the fee goes to that
+    // market's owner as any trade's does. A good no market within reach has is a ship not
+    // built: nothing is made from nothing. How far the farthest of them is says how long the
+    // ships take to come home.
+    struct Got
     {
-        const Ships::Cost& cost = DesignCost(design);
+        float n = 0.0f;
+        int   jumps = 0;
+    };
+    auto buy = [&](const std::string& design, float n) -> Got
+    {
+        const Ships::Cost& parts = PartsCost(design);
         const Ships::Cost  guns = GunCost(design);
-        if (cost.empty() || n <= 0.0f)
-            return 0.0f;
-        double can = n, price = 0.0;
-        for (const auto& [good, units] : cost)
-            price += shop->market.Ask(good) * (double)units;
-        for (const auto& [good, units] : guns)
+        if ((parts.empty() && guns.empty()) || n <= 0.0f)
+            return {};
+        struct Line
         {
-            if (shop->market.Ask(good) > rules.dearAt * shop->market.GetBasePrice(good))
-                return 0.0f;
-            can = std::min(can, shop->market.Stock(good) / (double)units);
-        }
+            ResourceType good;
+            int          units = 0;
+            SystemState* at = nullptr;
+            int          jumps = 0;
+        };
+        std::vector<Line> lines;
+        double            can = n;
+        int               far = 0;
+        // What it will pay follows its need and its wealth (#566): as dear as `dearAt` times
+        // the base when it is at its keep and poor, and as dear as the market ever asks when
+        // its fleets are gone and it can well afford a ship -- the share of its keep it is
+        // short of, times how many ships its treasury is (money over money plus a ship's
+        // price), so a poor faction stays thrifty and a rich one in want pays what it must.
+        // Nothing here is a number of its own: the ceiling is the market's, the need the
+        // faction's own fleets, the wealth its own treasury.
+        const double keepHere = std::max(1e-3, (double)Factions::TemperamentOf(f).capacity);
+        double       coming = 0.0;
+        for (const FleetOrder& o : fleetOrders_)
+            if (o.faction == f && o.system == st.id)
+                coming += o.n;
+        const double need =
+            std::clamp((keepHere - (double)st.agg.presence[f] - coming) / keepHere, 0.0, 1.0);
+        const double       shipPrice = ShipPriceAt(*shops.front().first, design);
+        const double       wealth = shipPrice > 0.0 ? treasury / (treasury + shipPrice) : 1.0;
+        const MarketRules& mk = Goods::Rules();
+        const double       askCeiling = mk.ceiling * (1.0 + mk.spread * 0.5);
+        const double       accept =
+            rules.dearAt + std::max(0.0, askCeiling - rules.dearAt) * need * wealth;
+        auto source = [&](const std::pair<ResourceType, int>& c) -> bool
+        {
+            for (const auto& [shop, jumps] : shops)
+            {
+                const double base = shop->market.GetBasePrice(c.first);
+                if (shop->market.Stock(c.first) < 0.02 * c.second ||
+                    shop->market.Ask(c.first) > accept * base)
+                    continue;
+                lines.push_back({ c.first, c.second, shop, jumps });
+                can = std::min(can, shop->market.Stock(c.first) / (double)c.second);
+                far = std::max(far, jumps);
+                return true;
+            }
+            return false;
+        };
+        for (const auto& c : parts)
+            if (!source(c))
+                return {};
+        for (const auto& c : guns)
+            if (!source(c))
+                return {};
+        double price = 0.0;
+        for (const Line& l : lines)
+            price += l.at->market.Ask(l.good) * (double)l.units;
         if (price > 0.0)
-            can = std::min(can, treasury / price);
+            can = std::min(can, treasury / (price * (1.0 + fee)));
         if (can <= 1e-6)
-            return 0.0f;
-        treasury -= price * can;
-        for (const auto& [good, units] : guns)
-            shop->market.SetStock(good, shop->market.Stock(good) - (double)units * can);
-        return (float)can;
+            return {};
+        treasury -= price * can * (1.0 + fee);
+        for (const Line& l : lines)
+        {
+            PayFee(*l.at, l.at->market.Ask(l.good) * (double)l.units * can * fee);
+            l.at->market.SetStock(l.good, l.at->market.Stock(l.good) - (double)l.units * can);
+        }
+        return { (float)can, far };
     };
 
     float bought = 0.0f, carry = 0.0f;
@@ -599,22 +773,26 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
     {
         const float target =
             (x.share > 0.0f && shares > 0.0f ? want * x.share / shares : 0.0f) + carry;
-        const float got = buy(x.design, target);
-        carry = target - got;
-        if (got <= 0.0f)
+        const Got got = buy(x.design, target);
+        carry = target - got.n;
+        if (got.n <= 0.0f)
             continue;
-        bought += got;
-        // They join what flies here -- its pirates, or its police where they fly under its
-        // flag -- and what it would lend a siege, in the same fit.
-        SystemAggregate& a = st.agg;
-        if (role == NpcRole::Pirate)
-            Join(a.fleets[KeyFor(f, role)], f, role, a.pirates, x.design, got);
-        else if (a.policeFaction == f)
-            Join(a.fleets[KeyFor(f, role)], f, role, a.police, x.design, got);
         const std::string war =
             x.family.empty() ? warship : cat.VariantOf(warship, x.family, x.line);
-        Join(a.fleets[KeyFor(f, NpcRole::Warship)], f, NpcRole::Warship,
-             a.presence[f] + bought - got, war.empty() ? warship : war, got);
+        const std::string flown = war.empty() ? warship : war;
+        if (got.jumps <= 0)
+        {
+            bought += got.n;
+            JoinBought(st, f, x.design, flown, got.n, st.agg.presence[f] + bought - got.n);
+        }
+        else
+        {
+            // Bought away from home: on its way, and nowhere until it comes (the caller adds
+            // only what is here).
+            fleetOrders_.push_back(
+                { st.id, f, x.design, flown, got.n,
+                  time_ + (double)got.jumps * (double)Factions::MigrationRules().travel });
+        }
     }
     return bought;
 }
@@ -729,6 +907,10 @@ float Simulation::RefitFleets(SystemState& st, FactionId f, double rate)
                 treasury -= pay * n;
                 for (const auto& [good, units] : guns)
                     shop->market.SetStock(good, shop->market.Stock(good) - (double)units * n);
+                // The guns taken out are dismantled to the market: a refit loses nothing.
+                if (!guns.empty())
+                    for (const auto& [good, units] : GunCost(from))
+                        shop->market.SetStock(good, shop->market.Stock(good) + (double)units * n);
                 done.emplace_back(from, to, n);
                 refitted += n;
             }

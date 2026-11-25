@@ -180,6 +180,7 @@ TEST_CASE("a market's price follows its stock, and its recipes run on what is in
     rates.use.assign((size_t)Goods::Count(), 0.0);
     rates.use[(size_t)food.Index()] = 8.0;
     works.SetStock(iron, 30.0);
+    works.SetStock(steel, 0.0);  // a recipe runs only where its output is worth more (#566)
     const double steelBefore = works.Stock(steel);
     const double foodBefore = works.Stock(food);
     works.Step(rates, 1.0);  // an hour
@@ -474,4 +475,68 @@ TEST_CASE("a module in goods.json names its part and its parts, and nothing else
     write(R"({"id":"m","module":"x.y","parts":{"Nothing":2},"stock":4})");
     CHECK_FALSE(Goods::Load(path));
     Goods::Load(DATA + "goods.json");
+}
+
+TEST_CASE("a recipe runs only while its output is worth more than its inputs, fee included (#566)")
+{
+    GoodsFile          file;
+    const ResourceType laser = Good::Named("weapons.laser");
+    const ResourceType crystal = Good::Named("Crystal"), circuits = Good::Named("Circuits");
+    const Industry*    yard = Goods::IndustryOf("station.shipyard");
+    REQUIRE(yard != nullptr);
+    MarketRates rates;
+    for (const Recipe& r : yard->recipes)
+        for (const auto& out : r.out)
+            if (out.first == laser)
+                rates.recipes.push_back(r);
+    REQUIRE_FALSE(rates.recipes.empty());
+
+    // Lasers dear (none on the shelf), the parts plentiful: it makes them.
+    Market m;
+    m.SetStock(crystal, m.Target(crystal));
+    m.SetStock(circuits, m.Target(circuits));
+    m.SetStock(laser, 0.0);
+    const double crystalBefore = m.Stock(crystal);
+    m.Step(rates, 1.0);
+    CHECK(m.Stock(laser) > 0.0);
+    CHECK(m.Stock(crystal) < crystalBefore);
+
+    // Lasers at the cap, the price on the floor, worth less than their parts: it stops, and
+    // the parts stay where they are.
+    Market full;
+    full.SetStock(crystal, full.Target(crystal));
+    full.SetStock(circuits, full.Target(circuits));
+    full.SetStock(laser, full.Target(laser) * 10.0);
+    const double circuitsBefore = full.Stock(circuits);
+    full.Step(rates, 1.0);
+    CHECK(full.Stock(circuits) == doctest::Approx(circuitsBefore));
+    CHECK(full.Stock(laser) == doctest::Approx(full.Target(laser) * 10.0));
+}
+
+TEST_CASE("a yard nobody buys from stops drawing Iron: the modules it makes pay less than their "
+          "parts once the shelf is full (#566)")
+{
+    GoodsFile       file;
+    const Industry* yard = Goods::IndustryOf("station.shipyard");
+    REQUIRE(yard != nullptr);
+    MarketRates rates;
+    rates.recipes = yard->recipes;
+    const ResourceType iron = Good::Named("Iron");
+    // Every part is kept at its target by whoever supplies it: what is measured is what the
+    // yard draws, hour by hour, with no ship ever bought.
+    Market m;
+    double early = 0.0, late = 0.0;
+    for (int hour = 0; hour < 400; hour++)
+    {
+        for (ResourceType g : AllResourceTypes())
+            if (!Goods::Def(g).IsModule())
+                m.SetStock(g, m.Target(g));
+        const double before = m.Stock(iron);
+        m.Step(rates, 1.0);
+        (hour < 100 ? early : hour >= 300 ? late : early) += before - m.Stock(iron);
+    }
+    MESSAGE("a yard's Iron draw: " << early << " in its first 300 hours, " << late
+                                   << " in the last 100");
+    CHECK(early > 0.0);
+    CHECK(late < 0.05 * early);  // it has stopped; before, it drew on for ever
 }

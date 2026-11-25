@@ -349,6 +349,65 @@ bool Simulation::ShipyardWanted(const std::string& systemId) const
     return true;
 }
 
+bool Simulation::RegionWantsYard(int slot) const
+{
+    for (const auto& kv : plans_)
+        if (kv.second.kind == Plan::Kind::Upgrade &&
+            kv.second.blueprint == Outposts::SHIPYARD_BLUEPRINT &&
+            Gen::SlotOf(kv.second.target) == slot)
+            return false;
+    for (const auto& kv : systems_)
+        if (Gen::SlotOf(kv.first) == slot && kv.second.profile.shipyards > 0)
+            return false;
+    return true;
+}
+
+int Simulation::BeginYard(FactionId f, const std::string& systemId)
+{
+    SystemState*     st = SystemById(systemId);
+    const Blueprint* bp = Blueprints::Find(Outposts::SHIPYARD_BLUEPRINT);
+    const float      cost = BlueprintCost(Outposts::SHIPYARD_BLUEPRINT);
+    FactionMind&     mind = minds_[f];
+    if (st == nullptr || bp == nullptr || cost <= 0.0f || mind.stock < cost || !st->agg.claimed ||
+        st->agg.controller != f || st->profile.markets <= 0 ||
+        !RegionWantsYard(Gen::SlotOf(systemId)) ||
+        StationsIn(Gen::SlotOf(systemId)) >= WorldRules::GrowthRules().stationsPerRegion)
+        return 0;
+    for (const auto& kv : plans_)
+        if (kv.second.kind == Plan::Kind::Upgrade && kv.second.target == systemId)
+            return 0;
+    // Beside what it holds: a spot where its outposts would stand.
+    const OutpostSpot spot = FindOutpostSpot(f, Outposts::Purpose::Open, systemId, systemId);
+    if (!spot.found)
+        return 0;
+    auto site =
+        std::make_unique<Structure>(spot.at, 0.0f, FactionName(f) + " " + bp->name, bp->archetype);
+    site->SetBlueprint(bp->id);
+    if (spot.orbit)
+        site->SetOrbit(*spot.orbit);
+    site->StartBuilding(time_, time_ + bp->buildSeconds);
+    const int id = AddStatic(systemId, std::move(site), Outposts::OwnerOf(f));
+    if (id == 0)
+        return 0;
+    mind.stock -= cost;
+
+    Plan p;
+    p.id = nextPlanId_++;
+    p.kind = Plan::Kind::Upgrade;
+    p.faction = f;
+    p.target = systemId;
+    p.site = StaticKey(systemId, id);
+    p.blueprint = bp->id;
+    p.startedAt = time_;
+    p.dueAt = time_ + bp->buildSeconds;
+    plans_[p.id] = p;
+    due_.insert({ p.dueAt, p.id });
+    Record("upgrade", f, systemId,
+           FactionName(f) + " began a shipyard in " + SystemName(systemId) +
+               ", where its people have a market and nowhere in the region to refit");
+    return p.id;
+}
+
 int Simulation::BeginUpgrade(FactionId f, const std::string& systemId, const std::string& blueprint)
 {
     SystemState*     st = SystemById(systemId);

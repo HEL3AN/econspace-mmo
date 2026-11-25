@@ -9,6 +9,7 @@
 // what the world cost before cold systems (#295).
 
 #include "sim/MacroBench.h"
+#include "sim/FactionMind.h"
 
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
@@ -16,6 +17,7 @@
 #include "core/Faction.h"
 #include "core/ShipDesign.h"
 #include "economy/Resource.h"
+#include "gen/Region.h"
 #include "entities/Combatant.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
@@ -30,8 +32,10 @@
 #include <cmath>
 #include <chrono>
 #include <cstdio>
+#include <set>
 #include <fstream>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -508,11 +512,20 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                     ended(sieges.voided);
             }
         };
+        long long yardsSeen = 0;
         for (int pass = 0; pass <= passes; pass++)
         {
             if (pass > 0)
                 sim.MaintainWorld(2.0f);
             tallySieges();
+            // Shipyards begun and opened, as they are written (#566): the chronicle forgets.
+            for (const ChronicleEntry& e : sim.Chronicle())
+                if (e.seq > yardsSeen)
+                {
+                    yardsSeen = e.seq;
+                    if (e.text.find("shipyard") != std::string::npos)
+                        printf("YARD hour %.1f: %s\n", e.time / 3600.0, e.text.c_str());
+                }
             // A war everywhere at once: every holding left with a third of its ships.
             if (pass == shock)
             {
@@ -524,6 +537,74 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
             }
             if (pass % every != 0)
                 continue;
+            // What the shelves hold, per good: every trading market's stock as a share of its
+            // target, and how many markets are all but out (#566) -- where ships are made of
+            // goods, this is where a faction that cannot buy one shows first.
+            {
+                std::string line;
+                for (ResourceType g : AllResourceTypes())
+                {
+                    double have = 0.0, want = 0.0;
+                    int    dry = 0, markets = 0;
+                    for (const auto& kv : sim.Systems())
+                    {
+                        if (kv.second.profile.markets <= 0)
+                            continue;
+                        markets++;
+                        have += kv.second.market.Stock(g);
+                        want += kv.second.market.Target(g);
+                        dry +=
+                            kv.second.market.Stock(g) < 0.05 * kv.second.market.Target(g) ? 1 : 0;
+                    }
+                    char buf[96];
+                    snprintf(buf, sizeof(buf), " %s %.0f%%(%d/%d dry)", Goods::Id(g).c_str(),
+                             want > 0.0 ? 100.0 * have / want : 0.0, dry, markets);
+                    line += buf;
+                }
+                printf("goods at hour %.0f:%s\n", pass / 1800.0, line.c_str());
+            }
+            if (pass == 0 || pass == passes)
+            {
+                int yards = 0;
+                for (const auto& kv : sim.Systems())
+                    yards += kv.second.profile.shipyards > 0 ? 1 : 0;
+                printf("systems with a shipyard at hour %.0f: %d\n", pass / 1800.0, yards);
+            }
+            // How far from a yard the modules have got: trading markets by jumps from the
+            // nearest yard, and how many of them have any module on the shelf (#566).
+            if (pass == passes)
+            {
+                std::map<std::string, int> dist;
+                std::vector<std::string>   ring;
+                for (const auto& kv : sim.Systems())
+                    if (kv.second.profile.shipyards > 0)
+                    {
+                        dist[kv.first] = 0;
+                        ring.push_back(kv.first);
+                    }
+                for (size_t i = 0; i < ring.size(); i++)
+                    for (const std::string& n : sim.Neighbors(ring[i]))
+                        if (dist.emplace(n, dist[ring[i]] + 1).second)
+                            ring.push_back(n);
+                std::map<int, std::pair<int, int>> by;  // jumps -> markets, with modules
+                for (const auto& kv : sim.Systems())
+                {
+                    if (kv.second.profile.markets <= 0)
+                        continue;
+                    const auto d = dist.find(kv.first);
+                    const int  j = d == dist.end() ? -1 : std::min(d->second, 12);
+                    bool       any = false;
+                    for (ResourceType g : AllResourceTypes())
+                        any = any || (Goods::Def(g).IsModule() && kv.second.market.Stock(g) >= 1.0);
+                    by[j].first++;
+                    by[j].second += any ? 1 : 0;
+                }
+                printf("modules on the shelf, by jumps from the nearest yard (12 = 12 or more, "
+                       "-1 = no road):");
+                for (const auto& [j, c] : by)
+                    printf(" %d: %d/%d", j, c.second, c.first);
+                printf("\n");
+            }
             for (FactionId f : Factions::All())
             {
                 float ships = 0.0f;
@@ -549,6 +630,83 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                     printf("  COLLAPSE: %s holds %d systems with %.1f ships\n",
                            Factions::Id(f).c_str(), held, ships);
                     collapsed = true;
+                    if (pass == passes)
+                    {
+                        // Why it cannot buy (#566): what the ship it would buy is made of, and
+                        // what the market it would buy at holds of each, by ask over base.
+                        for (const auto& kv : sim.Systems())
+                            if (kv.second.agg.claimed && kv.second.agg.controller == f)
+                            {
+                                const SystemState* shop =
+                                    sim.BuyingMarket(kv.first, f == Factions::Pirates());
+                                const std::string design =
+                                    Archetypes::ShipCatalogue().Pick(Factions::Id(f), "warship", 0);
+                                printf("  WHY %s: holds %s, buys at %s, a %s needs:",
+                                       Factions::Id(f).c_str(), kv.first.c_str(),
+                                       shop != nullptr ? shop->id.c_str() : "(no market)",
+                                       design.c_str());
+                                if (shop != nullptr)
+                                {
+                                    auto show = [&](const Ships::Cost& c)
+                                    {
+                                        for (const auto& [g, n] : c)
+                                            printf(" %s %dx (shelf %.0f, ask %.1fx base)",
+                                                   Goods::Id(g).c_str(), n, shop->market.Stock(g),
+                                                   shop->market.Ask(g) /
+                                                       shop->market.GetBasePrice(g));
+                                    };
+                                    show(sim.PartsCost(design));
+                                    show(Simulation::GunCost(design));
+                                }
+                                // Where the nearest yard is, and whether this region has one at
+                                // all.
+                                {
+                                    int  jumps = -1;
+                                    bool regionYard = false;
+                                    for (const auto& y : sim.Systems())
+                                        if (y.second.profile.shipyards > 0 &&
+                                            Gen::SlotOf(y.first) == Gen::SlotOf(kv.first))
+                                            regionYard = true;
+                                    std::set<std::string>    seen = { kv.first };
+                                    std::vector<std::string> ring = { kv.first };
+                                    for (int d = 0; d < 60 && jumps < 0 && !ring.empty(); d++)
+                                    {
+                                        std::vector<std::string> next;
+                                        for (const std::string& id : ring)
+                                        {
+                                            const SystemState* y = sim.SystemById(id);
+                                            if (y != nullptr && y->profile.shipyards > 0)
+                                                jumps = d;
+                                            for (const std::string& n : sim.Neighbors(id))
+                                                if (seen.insert(n).second)
+                                                    next.push_back(n);
+                                        }
+                                        ring = std::move(next);
+                                    }
+                                    {
+                                        const FactionMind& mind = sim.MindOf(f);
+                                        const Temperament& tm = Factions::TemperamentOf(f);
+                                        const float        risk = Intelligence::LossRisk(
+                                            mind.lostAt, kv.first, sim.Time());
+                                        printf(
+                                            " [yard gates: stock %.0f, wants-yard %d, wanted %d, "
+                                            "loss risk %.2f, appetite %.2f, traffic+ore %.2f]",
+                                            (double)mind.stock,
+                                            sim.RegionWantsYard(Gen::SlotOf(kv.first)) ? 1 : 0,
+                                            sim.ShipyardWanted(kv.first) ? 1 : 0, (double)risk,
+                                            (double)tm.appetite, (double)(tm.traffic + tm.ore));
+                                    }
+                                    printf(" [nearest yard %d jumps; region has a yard: %s; "
+                                           "prosperity %.2f, belts %d, stations in region %d]",
+                                           jumps, regionYard ? "yes" : "no",
+                                           (double)kv.second.agg.prosperity,
+                                           kv.second.profile.belts,
+                                           sim.StationsIn(Gen::SlotOf(kv.first)));
+                                }
+                                printf("\n");
+                                break;
+                            }
+                    }
                 }
             }
         }

@@ -743,7 +743,8 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
         else if (character == Character::Barren)
             count = rng.Chance(50) ? 1 : 0;
         if (centre && n.depth == 1)
-            count = std::max(count, 2);  // what the capital's mining posts are there for
+            count =
+                std::max(count, 3);  // what the capital's mining posts are there for, and its ores
 
         // A belt where a planet did not finish forming (#146): the widest gap between two
         // planets' paths, or past the last one, is where a world that never came together
@@ -768,6 +769,10 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             const char* res = roll < 15 + 12 * n.depth ? "Crystal" : (roll < 60 ? "Iron" : "Ice");
             if (character == Character::Frozen)
                 res = roll < 75 ? "Ice" : "Crystal";
+            // A civilisation arises where its basics are (#566): the capital's own belts hold
+            // Iron, Ice and Crystal, the three ores a ship is made of.
+            if (centre && n.depth == 1 && i < 3)
+                res = i == 0 ? "Iron" : (i == 1 ? "Ice" : "Crystal");
             const int size = rng.Range(50, 75) * 100;
             json belt = { { "name", n.designation + " Belt " + std::string(1, (char)('A' + i)) },
                           { "size", size },
@@ -1465,6 +1470,55 @@ void PlaceNatives(const RegionParams& params, const std::vector<Node>& nodes, Re
         if (pick < 0)
             break;
         hosts.push_back(nodes[(size_t)pick].id);
+    }
+
+    // A people lives where its basics are (#566): every system it has a market in has belts of
+    // Iron, Ice and Crystal, the three ores a ship is made of. A belt that repeats an ore is
+    // turned into one that is missing; with none to spare, a belt is added.
+    {
+        Rng                      ore(Key(params.seed, NATIVES, 3));
+        static const char* const BASICS[] = { "Iron", "Ice", "Crystal" };
+        for (const std::string& h : hosts)
+        {
+            json& sys = region.documents[h];
+            if (!sys.contains("asteroidFields") || !sys["asteroidFields"].is_array())
+                sys["asteroidFields"] = json::array();
+            std::string designation = h;
+            for (const Node& n : nodes)
+                if (n.id == h)
+                    designation = n.designation;
+            for (const char* basic : BASICS)
+            {
+                json& belts = sys["asteroidFields"];
+                bool  has = false;
+                for (const json& b : belts)
+                    has = has || b.value("resource", std::string()) == basic;
+                if (has)
+                    continue;
+                // A belt whose ore is held by another belt, or is not a basic, is spare.
+                int spare = -1;
+                for (size_t b = 0; b < belts.size() && spare < 0; b++)
+                {
+                    const std::string r = belts[b].value("resource", std::string());
+                    int               same = 0;
+                    for (const json& o : belts)
+                        same += o.value("resource", std::string()) == r ? 1 : 0;
+                    bool isBasic = false;
+                    for (const char* x : BASICS)
+                        isBasic = isBasic || r == x;
+                    if (same > 1 || !isBasic)
+                        spare = (int)b;
+                }
+                if (spare >= 0)
+                    belts[(size_t)spare]["resource"] = basic;
+                else
+                    PlaceFind(ore, sys, "asteroidFields", 260000.0, 840000.0,
+                              { { "name", designation + " Belt " + basic },
+                                { "size", ore.Range(50, 75) * 100 },
+                                { "resource", basic },
+                                { "ore", ore.Range(200, 400) } });
+            }
+        }
     }
 
     const StationKind* kinds = KindsOf(theme);

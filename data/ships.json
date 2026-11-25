@@ -201,8 +201,8 @@
         "hull": { "energy": 1, "kinetic": 1 }
     },
     "families": {
-        "laser": { "name": "lasers", "modules": ["weapons.laser"], "goods": ["Crystal", "Circuits"], "damage": { "energy": 1 } },
-        "railgun": { "name": "railguns", "modules": ["weapons.railgun"], "goods": ["Steel", "Ammunition"], "damage": { "kinetic": 1 } }
+        "laser": { "name": "lasers", "modules": ["weapons.laser"], "goods": ["Crystal", "Circuits", "weapons.laser"], "damage": { "energy": 1 } },
+        "railgun": { "name": "railguns", "modules": ["weapons.railgun"], "goods": ["Steel", "Ammunition", "weapons.railgun"], "damage": { "kinetic": 1 } }
     },
     "lines": {
         "light": { "name": "light", "bow": ["bow.needle"], "mid": ["mid.slim"], "stern": ["stern.twin"], "goods": ["Crystal", "Fuel"], "resist": { "shield": { "energy": 0.9 } } },
