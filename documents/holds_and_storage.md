@@ -304,8 +304,15 @@ put and take), *Stock* (members put, directors take), *Command* (directors only)
 states the lowest role that may view, put and take; changing that is a `CorpAct` verb
 (`division`). Every take from a division writes a line to the corporation's journal (who, what,
 how much). Each member also has a personal hangar at a corporation structure, as at an NPC
-station, free. A corporation office at an NPC station, rented from the treasury, is an optional
-later step.
+station, free. A corporation office at an NPC station, rented from the treasury, is the same three divisions
+at a station with a market. **Built (#572, slice 12):** the CEO or a director rents one with the
+`office` verb (`/corp office` docked, or the agent's `corp` tool); the rent, its period and grace,
+and the room are `world_rules.json` -> `offices`, collected in the coarse pass by the path a
+licence's rent takes, paid to the station's faction. It is kept in corps.json (`Corp::offices`,
+by the station's hangar key, with its goods), shown in the inventory and `observe` as the
+`storage`, `storage:stock` and `storage:command` containers while docked there, and under the
+same role rules. Unpaid a grace after it falls due it is locked -- goods out, none in -- and is
+never emptied; it cannot be closed with goods in it.
 
 ### 8. Losing the ship, and losing the place
 

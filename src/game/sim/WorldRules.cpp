@@ -22,6 +22,7 @@ WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
 WorldRules::Hangars     g_hangars;
+WorldRules::Offices     g_offices;
 WorldRules::Wrecks      g_wrecks;
 WorldRules::Deliveries  g_deliveries;
 WorldRules::Security    g_security;
@@ -93,8 +94,8 @@ bool Load(const std::string& path)
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
             it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
-            it.key() != "hangars" && it.key() != "deliveries" && it.key() != "wrecks" &&
-            it.key() != "ore")
+            it.key() != "hangars" && it.key() != "offices" && it.key() != "deliveries" &&
+            it.key() != "wrecks" && it.key() != "ore")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -424,6 +425,19 @@ bool Load(const std::string& path)
         g_error = path + ": hangars: periodDays must be more than zero";
         return false;
     }
+    // A corporation's office at an NPC station (#572, slice 12).
+    Offices of;
+    if (j.contains("offices") && !ReadSection(j["offices"], path + ": offices",
+                                              { { "rent", &of.rent },
+                                                { "periodDays", &of.periodDays },
+                                                { "graceHours", &of.graceHours } },
+                                              { { "units", &of.units } }, {}, g_error))
+        return false;
+    if (of.periodDays <= 0.0 || of.rent < 0.0 || of.units <= 0)
+    {
+        g_error = path + ": offices: periodDays and units must be more than zero, rent not below";
+        return false;
+    }
     // What a lost ship's wreck keeps of its fitted modules (#472 slice 10).
     Wrecks wr;
     if (j.contains("wrecks") &&
@@ -582,6 +596,7 @@ bool Load(const std::string& path)
     g_influence = inf;
     g_licences = lc;
     g_hangars = hg;
+    g_offices = of;
     g_wrecks = wr;
     g_deliveries = dl;
     g_security = sec;
@@ -739,6 +754,16 @@ const Hangars& HangarRules()
 void SetHangarRules(const Hangars& h)
 {
     g_hangars = h;
+}
+
+const Offices& OfficeRules()
+{
+    return g_offices;
+}
+
+void SetOfficeRules(const Offices& o)
+{
+    g_offices = o;
 }
 
 void SetWreckRules(const Wrecks& w)

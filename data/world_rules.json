@@ -183,6 +183,12 @@
         "rentPerUnit": 0.2,
         "periodDays": 30
     },
+    "offices": {
+        "units": 6000,
+        "rent": 2500,
+        "periodDays": 7,
+        "graceHours": 24
+    },
     "wrecks": {
         "moduleShare": 0.5
     },

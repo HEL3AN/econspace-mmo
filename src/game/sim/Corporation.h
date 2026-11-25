@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/WorldLoader.h"
+#include "economy/Inventory.h"
 #include "entities/Defence.h"
 #include "sim/Events.h"
 #include "sim/SaveSchema.h"
@@ -97,6 +98,20 @@ struct Licence
     std::string holder;       // who granted it: a faction's "f:<id>" or a corporation's id
     double      until = 0.0;  // paid to; unpaid after it, lapsed a grace later
     int         told = 0;     // what its payer has been told: 1 unpaid, 2 lapsed
+};
+
+// A corporation's office at an NPC station (#572, slice 12): a store of its own there, with
+// the divisions of a corporation structure's storage, rented from the treasury. It is the
+// world's rent in world time, like a licence; `until` is what it is paid to. Unpaid a grace
+// after that, it is locked: goods come out, none go in. It is never emptied behind its owner's
+// back, and cannot be closed with goods in it.
+struct Office
+{
+    std::string system;  // the system's id, and below the station's name, for a reader
+    std::string station;
+    double      until = 0.0;  // paid to (world time)
+    int         told = 0;     // what the corporation has been told: 1 unpaid, 2 locked
+    std::map<std::string, Inventory> goods;  // by division id
 };
 
 // A patrol a corporation keeps in a system (#431 C1, slice 12): AI ships of one design that
@@ -211,6 +226,8 @@ struct Corp
     // Its licences to build in other holders' systems (#431 slice 6), by system id, the rent
     // paid from the treasury.
     std::map<std::string, Licence> licences;
+    // Its offices at NPC stations (#572), by the station's hangar key (Simulation::HangarKey).
+    std::map<std::string, Office> offices;
     // What it changed in its storage divisions (#472 slice 5), by id; an id not here is as
     // DefaultDivision says.
     std::map<std::string, Division> divisions;
@@ -365,7 +382,16 @@ public:
     // written with the world, and retold to the members.
     void SetLicence(const std::string& id, const std::string& system, const Licence& l);
     void DropLicence(const std::string& id, const std::string& system);
-    int  MoneyRev() const { return moneyRev_; }
+    // An office of a corporation's (#572), opened, changed or closed; what is kept in one is
+    // written with the world, so a change of its goods is `Touch()`ed. A division that is not
+    // there yet is made.
+    void       SetOffice(const std::string& id, const std::string& key, const Office& o);
+    void       DropOffice(const std::string& id, const std::string& key);
+    Office*    OfficeOf(const std::string& id, const std::string& key);
+    Inventory* OfficeGoods(const std::string& id, const std::string& key,
+                           const std::string& division);
+    void       Touch() { moneyRev_++; }
+    int        MoneyRev() const { return moneyRev_; }
 
     // The corporation `account` is in; null for none. Every lookup by account also takes a
     // structure's owner (#468): "corp:<id>" is that corporation, while it exists.

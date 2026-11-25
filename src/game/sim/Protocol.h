@@ -36,7 +36,8 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    84;  // 84: the player view carries `oreCap`, the ore hold inside the hold (#572, slice 12);
+    85;  // 85: a CorpView lists the corporation's `offices` at NPC stations (#572);
+         // 84: the player view carries `oreCap`, the ore hold inside the hold (#572, slice 12);
          // 83: a livery is a spec (#552): an id, or `id/` and a pilot's paint;
          // 82: each market line carries a fifth number, whether the market makes or uses the
          // good, so an empty module row is listed only where a yard could fill it (#572);
@@ -1101,6 +1102,19 @@ struct CorpInvite
 // One pilot's corporation as they see it (server -> client): sent at login and whenever it
 // changes -- someone joins, leaves, comes online, is given a role -- and the invites waiting
 // for them. `id` empty: in none.
+// A corporation's office at an NPC station (#572, slice 12), as its members read it.
+struct OfficeView
+{
+    std::string system;   // the system's id
+    std::string station;  // the station's name
+    double      rent = 0.0;
+    double      periodDays = 7.0;
+    double      until = 0.0;     // paid to, world time
+    std::string state = "paid";  // paid, unpaid (grace) or locked
+    int         held = 0;        // volume in its divisions...
+    int         units = 0;       // ...of the room it has
+};
+
 struct CorpView
 {
     std::string             id;
@@ -1119,6 +1133,8 @@ struct CorpView
     std::vector<std::string> holds;
     // Its licences to build in other holders' systems (#431 slice 6).
     std::vector<LicenceView> licences;
+    // Its offices at NPC stations (#572).
+    std::vector<OfficeView> offices;
     // What it pays for police in each system it holds (#431 slice 11), in credits an hour,
     // by system id; a system it pays nothing in is not listed.
     std::map<std::string, double> police;

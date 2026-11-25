@@ -216,6 +216,15 @@ std::string CorpText(const Proto::CorpView& v)
                                           : "LAPSED, its structures there trespass") +
                    "\n";
     }
+    // Its offices at NPC stations (#572): the divisions are in the inventory when docked there.
+    for (const Proto::OfficeView& o : v.offices)
+        out += "Office at " + o.station + " (" + o.system + "): " +
+               (o.state == "paid"     ? "paid"
+                : o.state == "unpaid" ? "UNPAID, locks soon"
+                                      : "LOCKED, goods out only") +
+               ", holds " + std::to_string(o.held) + " of " + std::to_string(o.units) +
+               " volume; rent " + std::to_string((long long)o.rent) + " cr every " +
+               std::to_string((int)o.periodDays) + " days\n";
     for (const Proto::CorpInvite& i : v.invites)
         out += "Invite: " + i.name + " [" + i.ticker + "] from " + i.by +
                " -- corp_act join or decline with ticker " + i.ticker + "\n";
@@ -951,10 +960,16 @@ std::vector<Tool> BuildTools()
           "first, in addition to the factions your members' standings together put below the "
           "threshold. A declaration is not a licence: firing first on a lawful faction's ships "
           "under its law is still a crime charged to the structure's owner. The answer is the "
-          "server's.",
-          Obj({ { "action",
-                  Str("create, invite, join, decline, leave, kick, role, tax, docking, "
-                      "police, patrol, transfer, take, deposit, withdraw, division or enemy") },
+          "server's. 'office' (name: the station, in system; left out, the station you are docked "
+          "at; value: close to give it up; CEO or director) rents the corporation an office "
+          "at an NPC station with a market (#572): rent from the treasury every week, to the "
+          "station's faction, and a shared store there with the same Shared, Stock and Command "
+          "divisions (see 'division'), named in the inventory when you dock there. Unpaid a day "
+          "past due, it is locked: goods may be taken out and none put in, never lost. It cannot "
+          "be closed with goods in it.",
+          Obj({ { "action", Str("create, invite, join, decline, leave, kick, role, tax, docking, "
+                                "police, patrol, transfer, take, deposit, withdraw, division, "
+                                "enemy or office") },
                 { "name",
                   Str("create: the corporation's name, 3 to 24 characters; enemy: a faction or a "
                       "corporation's ticker; division: shared, stock or command") },

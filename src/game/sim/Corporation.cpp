@@ -328,6 +328,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
         return Refuse("a patrol is set through the world, not the registry alone");
     if (verb == "transfer" || verb == "take")  // ...and whose a structure is (#468)
         return Refuse("a structure is handed over through the world, not the registry alone");
+    if (verb == "office")  // ...and which stations there are (#572)
+        return Refuse("an office is rented through the world, not the registry alone");
     if (verb == "deposit" || verb == "withdraw")  // ...and where a pilot's money is (#509)
         return Refuse("the treasury is paid into and out of through the world, not the registry");
     return Refuse("there is no corporation verb '" + act.verb.substr(0, 16) + "'");
@@ -1066,6 +1068,38 @@ void Registry::DropLicence(const std::string& id, const std::string& system)
         moneyRev_++;
 }
 
+void Registry::SetOffice(const std::string& id, const std::string& key, const Office& o)
+{
+    if (Corp* c = Mutable(id))
+    {
+        c->offices[key] = o;
+        moneyRev_++;
+    }
+}
+
+void Registry::DropOffice(const std::string& id, const std::string& key)
+{
+    Corp* c = Mutable(id);
+    if (c != nullptr && c->offices.erase(key) > 0)
+        moneyRev_++;
+}
+
+Office* Registry::OfficeOf(const std::string& id, const std::string& key)
+{
+    Corp* c = Mutable(id);
+    if (c == nullptr)
+        return nullptr;
+    const auto it = c->offices.find(key);
+    return it == c->offices.end() ? nullptr : &it->second;
+}
+
+Inventory* Registry::OfficeGoods(const std::string& id, const std::string& key,
+                                 const std::string& division)
+{
+    Office* o = OfficeOf(id, key);
+    return o != nullptr && ValidDivisionId(division) ? &o->goods[division] : nullptr;
+}
+
 json Registry::ToJson() const
 {
     json list = json::array();
@@ -1135,6 +1169,29 @@ json Registry::ToJson() const
                                       { "until", l.second.until },
                                       { "told", l.second.told } };
             cj["licences"] = licences;
+        }
+        // Its offices at NPC stations (#572): an addition an older build ignores.
+        if (!c.offices.empty())
+        {
+            json offices = json::object();
+            for (const auto& o : c.offices)
+            {
+                json stock = json::object();
+                for (const auto& d : o.second.goods)
+                {
+                    json held = json::object();
+                    for (const auto& g : d.second.All())
+                        held[Goods::Id(g.first)] = g.second;
+                    if (!held.empty())
+                        stock[d.first] = held;
+                }
+                offices[o.first] = { { "system", o.second.system },
+                                     { "station", o.second.station },
+                                     { "until", o.second.until },
+                                     { "told", o.second.told },
+                                     { "goods", stock } };
+            }
+            cj["offices"] = offices;
         }
         // Its storage divisions (#472 slice 5): an addition an older build ignores.
         if (!c.divisions.empty())
@@ -1362,6 +1419,32 @@ bool Registry::FromJson(const json& j, std::string& why)
                     lc.until = until->get<double>();
                     lc.told = (int)whole(*l, "told");
                     c.licences[l.key()] = lc;
+                }
+            const auto offices = cj.find("offices");
+            if (offices != cj.end() && offices->is_object())
+                for (auto o = offices->begin(); o != offices->end(); ++o)
+                {
+                    const auto until = o->is_object() ? o->find("until") : o->end();
+                    if (until == o->end() || !until->is_number())
+                        continue;  // not an office this build can read: none
+                    Office of;
+                    of.system = text(*o, "system");
+                    of.station = text(*o, "station");
+                    of.until = until->get<double>();
+                    of.told = (int)whole(*o, "told");
+                    const auto goods = o->find("goods");
+                    if (goods != o->end() && goods->is_object())
+                        for (auto d = goods->begin(); d != goods->end(); ++d)
+                            if (ValidDivisionId(d.key()) && d->is_object())
+                                for (auto g = d->begin(); g != d->end(); ++g)
+                                {
+                                    ResourceType good;
+                                    // A good this server's registry does not have is left
+                                    // behind rather than read as another one (#343).
+                                    if (g->is_number_integer() && Goods::Find(g.key(), good))
+                                        of.goods[d.key()].Add(good, g->get<int>());
+                                }
+                    c.offices[o.key()] = std::move(of);
                 }
             const auto police = cj.find("police");
             if (police != cj.end())

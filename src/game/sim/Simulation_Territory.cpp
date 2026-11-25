@@ -325,6 +325,8 @@ Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps:
         ch = (char)std::tolower((unsigned char)ch);
     if (verb == "deposit" || verb == "withdraw")  // a pilot's money is the world's (#509)
         return ApplyTreasuryAct(account, verb, act.value, now);
+    if (verb == "office")  // a corporation's office at an NPC station (#572)
+        return ApplyOfficeAct(account, act);
     if (verb != "police" && verb != "patrol" && verb != "transfer" && verb != "take")
         return corps_.Apply(account, act, online, now);
     // The system by its id, or by the name a player reads.

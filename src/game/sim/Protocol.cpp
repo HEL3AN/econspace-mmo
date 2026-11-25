@@ -2690,6 +2690,20 @@ std::string EncodeCorpView(const CorpView& v)
             j["enemies"] = std::move(enemies);
         }
     }
+    if (!v.offices.empty())
+    {
+        json offices = json::array();
+        for (const OfficeView& o : v.offices)
+            offices.push_back({ { "system", o.system },
+                                { "station", o.station },
+                                { "rent", o.rent },
+                                { "periodDays", o.periodDays },
+                                { "until", o.until },
+                                { "state", o.state },
+                                { "held", o.held },
+                                { "units", o.units } });
+        j["offices"] = std::move(offices);
+    }
     // A pilot in no corporation holds licences of their own (#509).
     if (!v.licences.empty())
     {
@@ -2766,6 +2780,23 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
         for (const json& l : *licences)
             if (l.is_object())
                 out.licences.push_back(LicenceFrom(l));
+    const auto offices = j.find("offices");
+    if (offices != j.end() && offices->is_array())
+        for (const json& oj : *offices)
+            if (oj.is_object())
+            {
+                OfficeView o;
+                o.system = TextOf(oj, "system");
+                o.station = TextOf(oj, "station");
+                o.rent = Val(oj, "rent", 0.0);
+                o.periodDays = Val(oj, "periodDays", 7.0);
+                o.until = Val(oj, "until", 0.0);
+                o.state = TextOf(oj, "state");
+                o.held = Val(oj, "held", 0);
+                o.units = Val(oj, "units", 0);
+                if (!o.system.empty())
+                    out.offices.push_back(std::move(o));
+            }
     const auto police = j.find("police");
     if (police != j.end() && police->is_object())
         for (auto it = police->begin(); it != police->end(); ++it)

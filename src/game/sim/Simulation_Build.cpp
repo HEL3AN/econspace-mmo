@@ -475,8 +475,16 @@ bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container&
     if (id == "storage" || id.rfind("storage:", 0) == 0)  // a division (#472 slice 5)
     {
         const Structure* t = DockedStorage(s, &why);
+        // No structure's storage here: the corporation's office at an NPC station (#572).
         if (t == nullptr)
+        {
+            std::string officeWhy;
+            if (OfficeContainer(s, id, out, officeWhy))
+                return true;
+            if (!officeWhy.empty())
+                why = officeWhy;
             return false;
+        }
         const std::string div = id == "storage" ? "shared" : id.substr(8);
         if (!Corps::ValidDivisionId(div))
         {
@@ -609,6 +617,8 @@ int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::
         return refuse(room <= 0 ? b.name + " is full" : a.name + " has no " + ResourceName(good));
     a.goods->Remove(good, n);
     b.goods->Add(good, n);
+    if (!a.takeLog.empty() || !b.takeLog.empty())
+        corps_.Touch();      // what a corporation's office holds is written with the world (#572)
     if (!a.takeLog.empty())  // what leaves a corporation's division is the corporation's to read
         corps_.Record(s.accountName, Ev::Kind::Notice,
                       s.accountName + " took " + std::to_string(n) + " " + ResourceName(good) +
