@@ -1208,9 +1208,16 @@ TEST_CASE("any faction that holds a market in a region with no yard grows one, o
     // One a region: it is on its way, so nobody begins a second.
     CHECK_FALSE(sim.RegionWantsYard(slot));
     CHECK(sim.BeginYard(f, held->id) == 0);
-    // It takes its time, and then there is a yard where there was none.
+    // Laid where it is held: not a convoy, which the convoy step could drop (#584).
+    REQUIRE(sim.Plans().count(plan) == 1);
+    CHECK(sim.Plans().at(plan).arrived);
+    // It takes its time, and for all of it nobody begins a second: the plan is not a convoy's,
+    // that sets out and may be dropped (#584).
     const Blueprint* bp = Blueprints::Find("shipyard");
     REQUIRE(bp != nullptr);
+    RunMinutes(sim, bp->buildSeconds / 120.0);
+    CHECK_FALSE(sim.RegionWantsYard(slot));
+    CHECK(sim.BeginYard(f, held->id) == 0);
     RunMinutes(sim, bp->buildSeconds / 60.0 + 2.0);
     bool yard = false;
     for (const auto& kv : sim.Systems())
