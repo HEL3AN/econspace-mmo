@@ -954,3 +954,26 @@ TEST_CASE("a variant is drawn and flown as its stock design is, with its own sha
     NpcShip pirate({ 0.0f, 0.0f }, Fac::Pirates(), NpcRole::Pirate, {}, "raider~laser~light");
     CHECK(pirate.GetDesign() == "raider~laser~light");
 }
+
+TEST_CASE("the miner's hopper is an ore hold inside its hold (#572)")
+{
+    const Ships::Catalogue c = Shipped();
+    Ships::Stats           s;
+    std::string            error;
+    REQUIRE(Ships::Derive(c, *c.FindDesign("miner"), s, error));
+    CHECK(s.oreCapacity > 0);
+    CHECK(s.cargoCapacity > s.oreCapacity);  // it has a general hold besides
+    Ships::Stats hauler;
+    REQUIRE(Ships::Derive(c, *c.FindDesign("hauler"), hauler, error));
+    CHECK(hauler.oreCapacity == 0);
+
+    ShipStats stats;
+    stats.cargoCapacity = 100;
+    stats.oreCapacity = 60;
+    Ship       ship({ 0.0f, 0.0f }, stats);
+    const auto circuits = Good::Named("Circuits"), iron = Good::Named("Iron");
+    CHECK_FALSE(ship.AddCargo(circuits, 50));  // 50 volume into 40 of general room
+    CHECK(ship.AddCargo(circuits, 40));
+    CHECK(ship.AddCargo(iron, 6));  // 60 volume of ore: all of the ore hold
+    CHECK_FALSE(ship.AddCargo(iron, 1));
+}

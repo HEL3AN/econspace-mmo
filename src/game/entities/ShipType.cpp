@@ -48,6 +48,7 @@ bool PlayerStats(const Ships::Design& d, ShipStats& out, std::string& error)
     out.maxSpeed = s.maxSpeed;
     out.rcsAccel = s.rcsAccel;
     out.cargoCapacity = s.cargoCapacity;
+    out.oreCapacity = s.oreCapacity;
     out.miningRate = s.miningRate;
     out.scan = s.scan;
     out.hull = s.combatHull - s.armour;

@@ -877,6 +877,9 @@ std::string DescribeInventory(const View& view, const std::string& account)
             out += Fmt("%s (%s) %d", c.name.c_str(), c.id.c_str(), c.Used());
         else
             out += Fmt("%s (%s) %d / %d", c.name.c_str(), c.id.c_str(), c.Used(), c.capacity);
+        if (c.ore > 0)  // (#572)
+            out += Fmt(" [ore hold %d of it: %d / %d, mined goods only]", c.ore,
+                       std::min(c.OreUsed(), c.ore), c.ore);
         if (c.id == "hangar")  // (#472)
         {
             const Proto::HangarView& h = p.hangar;
@@ -1305,6 +1308,8 @@ std::string Describe(const View& view, Detail detail)
                "money %.0f cr\n",
                p.hull, p.maxHull, p.armour, p.maxArmour, p.shields, p.maxShields, p.cargoUsed,
                p.cargoCap, p.money);
+    if (p.oreCap > 0)
+        out += Fmt("       ore hold: %d of the cargo capacity takes mined goods only\n", p.oreCap);
     out += Fmt("       %s  stabilizer %s  weapons %s  mining %s%s\n", mode,
                p.stabilizer ? "on" : "off", p.weaponOn ? "ARMED" : "off", p.mining ? "on" : "off",
                p.autopilot ? "  autopilot engaged" : "");

@@ -134,7 +134,7 @@
                   {"form": "bar", "length": 0.8, "width": 0.18, "role": "panel", "pitch": 0.13}
               ]
           } },
-        { "id": "mid.hopper", "position": "mid", "mass": 13, "provides": { "cargo": 600 }, "cost": { "Iron": 45, "Ice": 5 },
+        { "id": "mid.hopper", "position": "mid", "mass": 13, "provides": { "cargo": 200, "ore": 400 }, "cost": { "Iron": 45, "Ice": 5 },
           "sockets": { "top": 2, "edge": 4, "side": 2, "front": 1 },
           "shape": {
               "sections": [

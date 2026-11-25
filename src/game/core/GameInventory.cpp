@@ -294,6 +294,16 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
                                  : isSel  ? t.colors.text
                                           : t.colors.dim);
                          L.Bar(frac, frac >= 1.0f ? t.colors.warn : t.colors.accent);
+                         // The ore hold inside it: a second bar for the room mined goods alone
+                         // may fill (#572).
+                         if (c.ore > 0)
+                         {
+                             L.Field("Ore hold",
+                                     TextFormat("%d / %d", std::min(c.OreUsed(), c.ore), c.ore),
+                                     t.colors.dim);
+                             L.Bar((float)std::min(c.OreUsed(), c.ore) / (float)c.ore,
+                                   t.colors.accent);
+                         }
                      });
             if (L.Clicked("cont", (uint32_t)i))
                 inventorySel_ = c.id;

@@ -54,7 +54,7 @@ float Ship::GetSpeed() const
 
 bool Ship::AddCargo(ResourceType type, int amount)
 {
-    if (GetCargoUsed() + amount * Goods::Volume(type) > stats_.cargoCapacity)
+    if (amount * Goods::Volume(type) > cargo_.Room(stats_.cargoCapacity, stats_.oreCapacity, type))
         return false;
     cargo_.Add(type, amount);
     return true;

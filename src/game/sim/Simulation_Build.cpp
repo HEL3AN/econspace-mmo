@@ -384,11 +384,19 @@ std::string Simulation::DismantleProblem(const ClientSession& s, int id) const
                " of room in its storage: dock and take them out first";
     // What comes back has to fit: a refusal can be acted on, material lost to a full hold
     // cannot. Every tier it was built up through, not only the last (#438).
-    int units = 0;
+    int       units = 0;
+    Inventory probe = s.ship->Hold();  // the refund added good by good, as the ore hold allows
+    bool      fits = true;
     for (const auto& c : t->Refund(time_))
+    {
         units += c.second * Goods::Volume(c.first);
+        fits =
+            fits && c.second * Goods::Volume(c.first) <=
+                        probe.Room(s.ship->GetCargoCapacity(), s.ship->GetOreCapacity(), c.first);
+        probe.Add(c.first, c.second);
+    }
     const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
-    if (units > room)
+    if (!fits)
         return "the hold has room for " + std::to_string(room) + " of the " +
                std::to_string(units) + " it would return";
     return std::string();
@@ -460,6 +468,7 @@ bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container&
     {
         out.goods = &s.ship->Hold();
         out.capacity = s.ship->GetCargoCapacity();
+        out.ore = s.ship->GetOreCapacity();
         out.name = "the hold";
         return true;
     }
@@ -594,7 +603,7 @@ int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::
     if (!a.gives)
         return refuse("your role may not take from " + a.name);
     const ResourceType good = ResourceType::FromIndex(type);
-    const int          room = std::max(0, b.capacity - b.goods->Used());
+    const int          room = b.goods->Room(b.capacity, b.ore, good);
     const int          n = std::min({ amount, a.goods->Amount(good), room / Goods::Volume(good) });
     if (n <= 0)
         return refuse(room <= 0 ? b.name + " is full" : a.name + " has no " + ResourceName(good));

@@ -201,7 +201,7 @@ touch `StepPlayerShip`, which both client and server compute (decision 9).
 
 **One general hold now, an ore hold later as data**: a section or module
 `provides: { "ore": N }`, and that capacity takes only goods with `"mined": true`. `mid.hopper`
-becomes an ore hold. The interface shows it as a second bar in the same container. A fuel bay
+becomes an ore hold. The interface shows it as a second bar in the same container. **Built (#572):** `cargoCapacity` stays the whole hold and `oreCapacity` is the part of it only mined goods may fill; mined goods may fill the general room too, other goods only what the ore hold leaves (`Inventory::Room`). The hopper is 200 general and 400 ore. A refit that shrinks the ore hold is refused while the hold would not fit, and a saved hold that no longer fits drops ore before anything else. A fuel bay
 and an ammo hold wait for a fuel or ammunition mechanic. A late, optional slice.
 
 ### 4. Ships and modules as located items

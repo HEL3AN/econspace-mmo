@@ -25,6 +25,23 @@ int Container::Room() const
     return std::max(0, capacity - Used());
 }
 
+int Container::OreUsed() const
+{
+    int n = 0;
+    for (ResourceType t : AllResourceTypes())
+        if (Goods::Def(t).mined)
+            n += Amount(t) * Goods::Volume(t);
+    return n;
+}
+
+int Container::Room(ResourceType type) const
+{
+    int room = capacity - Used();
+    if (!Goods::Def(type).mined)
+        room = std::min(room, (capacity - std::max(0, ore)) - (Used() - OreUsed()));
+    return std::max(0, room);
+}
+
 std::vector<Container> Reachable(const Proto::PlayerView& p)
 {
     std::vector<Container> out;
@@ -33,6 +50,7 @@ std::vector<Container> Reachable(const Proto::PlayerView& p)
     hold.name = "Hold";
     hold.goods = p.cargoByType;
     hold.capacity = p.cargoCap;
+    hold.ore = p.oreCap;
     out.push_back(hold);
     if (p.docked && p.hangar.capacity > 0)  // (#472)
     {
@@ -183,7 +201,8 @@ int Movable(const Container& from, const Container& to, ResourceType type, int w
 {
     if (from.id == to.id || from.closed || to.closed || to.takeOnly || from.putOnly)
         return 0;
-    return std::max(0, std::min({ wanted, from.Amount(type), to.Room() / Goods::Volume(type) }));
+    return std::max(0,
+                    std::min({ wanted, from.Amount(type), to.Room(type) / Goods::Volume(type) }));
 }
 
 int PresetAmount(Preset preset, int available)

@@ -36,7 +36,8 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    83;  // 83: a livery is a spec (#552): an id, or `id/` and a pilot's paint;
+    84;  // 84: the player view carries `oreCap`, the ore hold inside the hold (#572, slice 12);
+         // 83: a livery is a spec (#552): an id, or `id/` and a pilot's paint;
          // 82: each market line carries a fifth number, whether the market makes or uses the
          // good, so an empty module row is listed only where a yard could fill it (#572);
          // 81: ships are told apart by a key (#572): `ships`, `ship`, `insure` and the switch
@@ -606,6 +607,7 @@ struct PlayerView
     float   hull = 0.0f, maxHull = 0.0f, shields = 0.0f, maxShields = 0.0f;
     float   armour = 0.0f, maxArmour = 0.0f;  // the layer between them (#464, slice 8)
     int     cargoUsed = 0, cargoCap = 0;
+    int     oreCap = 0;           // of cargoCap, the room only mined goods may fill (#572)
     int     dockedStationId = 0;  // docked station id (0 — in flight); server-authoritative
     int     warpPhase = 0;        // 0 none, 1 aligning, 2 warp
     // Server-authoritative navigation (warp/autopilot): the client mirrors it and keeps

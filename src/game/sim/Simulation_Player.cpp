@@ -784,17 +784,16 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
             // does not fit stays for the next search, and it is searched once it is empty.
             if (dr->GetCargoAmount() > 0)
             {
-                int         room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
                 std::string took;
                 const auto  goods = dr->Contents().All();  // a copy: taking changes it
                 for (const auto& kv : goods)
                 {
-                    const int n = std::min(room / Goods::Volume(kv.first), kv.second);
+                    const int n =
+                        std::min(s.ship->RoomFor(kv.first) / Goods::Volume(kv.first), kv.second);
                     if (n <= 0)
-                        break;
+                        continue;
                     dr->Contents().Remove(kv.first, n);
                     s.ship->AddCargo(kv.first, n);
-                    room -= n * Goods::Volume(kv.first);
                     took += (took.empty() ? "" : ", ") + std::to_string(n) + " " +
                             ResourceName(kv.first);
                 }
@@ -924,7 +923,7 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
     const double fee = feeTo.rate;
     // As many as the stock, the hold and the money allow: counted down one at a time, since
     // every unit bought raises the price of the next.
-    const int room = dst.capacity - dst.goods->Used();
+    const int room = dst.goods->Room(dst.capacity, dst.ore, type);
     const int stock = (int)st.market.Stock(type);
     int       n = std::min({ amount, room / Goods::Volume(type), stock });
     while (n > 0 && st.market.QuoteBuy(type, n) * markup * (1.0 + fee) > s.account.GetMoney())
@@ -1245,7 +1244,14 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
         holdUsed += toHold * vol;
         returns.push_back({ g, { toHangar, toHold } });
     }
-    if (holdUsed > stats.cargoCapacity)
+    // ...and what is aboard after it has to be where the new hold lets it be: a refit may shrink
+    // the ore hold, and the room it loses is not the general hold's (#572).
+    Inventory after = hold;
+    for (const Draw& d : draws)
+        after.Remove(d.good, d.hold);
+    for (const auto& r : returns)
+        after.Add(r.first, r.second.second);
+    if (holdUsed > stats.cargoCapacity || !after.Fits(stats.cargoCapacity, stats.oreCapacity))
         return refuse("the hold would carry " + std::to_string(holdUsed) + " and a " + name +
                       " holds " + std::to_string(stats.cargoCapacity) +
                       "; sell or store cargo first, or the modules taken out have nowhere to go");
@@ -2557,17 +2563,21 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     if (s.ship && j.contains("cargo") && j["cargo"].is_array())
     {
         s.ship->ClearCargo();
-        for (const auto& c : j["cargo"])
-        {
-            if (!c.is_object())
-                continue;
-            // A good this server's registry does not have is left behind rather than read as
-            // another one (#343).
-            const int    amount = c.value("amount", 0);
-            ResourceType good;
-            if (amount > 0 && Goods::Find(c.value("resource", std::string()), good))
-                s.ship->AddCargo(good, amount);
-        }
+        // What only the general hold may take first, then the mined goods, which may fill
+        // either: a shrunk ore hold drops ore before it drops anything else (#572).
+        for (const bool mined : { false, true })
+            for (const auto& c : j["cargo"])
+            {
+                if (!c.is_object())
+                    continue;
+                // A good this server's registry does not have is left behind rather than read
+                // as another one (#343).
+                const int    amount = c.value("amount", 0);
+                ResourceType good;
+                if (amount > 0 && Goods::Find(c.value("resource", std::string()), good) &&
+                    Goods::Def(good).mined == mined)
+                    s.ship->AddCargo(good, amount);
+            }
     }
 
     if (!foreign && j.contains("missions") && j["missions"].is_array())
