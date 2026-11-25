@@ -243,6 +243,7 @@ void Game::DrawMarketContent(const Ui::Frame& f)
     in.asks = snapshot_.marketAsk;
     in.stock = snapshot_.marketStock;
     in.cargo = snapshot_.player.cargoByType;
+    in.makes = snapshot_.marketMakes;
     in.tradeBonus = player_.GetSkills().GetBonus(SkillType::Trading);
     in.standing = DockedTier();
     in.money = player_.GetMoney();
@@ -688,6 +689,30 @@ void Game::DrawHangarContent(const Ui::Frame& f)
     L.Draw();
 }
 
+void Game::ChangeFitDraft(const std::string& in, const std::string& on, const std::string& module,
+                          int by)
+{
+    for (size_t k = 0; k < fitDraft_.size(); k++)
+        if (fitDraft_[k].module == module && fitDraft_[k].in == in && fitDraft_[k].on == on)
+        {
+            fitDraft_[k].count += by;
+            if (fitDraft_[k].count <= 0)
+                fitDraft_.erase(fitDraft_.begin() + (long)k);
+            return;
+        }
+    if (by > 0)
+    {
+        Ships::FitLine l;
+        l.module = module;
+        l.in = in;
+        l.on = on;
+        l.count = by;
+        fitDraft_ = Ships::Normalized(fitDraft_);
+        fitDraft_.push_back(l);
+        fitDraft_ = Ships::Normalized(fitDraft_);
+    }
+}
+
 // The Fit tab (#279): the ship being flown, socket by socket. A fit is drawn up here and
 // nothing is sent until Apply; the numbers beside it are Obs::QuoteFit's, the server's own
 // rules and price, so what the tab says is what the server does.
@@ -744,29 +769,8 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
     };
     table.rowFill = [&](int r) { return r == fitSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
 
-    // Changes how many of `module` the draft puts on the chosen socket.
     auto change = [&](const Ships::SocketGroup& g, const std::string& module, int by)
-    {
-        for (size_t k = 0; k < fitDraft_.size(); k++)
-            if (fitDraft_[k].module == module && fitDraft_[k].in == g.in && fitDraft_[k].on == g.on)
-            {
-                fitDraft_[k].count += by;
-                if (fitDraft_[k].count <= 0)
-                    fitDraft_.erase(fitDraft_.begin() + (long)k);
-                return;
-            }
-        if (by > 0)
-        {
-            Ships::FitLine l;
-            l.module = module;
-            l.in = g.in;
-            l.on = g.on;
-            l.count = by;
-            fitDraft_ = Ships::Normalized(fitDraft_);
-            fitDraft_.push_back(l);
-            fitDraft_ = Ships::Normalized(fitDraft_);
-        }
-    };
+    { ChangeFitDraft(g.in, g.on, module, by); };
 
     auto details = [&]
     {
@@ -798,12 +802,25 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                       [&]
                       {
                           // The name in a column of its own, so the buttons line up row to row.
-                          L.Row(Box().Width(Size::Percent(0.45f)),
+                          L.Row(Box().Id("fitmod", (uint32_t)k).Width(Size::Percent(0.45f)),
                                 [&]
                                 {
                                     L.Text(m, TextStyle::Body().Tint(n > 0 ? t.colors.text
                                                                            : t.colors.dim));
                                 });
+                          // Dragged off its socket into the inventory, a fitted module comes
+                          // off the draft as "-" does (#572): the payload names the socket
+                          // group as "in/on" and the module by its id.
+                          if (n > 0)
+                          {
+                              Ui::DragPayload p;
+                              p.kind = "unfit";
+                              p.source = g.in + "/" + g.on;
+                              p.label = m;
+                              p.amount = std::min(step, n);
+                              p.available = n;
+                              L.DragSource("fitmod", (uint32_t)k, p);
+                          }
                           if (L.Button("dec" + std::to_string(k), "-") && n > 0)
                               change(g, m, -std::min(step, n));
                           L.Text(std::to_string(n), TextStyle::Body().Tint(t.colors.text));

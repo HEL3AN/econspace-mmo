@@ -1421,11 +1421,18 @@ std::string Describe(const View& view, Detail detail)
         // trade at, before standing, skill and the fee.
         std::string prices;
         const auto& types = AllResourceTypes();
+        auto at = [](const std::vector<int>& v, size_t i) { return i < v.size() ? v[i] : 0; };
         for (size_t i = 0; i < types.size() && i < snap.marketPrices.size(); i++)
+        {
+            // An empty module row is listed only where the market makes the module (#572).
+            if (Goods::Def(types[i]).IsModule() && at(snap.marketStock, i) <= 0 &&
+                at(p.cargoByType, i) <= 0 && at(snap.marketMakes, i) <= 0)
+                continue;
             prices += Fmt("%s%s %.1f/%.1f x%d", prices.empty() ? "" : ", ",
                           ResourceName(types[i]).c_str(), snap.marketPrices[i],
                           i < snap.marketAsk.size() ? snap.marketAsk[i] : 0.0f,
                           i < snap.marketStock.size() ? snap.marketStock[i] : 0);
+        }
         // The fee is the system's holder's tax where a corporation holds it (#431 slice 5).
         float fee = (float)Goods::Rules().fee;
         if (view.galaxy != nullptr)

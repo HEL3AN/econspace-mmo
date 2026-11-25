@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    81;  // 81: ships are told apart by a key (#572): `ships`, `ship`, `insure` and the switch
+    82;  // 82: each market line carries a fifth number, whether the market makes or uses the
+         // good, so an empty module row is listed only where a yard could fill it (#572);
+         // 81: ships are told apart by a key (#572): `ships`, `ship`, `insure` and the switch
          // command name a ship's key -- its hull's catalog index, plus 1000 for each earlier
          // ship of that hull -- so an account may own several of a kind; `buy` names a hull;
          // 80: the market carries each good's target stock (a fourth number a line), so a client
@@ -731,6 +733,7 @@ struct Snapshot
     std::vector<float> marketPrices;
     std::vector<float> marketAsk;
     std::vector<int>   marketStock;
+    std::vector<int>   marketMakes;  // 1 where the market makes or uses the good (#572), else 0
     std::vector<int>
         marketTarget;  // each good's target here, whole units: its price curve's centre (#572)
     // What is left of each belt in the system (#348), by entity id: the ore now and full. It
