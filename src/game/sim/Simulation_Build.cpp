@@ -19,6 +19,7 @@
 #include "entities/Planet.h"
 #include "entities/Ship.h"
 #include "entities/Structure.h"
+#include "gen/Region.h"
 
 #include <algorithm>
 #include <cmath>
@@ -132,6 +133,12 @@ std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint
                    " is not one";
         if (onto->IsBuilding())
             return onto->GetName() + " is still being built";
+        // No region has more than a few stations, whoever built them (#342 S6, #438).
+        if (IsStationBlueprint(&bp) &&
+            StationsIn(Gen::SlotOf(st->id)) >= WorldRules::GrowthRules().stationsPerRegion)
+            return "this region has its " +
+                   std::to_string(WorldRules::GrowthRules().stationsPerRegion) +
+                   " stations already, built and going up: no more would be let";
         const float edge = Distance(onto->GetPosition(), s.ship->GetPosition()) - onto->GetSize();
         if (fromHere && edge > bp.reach)
             return "too far from " + onto->GetName() + " (" + Whole(edge) + " of at most " +

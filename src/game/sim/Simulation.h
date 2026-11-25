@@ -1819,6 +1819,27 @@ public:
     // out. The world's, not a pilot's: everyone docked there reads the same board, and what
     // one takes is gone for the rest. Not saved -- a restart draws new boards.
     std::vector<Mission> StationWork(SystemState& st, int stationId);
+    // Who gives a board (#438): a faction's station is its faction's; a player's finished
+    // station-tier structure (a trade or mining station, a shipyard) is the system's, and it is
+    // the faction that holds the system that posts there -- or, where nobody lawful does, the
+    // lawful faction nearest within the jobs rules' reach -- which is no one of the player's, so
+    // the station is a place work is posted rather than a way to print it. A corporation's own
+    // postings would be a verb and a treasury of its own: not built.
+    struct BoardGiver
+    {
+        int            id = 0;
+        FactionId      faction = Factions::Unaffiliated();
+        StationRole    role = StationRole::TradeHub;
+        const Station* station = nullptr;  // a faction's station; null for a player's structure
+    };
+    bool      BoardGiverOf(const SystemState& st, int id, BoardGiver& out) const;
+    FactionId BoardFaction(const SystemState& st) const;
+    // Whether a structure is a station of a player's that has a board: finished, dockable, and
+    // of a blueprint of the station tier.
+    static bool HasBoard(const Structure& t);
+    // Whether a blueprint builds a station (an archetype of the station kind): what the
+    // region's cap on stations counts, a faction's or a player's.
+    static bool IsStationBlueprint(const Blueprint* bp);
     // Server-side mission hand-in: checks the condition, credits rewards to the account,
     // removes cargo (Mining), deletes from the log. true — handed in.
     bool CompleteMission(ClientSession& s, int activeIndex);

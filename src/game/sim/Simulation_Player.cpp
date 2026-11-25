@@ -1440,17 +1440,13 @@ bool Simulation::AccountHostileToFaction(const ClientSession& s, FactionId f) co
 
 std::vector<Mission> Simulation::StationWork(SystemState& st, int stationId)
 {
-    Station*              giver = nullptr;
+    BoardGiver            giver;
     std::vector<Station*> all;
     for (auto& e : st.entities)
         if (Station* sta =
                 e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
-        {
             all.push_back(sta);
-            if (sta->GetId() == stationId)
-                giver = sta;
-        }
-    if (giver == nullptr)
+    if (!BoardGiverOf(st, stationId, giver))
         return {};
 
     const WorldRules::Jobs&    r = WorldRules::JobRules();
@@ -1463,7 +1459,7 @@ std::vector<Mission> Simulation::StationWork(SystemState& st, int stationId)
     while ((int)board.size() < r.stationOffers)
     {
         StationOffer o;
-        o.m = MissionSystem::MakeOffer(giver, all);
+        o.m = MissionSystem::MakeOffer(giver.id, giver.faction, giver.role, all);
         o.m.offerId = nextOfferId_++;
         if (nextOfferId_ >= Offers::CONTRACT_BASE)
             nextOfferId_ = 1;
@@ -1481,22 +1477,19 @@ void Simulation::GenerateDockOffers(ClientSession& s)
     SystemState* st = SystemOf(s);
     if (st == nullptr)
         return;
-    const Station* giver = nullptr;
-    for (const auto& e : st->entities)
-        if (e->GetId() == s.dockedStationId && e->GetKind() == EntityKind::Station)
-            giver = static_cast<const Station*>(e.get());
-    if (giver == nullptr)
+    BoardGiver giver;
+    if (!BoardGiverOf(*st, s.dockedStationId, giver))
         return;
 
-    // Reward multiplier by the station faction's reputation.
+    // Reward multiplier by the board faction's reputation.
     const float repMul =
-        MissionRewardMultiplier(Factions::TierOf(s.account.GetReputation(giver->GetFaction())));
+        MissionRewardMultiplier(Factions::TierOf(s.account.GetReputation(giver.faction)));
     // The work the faction's plans want done goes first (#345): it is what the world around
     // the station is actually doing.
-    std::vector<Mission> board = JobsPostedAt(s, giver->GetId());
+    std::vector<Mission> board = JobsPostedAt(s, giver.id);
     // A station's own work pays the better the lower the security here (#431 L5, slice 11).
     const double risk = WorldRules::SecurityRules().Pay(st->agg.security);
-    for (Mission m : StationWork(*st, giver->GetId()))
+    for (Mission m : StationWork(*st, giver.id))
     {
         m.rewardMoney *= risk * repMul;
         m.rewardRep *= repMul;

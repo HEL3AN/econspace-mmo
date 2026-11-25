@@ -117,13 +117,13 @@ int StationsOf(const SystemState& st, FactionId f)
             n++;
     return n;
 }
+}  // namespace
 
-bool IsStationBlueprint(const Blueprint* bp)
+bool Simulation::IsStationBlueprint(const Blueprint* bp)
 {
     const Archetype* a = bp != nullptr ? Archetypes::Find(bp->archetype) : nullptr;
     return a != nullptr && a->kind == EntityKind::Station;
 }
-}  // namespace
 
 // --- Expeditions --------------------------------------------------------------------------
 
@@ -224,7 +224,20 @@ int Simulation::StationsIn(int slot) const
     int n = 0;
     for (const auto& kv : systems_)
         if (Gen::SlotOf(kv.first) == slot)
+        {
             n += kv.second.profile.stations;
+            // A player's station is a structure that stays one (FinishStation: a station
+            // belongs to a faction), going up or finished: it counts like any other (#438).
+            for (const auto& e : kv.second.entities)
+                if (e->GetKind() == EntityKind::Structure)
+                {
+                    const Structure& t = static_cast<const Structure&>(*e);
+                    FactionId        owner;
+                    if (!t.GetOwner().empty() && !Outposts::FactionOf(t.GetOwner(), owner) &&
+                        IsStationBlueprint(t.GetBlueprint()))
+                        n++;
+                }
+        }
     for (const auto& kv : plans_)
         if (kv.second.kind == Plan::Kind::Upgrade && Gen::SlotOf(kv.second.target) == slot &&
             IsStationBlueprint(Blueprints::Find(kv.second.blueprint)))
