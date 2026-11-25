@@ -1857,7 +1857,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
 void Simulation::Reset()
 {
     systems_.clear();
-    structureDue_.clear();
+    structureDue_.Clear();
     attacks_.clear();
     absent_.clear();
     agentIdCounter_ = 0;
