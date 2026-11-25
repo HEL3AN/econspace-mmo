@@ -41,7 +41,7 @@ void Game::DrawScannerContent(const Ui::Frame& f)
                  {
                      const bool can = mode_ == GameMode::Flying && !snapshot_.player.docked;
                      if (L.Button("scan", "Scan the system", true, can))
-                         cmd_.scan = true;
+                         SendAction(Proto::Act::Scan{});
                      L.Text(can ? "A pass covers the whole system. What is hidden -- a wormhole, a "
                                   "hidden base, a rich belt -- shows as a signature, and each "
                                   "pass resolves more of it."

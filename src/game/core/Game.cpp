@@ -239,9 +239,7 @@ void Game::Run()
         }
         if (IsKeyPressed(KEY_F1))  // account is on the server — credit via command
         {
-            Proto::Command dc;
-            dc.debugMoney = true;
-            clientLink_->Send(Proto::EncodeCommand(dc));
+            SendAction(Proto::Act::DebugMoney{});
         }
         if (flashTimer_ > 0.0f)
             flashTimer_ -= dt;
@@ -280,21 +278,10 @@ void Game::Run()
                     prediction_.Predict(*playerShip_, cmd_, [this] { return HoldTarget(); });
                 cmd_.seq = sent.seq;
                 clientLink_->Send(Proto::EncodeCommand(sent));
-                // One-shot intents applied/sent this tick — clear them (axes are held).
+                // Edge toggles and a navigation mode last one tick; the axes are held. One-shot
+                // verbs are not on this command: they go out as actions when asked for (#354).
                 cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
-                cmd_.dock = cmd_.undock = false;
                 cmd_.navMode = 0;
-                cmd_.nameSystem.clear();
-                cmd_.nameSystemId.clear();
-                cmd_.jumpGateId = cmd_.lootId = 0;
-                cmd_.deploy.clear();
-                cmd_.dismantleId = 0;
-                cmd_.defenceId = 0;       // (#340): the rules are set once
-                cmd_.orderKind = 0;       // a build order (#39) is given once
-                cmd_.abortOrder = false;  // ...and a route stopped from the map (#432)
-                cmd_.orderBlueprint.clear();
-                cmd_.orderTarget = 0;  // ...and an upgrade's outpost with it (#433)
-                cmd_.scan = false;     // a pass is asked for once (#346)
             }
             simAccumulator_ -= SIM_DT;
         }
@@ -596,7 +583,7 @@ void Game::PlayScriptedClicks()
             SendChat(s.text);
     for (int f : scans_)  // --scan (#346)
         if (frameIndex_ == f)
-            cmd_.scan = true;
+            SendAction(Proto::Act::Scan{});
     frameIndex_++;
 }
 
@@ -842,7 +829,7 @@ void Game::HandleInput(float dt)
 
     // Nearest station within docking range; E — dock. Detection runs over the clientWorld_
     // proxies, the only world the client has. Docking itself is server-authoritative: we
-    // send cmd_.dock and the server confirms via snapshot (see BuildClientSnapshot), so a
+    // send a Dock action and the server confirms via snapshot (see BuildClientSnapshot), so a
     // proxy being in range is a prompt, not a decision.
     nearbyStation_ = nullptr;
     {
@@ -864,7 +851,7 @@ void Game::HandleInput(float dt)
         if (playerShip_->IsWarping())
             nearbyStation_ = nullptr;  // docking is unavailable while warping
         if (nearbyStation_ != nullptr && key(KEY_E))
-            cmd_.dock = true;
+            SendAction(Proto::Act::Dock{});
     }
 }
 
@@ -887,7 +874,7 @@ void Game::DriveStartDock()
     if (nearest == nullptr)
         return;
     if (best <= DockReach(*nearest))
-        cmd_.dock = true;
+        SendAction(Proto::Act::Dock{});
     else if (!playerShip_->IsWarping() && !playerShip_->IsAutopilotOn())
     {
         if (best > 20000.0f)
@@ -922,9 +909,7 @@ void Game::Undock()
 {
     // Undocking is server-authoritative: send the order, the server clears the dock and
     // confirms via snapshot. We leave optimistically so the response feels instant.
-    Proto::Command c;
-    c.undock = true;
-    clientLink_->Send(Proto::EncodeCommand(c));
+    SendAction(Proto::Act::Undock{});
     mode_ = GameMode::Flying;
     dockedStation_ = nullptr;
     missionsTab_ = 0;  // the board was the station's
@@ -1090,15 +1075,16 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             const Vector2 at = target != nullptr ? target->GetPosition() : point;
             if (a.distance <= 0.0f)  // in reach: laid down now
             {
-                cmd_.deploy = a.blueprint;
-                cmd_.deployPos = at;
+                SendAction(Proto::Act::Deploy{ a.blueprint, at, "" });
                 return;
             }
             // Out of reach: a standing order the server flies and lays down on arrival (#39).
-            cmd_.orderKind = (int)Orders::Kind::Build;
-            cmd_.orderPoint = at;
-            cmd_.orderTarget = target != nullptr ? target->GetId() : 0;
-            cmd_.orderBlueprint = a.blueprint;
+            Orders::Order order;
+            order.kind = Orders::Kind::Build;
+            order.point = at;
+            order.targetId = target != nullptr ? target->GetId() : 0;
+            order.blueprint = a.blueprint;
+            SendAction(Proto::Act::GiveOrder{ order });
             return;
         }
         // The missions are the server's (M4f-2): a one-off command, and the next snapshot
@@ -1106,12 +1092,10 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::Accept:
         case Verb::HandIn:
         {
-            Proto::Command c;
             if (a.verb == Verb::Accept)
-                c.acceptOffer = a.mission;
+                SendAction(Proto::Act::AcceptOffer{ a.mission });
             else
-                c.completeMission = a.mission;
-            clientLink_->Send(Proto::EncodeCommand(c));
+                SendAction(Proto::Act::CompleteMission{ a.mission });
             // Once round the loop: the goal prompt goes after a few (#364). Counted when
             // the player asks, which is offered only when the server says it would work.
             if (a.verb == Verb::HandIn && Ui::GoalLearned() < Goal::LEARNED_AFTER)
@@ -1126,10 +1110,7 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         // design back, after its definition (#279).
         case Verb::Refit:
         {
-            Proto::Command c;
-            c.refit = true;
-            c.refitLines = a.fit;
-            clientLink_->Send(Proto::EncodeCommand(c));
+            SendAction(Proto::Act::Refit{ a.fit });
             return;
         }
         // The library is the account's: the snapshot brings it back changed (#279 step 3).
@@ -1138,22 +1119,14 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::RenameDesign:
         case Verb::DeleteDesign:
         {
-            Proto::Command c;
             if (a.verb == Verb::SaveDesign)
-            {
-                c.saveDesign = a.design;
-                c.saveLines = a.fit;
-            }
+                SendAction(Proto::Act::SaveDesign{ a.design, a.fit });
             else if (a.verb == Verb::ApplyDesign)
-                c.applyDesign = a.design;
+                SendAction(Proto::Act::ApplyDesign{ a.design });
             else if (a.verb == Verb::RenameDesign)
-            {
-                c.renameDesign = a.design;
-                c.renameTo = a.renameTo;
-            }
+                SendAction(Proto::Act::RenameDesign{ a.design, a.renameTo });
             else
-                c.deleteDesign = a.design;
-            clientLink_->Send(Proto::EncodeCommand(c));
+                SendAction(Proto::Act::DeleteDesign{ a.design });
             return;
         }
         default: break;
@@ -1185,7 +1158,7 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             // decides (including the reputation gate); out of range we approach first, which
             // is the whole point of the menu item -- the E key only works once already close.
             if (distanceTo(target) <= DockReach(*target))
-                cmd_.dock = true;
+                SendAction(Proto::Act::Dock{});
             else
                 OrderAutopilot(target->GetPosition(), target->GetSize() + 60.0f);
             break;
@@ -1195,7 +1168,8 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
                 cmd_.toggleMining = true;
             break;
         case Verb::Dismantle:
-            cmd_.dismantleId = target->GetId();  // the server checks reach and ownership
+            SendAction(
+                Proto::Act::Dismantle{ target->GetId() });  // the server checks reach and ownership
             break;
         case Verb::Take:  // an abandoned structure (#468): the server checks reach and leave
         {
@@ -1218,15 +1192,16 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             break;
         case Verb::Investigate:
             if (distanceTo(target) <= SalvageReach(*target))
-                cmd_.lootId = target->GetId();  // salvage order (server will verify)
+                SendAction(
+                    Proto::Act::Loot{ target->GetId() });  // salvage order (server will verify)
             else  // far: approach to well inside the reach, as the agent's tool does
                 OrderAutopilot(target->GetPosition(),
                                (target->GetSize() + SalvageReach(*target)) * 0.5f);
             break;
         case Verb::Jump:
             if (distanceTo(target) <= target->GetSize() + 200.0f)
-                cmd_.jumpGateId = target->GetId();  // jump order (server will verify)
-            else                                    // far — warp to the gate
+                SendAction(Proto::Act::Jump{ target->GetId() });  // jump order (server will verify)
+            else                                                  // far — warp to the gate
                 OrderWarp(target->GetPosition(), target->GetSize() + 120.0f);
             break;
         case Verb::FlyHere:

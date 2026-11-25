@@ -640,18 +640,15 @@ TEST_CASE("the server refits only at a shipyard, charges for it, and the ship fl
     }
     SUBCASE("a refit travels as a command")
     {
-        Proto::Command c;
-        c.refit = true;
-        c.refitLines = armed;
-        Proto::Command back;
-        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-        CHECK(back.refit);
-        REQUIRE(back.refitLines.size() == c.refitLines.size());
-        CHECK(back.refitLines[0].module == c.refitLines[0].module);
-        CHECK(back.refitLines[0].count == c.refitLines[0].count);
-        Proto::Command none;
-        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(Proto::Command{}), none));
-        CHECK_FALSE(none.refit);
+        Proto::Act::Refit c;
+        c.lines = armed;
+        Proto::Action got;
+        REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), got));
+        REQUIRE(std::holds_alternative<Proto::Act::Refit>(got));
+        const Proto::Act::Refit& back = std::get<Proto::Act::Refit>(got);
+        REQUIRE(back.lines.size() == c.lines.size());
+        CHECK(back.lines[0].module == c.lines[0].module);
+        CHECK(back.lines[0].count == c.lines[0].count);
     }
 }
 
@@ -807,22 +804,26 @@ TEST_CASE("a design is saved under a name of the player's, and the account keeps
     }
     SUBCASE("the library's commands travel")
     {
-        Proto::Command c;
-        c.saveDesign = "Laser scout";
-        c.saveLines = armed;
-        c.applyDesign = "Stock";
-        c.renameDesign = "a";
-        c.renameTo = "b";
-        c.deleteDesign = "c";
-        Proto::Command back;
-        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-        CHECK(back.saveDesign == c.saveDesign);
-        CHECK(back.saveLines.size() == armed.size());
-        CHECK(back.applyDesign == "Stock");
-        CHECK(back.renameDesign == "a");
-        CHECK(back.renameTo == "b");
-        CHECK(back.deleteDesign == "c");
-        CHECK_FALSE(back.refit);  // saving a fit is not refitting to it
+        Proto::Act::SaveDesign save;
+        save.name = "Laser scout";
+        save.lines = armed;
+        Proto::Action got;
+        REQUIRE(Proto::DecodeAction(Proto::EncodeAction(save), got));
+        // Saving a fit is not refitting to it: it decodes as a SaveDesign, never a Refit.
+        REQUIRE(std::holds_alternative<Proto::Act::SaveDesign>(got));
+        CHECK(std::get<Proto::Act::SaveDesign>(got).name == save.name);
+        CHECK(std::get<Proto::Act::SaveDesign>(got).lines.size() == armed.size());
+        REQUIRE(Proto::DecodeAction(Proto::EncodeAction(Proto::Act::ApplyDesign{ "Stock" }), got));
+        REQUIRE(std::holds_alternative<Proto::Act::ApplyDesign>(got));
+        CHECK(std::get<Proto::Act::ApplyDesign>(got).name == "Stock");
+        REQUIRE(
+            Proto::DecodeAction(Proto::EncodeAction(Proto::Act::RenameDesign{ "a", "b" }), got));
+        REQUIRE(std::holds_alternative<Proto::Act::RenameDesign>(got));
+        CHECK(std::get<Proto::Act::RenameDesign>(got).name == "a");
+        CHECK(std::get<Proto::Act::RenameDesign>(got).to == "b");
+        REQUIRE(Proto::DecodeAction(Proto::EncodeAction(Proto::Act::DeleteDesign{ "c" }), got));
+        REQUIRE(std::holds_alternative<Proto::Act::DeleteDesign>(got));
+        CHECK(std::get<Proto::Act::DeleteDesign>(got).name == "c");
     }
     SUBCASE("a fit the rules refuse is not saved")
     {

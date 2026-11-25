@@ -246,13 +246,12 @@ TEST_CASE("insurance and home outlive the session; a policy pays no more than th
 
 TEST_CASE("the wire carries the cover and the last loss, and a command insures (#344)")
 {
-    Proto::Command c;
-    c.insureShip = 2;
-    Proto::Command got;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), got));
-    CHECK(got.insureShip == 2);
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(Proto::Command{}), got));
-    CHECK(got.insureShip == -1);
+    Proto::Act::InsureShip c;
+    c.ship = 2;
+    Proto::Action got;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), got));
+    REQUIRE(std::holds_alternative<Proto::Act::InsureShip>(got));
+    CHECK(std::get<Proto::Act::InsureShip>(got).ship == 2);
 
     Proto::Snapshot s;
     s.systemId = "core";

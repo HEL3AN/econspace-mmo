@@ -189,18 +189,19 @@ void Game::StartMapRoute()
         return;
     }
     if (mode_ == GameMode::Docked)
-        Undock();  // its own command, sent now: the order below goes out after it
-    // One order for the whole journey, on the next numbered command; the server plans each
+        Undock();  // sent now: the order below goes out after it
+    // One order for the whole journey, sent as an action after the undock; the server plans each
     // hop again as it goes, by the same rule and over the same index.
     cmd_.navMode = 0;
     cmd_.thrust = cmd_.brake = false;
     cmd_.turn = 0.0f;
-    cmd_.abortOrder = false;
-    cmd_.orderKind = (int)Orders::Kind::Route;
-    cmd_.orderDestSystem = navigation_.Destination();
-    cmd_.orderWaypoints = navigation_.Waypoints();
-    cmd_.orderPreference = (int)navigation_.Preference();
-    cmd_.orderWarp = true;
+    Orders::Order order;
+    order.kind = Orders::Kind::Route;
+    order.destSystem = navigation_.Destination();
+    order.waypoints = navigation_.Waypoints();
+    order.preference = (int)navigation_.Preference();
+    order.useWarp = true;
+    SendAction(Proto::Act::GiveOrder{ order });
     navigation_.Begin(snapshot_.player.orderId);
     mapNotice_.clear();
     SaveNavigation();
@@ -208,8 +209,7 @@ void Game::StartMapRoute()
 
 void Game::StopMapRoute()
 {
-    cmd_.orderKind = 0;
-    cmd_.abortOrder = true;
+    SendAction(Proto::Act::AbortOrder{});
     navigation_.Pause("Stopped. The route is kept: travel to go on.");
     SaveNavigation();
 }
@@ -299,12 +299,9 @@ void Game::DrawMapSystemInfo(Ui::Layout& L)
         o.maxLength = 24;
         o.placeholder = "a name for this system";
         const Ui::EditResult r = L.TextField("name", nameBuf_, o);
-        // It rides on the next numbered input like any one-shot intent: a command of its own
-        // would be one more tick of movement the server steps and this client never predicted.
         if (r.submitted && !nameBuf_.empty() && problem.empty())
         {
-            cmd_.nameSystem = nameBuf_;
-            cmd_.nameSystemId = id;
+            SendAction(Proto::Act::NameSystem{ nameBuf_, id });
         }
         if (!problem.empty())
             L.Text("Not a name here: " + problem, TextStyle::Small().Tint(t.colors.warn).Wrap());
@@ -528,9 +525,7 @@ void Game::DrawMapSidebar(Ui::Layout& L)
 
 void Game::SellChart(const std::string& system)
 {
-    Proto::Command c;
-    c.sellChart = system;
-    clientLink_->Send(Proto::EncodeCommand(c));
+    SendAction(Proto::Act::SellChart{ system });
 }
 
 // Charts sold to a faction (#346, #431 slice 16): docked at its station, what it would pay for

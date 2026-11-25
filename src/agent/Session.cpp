@@ -274,6 +274,18 @@ bool Session::SendAndConfirm(const Proto::Command& c, double timeoutSeconds)
                      timeoutSeconds);
 }
 
+void Session::SendAction(const Proto::Action& a)
+{
+    if (conn_)
+        conn_->Send(Proto::EncodeAction(a));
+}
+
+bool Session::SendActionAndConfirm(const Proto::Action& a, double timeoutSeconds)
+{
+    SendAction(a);
+    return SendAndConfirm(Proto::Command{}, timeoutSeconds);
+}
+
 std::vector<Ev::Event> Session::EventsSince(int seq) const
 {
     std::vector<Ev::Event> out;

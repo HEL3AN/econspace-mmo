@@ -171,6 +171,12 @@ void Game::SendCorpAct(const Proto::CorpAct& act)
         clientLink_->Send(Proto::EncodeCorpAct(act));
 }
 
+void Game::SendAction(const Proto::Action& act)
+{
+    if (clientLink_)
+        clientLink_->Send(Proto::EncodeAction(act));
+}
+
 bool Game::CorpCommand(const std::string& text)
 {
     std::string       rest;
@@ -791,9 +797,7 @@ void Game::DrawLicencesHeld(Ui::Layout& L, bool mayPay)
                          TextStyle::Small().Tint(t.colors.money));
                   if (L.Button("renew_" + l.system, "Renew", false, dockedThere && mayPay))
                   {
-                      Proto::Command c;
-                      c.buyLicence = true;
-                      clientLink_->Send(Proto::EncodeCommand(c));
+                      SendAction(Proto::Act::BuyLicence{});
                   }
               });
         std::string tip =
@@ -880,9 +884,7 @@ void Game::DrawLicenceOffer(Ui::Layout& L)
     if (L.Button("licence",
                  TextFormat("%s  %.0f cr", paid ? "Renew a week ahead" : "Buy a licence", l.rent)))
     {
-        Proto::Command c;
-        c.buyLicence = true;
-        clientLink_->Send(Proto::EncodeCommand(c));
+        SendAction(Proto::Act::BuyLicence{});
     }
     L.Tooltip("licence", "Building here takes the holder's licence, a rent taken each week. "
                          "Unpaid a day past due, what you have here trespasses: anyone may shoot "

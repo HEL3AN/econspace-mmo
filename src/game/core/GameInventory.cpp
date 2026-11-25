@@ -22,12 +22,7 @@ void Game::RequestMove(const std::string& from, const std::string& to, ResourceT
     if (amount <= 0 || from == to)
         return;
     // One verb between any two containers here, by the ids InventoryList gives them.
-    Proto::Command c;
-    c.moveFrom = from;
-    c.moveTo = to;
-    c.moveType = type.Index();
-    c.moveAmount = amount;
-    clientLink_->Send(Proto::EncodeCommand(c));
+    SendAction(Proto::Act::Move{ from, to, type.Index(), amount });
 }
 
 void Game::TakeWorldDrop()
@@ -89,9 +84,7 @@ void Game::DrawHangarRent(Ui::Layout& L)
                TextStyle::Small().Tint(t.colors.bad).Wrap());
         if (L.Button("payowed", TextFormat("Pay %.0f cr", h.owed), true))
         {
-            Proto::Command c;
-            c.rentHangar = h.rented;
-            clientLink_->Send(Proto::EncodeCommand(c));
+            SendAction(Proto::Act::RentHangar{ h.rented });
         }
         return;
     }
@@ -115,9 +108,7 @@ void Game::DrawHangarRent(Ui::Layout& L)
                                            : TextFormat("Rent %d", want),
                            true, want != h.rented))
               {
-                  Proto::Command c;
-                  c.rentHangar = want;
-                  clientLink_->Send(Proto::EncodeCommand(c));
+                  SendAction(Proto::Act::RentHangar{ want });
               }
               L.Tooltip(
                   "setrent",
@@ -139,9 +130,7 @@ void Game::DrawAssetsTab(Ui::Layout& L)
     // once, with the next snapshot.
     if (GetTime() - assetsAsked_ > 5.0 && !assetsHeard_)
     {
-        Proto::Command c;
-        c.requestAssets = true;
-        clientLink_->Send(Proto::EncodeCommand(c));
+        SendAction(Proto::Act::RequestAssets{});
         assetsAsked_ = GetTime();
     }
     L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
@@ -149,9 +138,7 @@ void Game::DrawAssetsTab(Ui::Layout& L)
           {
               if (L.Button("assets_refresh", "Refresh"))
               {
-                  Proto::Command c;
-                  c.requestAssets = true;
-                  clientLink_->Send(Proto::EncodeCommand(c));
+                  SendAction(Proto::Act::RequestAssets{});
                   assetsAsked_ = GetTime();
               }
               L.Text(TextFormat("%d places", (int)assets_.size()),
@@ -321,9 +308,7 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
                 if (L.Button("fetch_" + std::to_string(i),
                              TextFormat("Bring here: %.0f cr, %.0f h", lk.fee, lk.hours)))
                 {
-                    Proto::Command c;
-                    c.deliverFrom = lk.key;
-                    clientLink_->Send(Proto::EncodeCommand(c));
+                    SendAction(Proto::Act::Deliver{ lk.key, -1, 0 });
                 }
             }
             else

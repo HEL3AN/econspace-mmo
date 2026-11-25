@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <variant>
 #include "entities/Defence.h"
 #include "entities/EntityKind.h"
 #include "sim/Events.h"
@@ -36,7 +37,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    85;  // 85: a CorpView lists the corporation's `offices` at NPC stations (#572);
+    86;  // 86: one-shot verbs leave the per-tick Command for their own message, an Action (#354):
+         // `act` with a `verb` tag, applied in order with the commands and never a tick;
+         // 85: a CorpView lists the corporation's `offices` at NPC stations (#572);
          // 84: the player view carries `oreCap`, the ore hold inside the hold (#572, slice 12);
          // 83: a livery is a spec (#552): an id, or `id/` and a pilot's paint;
          // 82: each market line carries a fifth number, whether the market makes or uses the
@@ -255,6 +258,11 @@ struct ChooseStart
     std::string system;
 };
 
+// One tick of the pilot's hands (#354): what the ship is told to do this tick, sent sixty
+// times a second and stepped by Sim::StepPlayerShip on both sides. It carries only what that
+// step reads -- the held axes, the toggles the prediction applies, the fire target and the
+// navigation mode. Everything a pilot asks for once -- dock, sell, an order, a refit -- is an
+// `Action`, which is not a tick of anything.
 struct Command
 {
     int seq = 0;  // input number (for client prediction/reconciliation, M4e)
@@ -262,14 +270,13 @@ struct Command
     bool  thrust = false;
     float turn = 0.0f;
     bool  brake = false;
-    // One-shot intents (edge).
+    // Edge toggles, applied by the step (the stabilizer and mining on both sides, the weapon
+    // on the server only).
     bool toggleStabilizer = false;
     bool toggleMining = false;
     bool toggleWeapon = false;
-    bool dock = false;
-    bool undock = false;
-    // Combat target / navigation / jump.
-    int targetId = 0;  // selected agent (0 — none)
+    // Combat target: what the weapon fires at, every tick (0 -- none).
+    int targetId = 0;
     // Navigation order. Modes 1 and 2 are one-shot -- fly there, or warp there, and stop.
     // Modes 3 to 5 are standing: hold station on an object until released, which is what
     // flying a fight or waiting at a gate actually is (#157).
@@ -286,123 +293,195 @@ struct Command
     // than a point, because the point of it is to follow something that moves.
     int   navHoldId = 0;
     float navRange = 0.0f;
-    int   jumpGateId = 0;  // jump through gate by id (0 — none)
-    int   lootId = 0;      // loot derelict by id (0 — none)
-    // Station trade (server-authoritative, M4e-3b): sell resource / refit.
-    int sellType = -1;   // ResourceType as int (-1 — no sale)
-    int sellAmount = 0;  // amount to sell (server clamps to cargo)
-    // Which container a sale takes from and a purchase goes into (#472): "hold" or, at a
-    // station, "hangar"; empty is the hold.
-    std::string sellFrom;
-    std::string buyTo;
-    // Rent so many units of hangar on top of the free ones at the station docked at (#472);
-    // -1: not this command. A refusal is a Notice saying why.
-    int rentHangar = -1;
-    // Paint the pilot's ships in a livery of the palette (#516): a livery id from
-    // materials.json marked `palette`, or such an id with a pilot's own paint (core/Paint.h,
-    // #552); empty -- not this command. Art, never allegiance (#117).
-    std::string setLivery;
-    // A purchase (#343): as much of the good as the stock, the hold and the money allow, up
-    // to the amount.
-    int buyType = -1;  // ResourceType as int (-1 — no purchase)
-    int buyAmount = 0;
-    // Move goods from one container to another where the ship is (#472): so many of a good,
-    // as far as `moveFrom` has them and `moveTo` has room. A container is named as
-    // InventoryList names it: "hold", "storage" (the structure docked at, its owner's side's).
-    // A refusal is a Notice saying why.
-    // Have a hangar the pilot keeps at a station that now refuses them brought to where they
-    // are docked (#472 slice 6): `deliverFrom` is its key as a LockedHangarView gives it, of a
-    // good (`deliverType`, -1 all of it) up to `deliverAmount` (0 all).
-    bool        requestAssets = false;  // send the assets view with the next snapshot (#472)
-    std::string deliverFrom;
-    int         deliverType = -1;
-    int         deliverAmount = 0;
-    std::string moveFrom;
-    std::string moveTo;
-    int         moveType = -1;  // ResourceType as int (-1 — nothing moved)
-    int         moveAmount = 0;
-    // The pair `move` replaced (#438): hold to storage and back. Still honoured, as a move, for
-    // a peer that sends them; nothing in this build does.
-    int storeType = -1;  // ResourceType as int (-1 — nothing stored)
-    int storeAmount = 0;
-    int takeType = -1;  // ResourceType as int (-1 — nothing taken)
-    int takeAmount = 0;
-    int refitShip = -1;  // switch to an ALREADY bought ship (index; -1 none)
-    // Refit the ship being flown to this fit, at the shipyard it is docked at (#279
-    // fitting). The fit is the whole fit, not a change to it; the hull stays the hull. The
-    // server checks it, prices it and charges for it; a refusal is a Notice saying why.
-    bool                        refit = false;
-    std::vector<Ships::FitLine> refitLines;
-    // The named design library (#279 fitting, step 3), each by the name the player gave it;
-    // empty -- not this command. Save files `saveLines` on the hull being flown under
-    // `saveDesign`; apply refits to a saved design as `refit` would; rename gives
-    // `renameDesign` the name `renameTo`. A refusal is a Notice saying why.
-    std::string                 saveDesign;
-    std::vector<Ships::FitLine> saveLines;
-    std::string                 applyDesign;
-    std::string                 renameDesign;
-    std::string                 renameTo;
-    std::string                 deleteDesign;
-    // Account actions (server-authoritative, M4f): buy ship / pay bounty / cheat.
-    int         buyShip = -1;          // buy ship by catalog index (-1 none)
-    int         insureShip = -1;       // insure an owned hull by catalog index (-1 none, #344)
-    std::string payBountyFaction;      // pay off bounty with a faction (its id; empty none)
-    bool        debugMoney = false;    // F1: grant debug money
-    int         acceptOffer = -1;      // accept the mission offer by its number (#425; -1 none)
-    int         completeMission = -1;  // hand in active mission by index (-1 none)
-    // Name a system as its discoverer (#145); empty -- not this command. From anywhere
-    // (#513): `nameSystemId` says which, and empty means the one the ship is in.
-    std::string nameSystem;
-    std::string nameSystemId;
-
-    // Standing order (one-shot, #26/#72). The client sends an INTENT, exactly as it does
-    // for docking or trading: the server decides whether the order is possible and owns
-    // everything about running it. An agent can do nothing a human client could not.
-    int         orderKind = 0;  // Orders::Kind as int; 0 — no order this command
-    int         orderTarget = 0;
-    Vector2     orderPoint = { 0.0f, 0.0f };
-    float       orderStopDist = 120.0f;
-    bool        orderWarp = false;
-    bool        orderUntilFull = false;
-    std::string orderDestSystem;  // Route
-    // Route: systems to pass through first, in order, and how to weigh a hop
-    // (Route::Preference: 0 shortest, 1 safer, 2 less secure) (#432). Until #171 nothing on
-    // the wire could ask for a safer way, so `travel_to_system`'s avoid_danger was accepted,
-    // advertised to models in a prompt, and silently dropped.
-    std::vector<std::string> orderWaypoints;  // at most ROUTE_WAYPOINTS_MAX
-    int                      orderPreference = 0;
-    // Build: the blueprint, and what to call the site (#39). The point is `orderPoint`.
-    std::string orderBlueprint;
-    std::string orderName;
-    bool        abortOrder = false;  // drop whatever is running
-
-    // Lay down a construction site (#39): the blueprint's id, where, and what to call it
-    // (empty -- the blueprint's name). Empty `deploy` -- not this command. The server checks
-    // everything: the hold, the place, the caps; a refusal is a Notice saying which.
-    std::string deploy;
-    Vector2     deployPos = { 0.0f, 0.0f };
-    std::string deployName;
-    // Take one's own site or structure apart, by id (#39); 0 -- not this command. What comes
-    // back goes into the hold; a refusal is a Notice saying why.
-    int dismantleId = 0;
-    // Set the rules of engagement of one's own armed structure, by id (#340); 0 -- not this
-    // command. A refusal is a Notice saying why, and the change reaches everyone as a delta.
-    int     defenceId = 0;
-    Defence defence;
-    // Start a pass of the ship's scanner (#346); the signatures it resolves are this pilot's.
-    bool scan = false;
-    // Buy, or renew, the licence to build in the system the ship is in (#431 slice 6): for the
-    // pilot's corporation from its treasury (its CEO or a director), or for a pilot in none from
-    // their own money; at a station of the holding faction, or anywhere in a corporation's
-    // system. A refusal is a Notice saying why.
-    bool buyLicence = false;
-    // Sell the faction whose station the ship is docked at what the pilot has of a system, by
-    // id (#346, #431 slice 16): that it exists, what they saw standing there, and what their
-    // scans found. "*" sells everything it would pay for. Empty -- not this command. The price
-    // is what the faction's picture of it changes (Simulation::ChartOfferFor); a refusal is a
-    // Notice saying why.
-    std::string sellChart;
 };
+
+// --- Action: client -> server, once (#354) ---
+//
+// A verb a pilot asks for once: dock, trade, refit, order, deploy. The server checks it, does
+// it or says why not in the journal, and nothing about it is predicted -- so it is not a tick
+// and carries no sequence number. Actions and commands travel one stream and are applied in
+// the order they arrive, which is the whole acknowledgement: a command sent after an action
+// is acknowledged only after the action has been applied (econagent's confirm relies on it).
+//
+// A verb is a small struct of its own and `Action` is their variant, so a new one adds a
+// struct, an encoder line, a decoder line and a case in Simulation::ApplyAction -- and nothing
+// to the 60 Hz message.
+namespace Act
+{
+struct Dock
+{
+};
+struct Undock
+{
+};
+// F1's money: refused, with a Notice, on a server not in dev mode (#341).
+struct DebugMoney
+{
+};
+// Name a system as its discoverer (#145), from anywhere (#513): `systemId` says which, and
+// empty means the one the ship is in.
+struct NameSystem
+{
+    std::string name;
+    std::string systemId;
+};
+// Buy, or renew, the licence to build in the system the ship is in (#431 slice 6).
+struct BuyLicence
+{
+};
+// Sell the faction docked at what the pilot has charted of a system, by id (#346, #431 slice
+// 16); "*" sells everything it would pay for.
+struct SellChart
+{
+    std::string what;
+};
+// Refit the ship being flown to this whole fit, at a shipyard (#279).
+struct Refit
+{
+    std::vector<Ships::FitLine> lines;
+};
+// The named design library (#279 step 3): each by the name the player gave it.
+struct SaveDesign
+{
+    std::string                 name;
+    std::vector<Ships::FitLine> lines;
+};
+struct ApplyDesign
+{
+    std::string name;
+};
+struct RenameDesign
+{
+    std::string name;
+    std::string to;
+};
+struct DeleteDesign
+{
+    std::string name;
+};
+// Paint the pilot's ships in a livery of the palette (#516): a livery id from materials.json
+// marked `palette`, or such an id with a pilot's own paint (core/Paint.h, #552). Art, never
+// allegiance (#117).
+struct SetLivery
+{
+    std::string livery;
+};
+// Move goods from one container to another where the ship is (#472), as InventoryList names
+// them: "hold", "storage". `type` is a ResourceType as int.
+struct Move
+{
+    std::string from;
+    std::string to;
+    int         type = -1;
+    int         amount = 0;
+};
+// Docked: sell from the hold, or a station hangar named by `from` (empty -- the hold).
+struct Sell
+{
+    int         type = -1;  // ResourceType as int
+    int         amount = 0;
+    std::string from;
+};
+// Docked: buy as much as the stock, the hold and the money allow (#343), into `to`.
+struct Buy
+{
+    int         type = -1;
+    int         amount = 0;
+    std::string to;
+};
+// Docked: rent so many units of hangar on top of the free ones (#472).
+struct RentHangar
+{
+    int amount = 0;
+};
+// Send the assets view with the next snapshot (#472 slice 9).
+struct RequestAssets
+{
+};
+// Have a hangar kept at a station that now refuses them brought to where the pilot is docked
+// (#472 slice 6): `from` is its key as a LockedHangarView gives it; `type` -1 is all of it.
+struct Deliver
+{
+    std::string from;
+    int         type = -1;
+    int         amount = 0;  // 0 -- all
+};
+// Docked: switch to a ship the account owns, buy one, insure one. All three name a ship by
+// its key (#572).
+struct SwitchShip
+{
+    int ship = 0;
+};
+struct BuyShip
+{
+    int ship = 0;
+};
+struct InsureShip
+{
+    int ship = 0;
+};
+// Docked: pay off the bounty with a faction, by its id.
+struct PayBounty
+{
+    std::string faction;
+};
+// Docked: take a mission offer by its number (#425), or hand in an active one by index.
+struct AcceptOffer
+{
+    int offer = 0;
+};
+struct CompleteMission
+{
+    int mission = 0;
+};
+// A standing order (#26, #72): the pilot's intent, which the server validates and runs.
+// Docked, only an undock can run.
+struct GiveOrder
+{
+    Orders::Order order;
+};
+// Drop whatever order is running.
+struct AbortOrder
+{
+};
+// In space: jump through a gate, loot a derelict, start a pass of the scanner (#346), lay down
+// a site (#39), take one's own structure apart, set its rules of engagement (#340).
+struct Jump
+{
+    int gateId = 0;
+};
+struct Loot
+{
+    int id = 0;
+};
+struct Scan
+{
+};
+struct Deploy
+{
+    std::string blueprint;
+    Vector2     at = { 0.0f, 0.0f };
+    std::string name;  // empty -- the blueprint's own
+};
+struct Dismantle
+{
+    int id = 0;
+};
+struct SetDefence
+{
+    int     id = 0;
+    Defence defence;
+};
+}  // namespace Act
+
+using Action =
+    std::variant<Act::Dock, Act::Undock, Act::DebugMoney, Act::NameSystem, Act::BuyLicence,
+                 Act::SellChart, Act::Refit, Act::SaveDesign, Act::ApplyDesign, Act::RenameDesign,
+                 Act::DeleteDesign, Act::SetLivery, Act::Move, Act::Sell, Act::Buy, Act::RentHangar,
+                 Act::RequestAssets, Act::Deliver, Act::SwitchShip, Act::BuyShip, Act::InsureShip,
+                 Act::PayBounty, Act::AcceptOffer, Act::CompleteMission, Act::GiveOrder,
+                 Act::AbortOrder, Act::Jump, Act::Loot, Act::Scan, Act::Deploy, Act::Dismantle,
+                 Act::SetDefence>;
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
 // no translation between "what the world says an object is" and "what the snapshot says",
@@ -1175,6 +1254,9 @@ std::string EncodeAuth(const Auth& a);
 bool        DecodeAuth(const std::string& s, Auth& out);
 std::string EncodeCommand(const Command& c);
 bool        DecodeCommand(const std::string& s, Command& out);
+// An Action is one message of type "act", the verb tagged in `verb` (#354).
+std::string EncodeAction(const Action& a);
+bool        DecodeAction(const std::string& s, Action& out);
 // A whole snapshot, every entity in full: what a SnapshotSender sends when it has no state
 // the client acknowledged, and what a test or a selftest sends when it wants no state at all.
 // DecodeSnapshot reads only a whole one; a delta needs the SnapshotReceiver that holds its

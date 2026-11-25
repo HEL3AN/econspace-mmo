@@ -407,14 +407,15 @@ TEST_CASE("rules of engagement on the wire and as a player types them (#340)")
     CHECK(d.factions == std::vector<std::string>{ "TradersGuild" });
     CHECK(AllowListText(d) == "TradersGuild, ann, Bob");
 
-    Proto::Command c;
-    c.defenceId = 42;
+    Proto::Act::SetDefence c;
+    c.id = 42;
     c.defence = d;
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.defenceId == 42);
-    CHECK(back.defence == d);
-    // Nothing about the rules is sent when there are none to set.
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), back));
+    REQUIRE(std::holds_alternative<Proto::Act::SetDefence>(back));
+    CHECK(std::get<Proto::Act::SetDefence>(back).id == 42);
+    CHECK(std::get<Proto::Act::SetDefence>(back).defence == d);
+    // Nothing about the rules is sent by the per-tick command.
     CHECK(Proto::EncodeCommand(Proto::Command()).find("def") == std::string::npos);
 
     nlohmann::json j = DefenceJson(d);

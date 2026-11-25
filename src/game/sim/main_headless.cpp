@@ -385,31 +385,43 @@ void HostStepWorld(Simulation& sim, float dt, Simulation::FireMap& fires)
     sim.MaintainWorld(dt);
 }
 
-// Receives client inputs from the transport and applies EACH as one player tick
-// (Simulation::ApplyCommand). lastSeq — the highest processed input number (ack to the client).
-// Returns true if the layout must be resent (system change).
-static bool HostApplyCommand(const std::string& msg, Simulation& sim, ClientSession& s, float dt,
-                             int& lastSeq, std::vector<Proto::TradeAck>& acks,
-                             std::map<std::string, std::vector<FireEvent>>& fires)
+// Receives client inputs from the transport and applies EACH command as one player tick
+// (Simulation::ApplyCommand) and each action as it comes (Simulation::ApplyAction), in the
+// order they arrived. lastSeq -- the highest processed input number (ack to the client).
+// Returns true if the layout must be resent (an action changed the system).
+static void HostApplyCommand(const std::string& msg, Simulation& sim, ClientSession& s, float dt,
+                             int& lastSeq, Simulation::FireMap& fires)
 {
     Proto::Command c;
     if (!Proto::DecodeCommand(msg, c))
-        return false;
+        return;
     if (c.seq > lastSeq)
         lastSeq = c.seq;
-    return sim.ApplyCommand(s, c, dt, acks, fires);
+    sim.ApplyCommand(s, c, dt, fires);
+}
+
+static bool HostApplyAction(const std::string& msg, Simulation& sim, ClientSession& s,
+                            std::vector<Proto::TradeAck>& acks)
+{
+    Proto::Action a;
+    if (!Proto::DecodeAction(msg, a))
+        return false;
+    return sim.ApplyAction(s, a, acks);
 }
 
 bool HostDrainInputs(ITransport& conn, Simulation& sim, ClientSession& s, float dt, int& lastSeq,
-                     std::vector<Proto::TradeAck>&                  acks,
-                     std::map<std::string, std::vector<FireEvent>>& fires)
+                     std::vector<Proto::TradeAck>& acks, Simulation::FireMap& fires)
 {
     bool        layoutDirty = false;
     std::string msg;
     while (conn.Poll(msg))
-        if (Proto::MessageType(msg) == "cmd" &&
-            HostApplyCommand(msg, sim, s, dt, lastSeq, acks, fires))
+    {
+        const std::string type = Proto::MessageType(msg);
+        if (type == "cmd")
+            HostApplyCommand(msg, sim, s, dt, lastSeq, fires);
+        else if (type == "act" && HostApplyAction(msg, sim, s, acks))
             layoutDirty = true;
+    }
     return layoutDirty;
 }
 
@@ -468,6 +480,10 @@ struct HostClient
     // runs simply moves faster than everyone else -- a speed hack, not merely a flood
     // (#14). An honest client sends exactly one per SIM_DT, so it never runs out.
     double tickBudget = 0.0;
+    // The same for actions (#354): they are not ticks, so a flood of them is no speed hack, but
+    // each is a verb the server does -- a sale, a refit, a scan -- and a peer chooses how many.
+    double actionBudget = 0.0;
+    bool   actionThrottleReported = false;
     bool   throttleReported = false;
     double connectedAt = 0.0;  // the server's uptime when it connected, for `who` (#400)
     // A galaxy map changed since this client was last sent one (#411).
@@ -502,6 +518,8 @@ static bool BackedUp(const HostClient& hc)
 // not an exploit worth throttling every real player to prevent.
 static const double TICKS_PER_SECOND = 1.0 / (double)Sim::SIM_DT;
 static const double MAX_TICK_BURST = TICKS_PER_SECOND;
+// Actions (#354) are metered at the tick rate too, with room for a screen's worth at once.
+static const double MAX_ACTION_BURST = 4.0 * TICKS_PER_SECOND;
 
 // How long a socket may stay connected without saying who it is. A client that opens a
 // connection and never introduces itself is not a player; without a limit, sockets like
@@ -2184,6 +2202,9 @@ int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             hc.tickBudget += frame * TICKS_PER_SECOND;
             if (hc.tickBudget > MAX_TICK_BURST)
                 hc.tickBudget = MAX_TICK_BURST;
+            hc.actionBudget += frame * TICKS_PER_SECOND;
+            if (hc.actionBudget > MAX_ACTION_BURST)
+                hc.actionBudget = MAX_ACTION_BURST;
             std::string msg;
             while (hc.conn->Poll(msg))
             {
@@ -2522,6 +2543,27 @@ int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     SendChat(clients, out, net);
                     continue;
                 }
+                if (type == "act" && s != nullptr)
+                {
+                    if (hc.actionBudget < 1.0)
+                    {
+                        // An action is not replayed like a command: the pilot is told, so the
+                        // verb that did not happen does not look as if it did.
+                        s->RecordEvent(Ev::Kind::Notice, "Too many requests at once; ignored");
+                        if (!hc.actionThrottleReported)
+                        {
+                            hc.actionThrottleReported = true;
+                            Log::Printf("%s is sending actions faster than the simulation "
+                                        "runs; the extra ones are ignored.\n",
+                                        hc.account.c_str());
+                        }
+                        continue;
+                    }
+                    hc.actionBudget -= 1.0;
+                    if (HostApplyAction(msg, sim, *s, acks[hc.sessionId]))
+                        layoutDirty[hc.sessionId] = true;
+                    continue;
+                }
                 if (type != "cmd" || s == nullptr)
                     continue;
                 if (hc.tickBudget < 1.0)
@@ -2538,8 +2580,7 @@ int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     continue;
                 }
                 hc.tickBudget -= 1.0;
-                if (HostApplyCommand(msg, sim, *s, dt, hc.lastSeq, acks[hc.sessionId], fires))
-                    layoutDirty[hc.sessionId] = true;
+                HostApplyCommand(msg, sim, *s, dt, hc.lastSeq, fires);
             }
 
             // Account checkpoint on a dock-state change: on docking -- commit what was

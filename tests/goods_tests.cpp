@@ -406,18 +406,20 @@ TEST_CASE("an account's hold keeps any good by its id (#343)")
 
 TEST_CASE("the wire carries a purchase and the market's bid, ask and stock (#343)")
 {
-    GoodsFile      file;
-    Proto::Command c;
-    c.buyType = Good::Named("Ammunition").Index();
-    c.buyAmount = 12;
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.buyType == c.buyType);
-    CHECK(back.buyAmount == 12);
+    GoodsFile       file;
+    Proto::Act::Buy c;
+    c.type = Good::Named("Ammunition").Index();
+    c.amount = 12;
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), back));
+    REQUIRE(std::holds_alternative<Proto::Act::Buy>(back));
+    CHECK(std::get<Proto::Act::Buy>(back).type == c.type);
+    CHECK(std::get<Proto::Act::Buy>(back).amount == 12);
     // A good the registry does not have is no purchase, not a purchase of another one.
-    c.buyType = Goods::Count();
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.buyType == -1);
+    c.type = Goods::Count();
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), back));
+    REQUIRE(std::holds_alternative<Proto::Act::Buy>(back));
+    CHECK(std::get<Proto::Act::Buy>(back).type == -1);
 
     Proto::Snapshot s;
     s.systemId = "core";

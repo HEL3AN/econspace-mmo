@@ -611,8 +611,6 @@ std::string EncodeCommand(const Command& c)
     flag("tStab", c.toggleStabilizer);
     flag("tMine", c.toggleMining);
     flag("tWeap", c.toggleWeapon);
-    flag("dock", c.dock);
-    flag("undock", c.undock);
     number("target", c.targetId, 0);
     number("navMode", c.navMode, 0);
     point("nav", c.navTarget);
@@ -625,114 +623,208 @@ std::string EncodeCommand(const Command& c)
         j["navHold"] = c.navHoldId;
         j["navRange"] = Round2(c.navRange);
     }
-    number("gate", c.jumpGateId, 0);
-    number("loot", c.lootId, 0);
-    number("sellType", c.sellType, -1);
-    number("sellAmt", c.sellAmount, 0);
-    if (!c.sellFrom.empty())
-        j["sellFrom"] = c.sellFrom;
-    if (!c.buyTo.empty())
-        j["buyTo"] = c.buyTo;
-    number("rentHangar", c.rentHangar, -1);
-    if (c.requestAssets)  // (#472 slice 9)
-        j["assets"] = true;
-    if (!c.deliverFrom.empty())  // (#472 slice 6)
+    return j.dump();
+}
+
+namespace
+{
+json FitJson(const std::vector<Ships::FitLine>& lines)
+{
+    json fit = json::array();
+    for (const Ships::FitLine& l : lines)
+        fit.push_back(
+            { { "module", l.module }, { "in", l.in }, { "on", l.on }, { "count", l.count } });
+    return fit;
+}
+
+// What an action says on the wire: its verb, and each field that is not its default.
+struct ActionWriter
+{
+    json& j;
+
+    void Verb(const char* v) const { j["verb"] = v; }
+    void Text(const char* key, const std::string& v) const
     {
-        j["dvFrom"] = c.deliverFrom;
-        j["dvType"] = c.deliverType;
-        j["dvAmt"] = c.deliverAmount;
+        if (!v.empty())
+            j[key] = v;
     }
-    if (!c.setLivery.empty())
-        j["setLivery"] = c.setLivery;
-    number("buyType", c.buyType, -1);
-    number("buyAmt", c.buyAmount, 0);
-    if (c.moveType >= 0)  // (#472)
+
+    void operator()(const Act::Dock&) const { Verb("dock"); }
+    void operator()(const Act::Undock&) const { Verb("undock"); }
+    void operator()(const Act::DebugMoney&) const { Verb("money"); }
+    void operator()(const Act::NameSystem& a) const
     {
-        j["mvFrom"] = c.moveFrom;
-        j["mvTo"] = c.moveTo;
-        j["mvType"] = c.moveType;
-        j["mvAmt"] = c.moveAmount;
+        Verb("nameSys");
+        j["name"] = a.name;
+        Text("sys", a.systemId);
     }
-    number("storeType", c.storeType, -1);
-    number("storeAmt", c.storeAmount, 0);
-    number("takeType", c.takeType, -1);
-    number("takeAmt", c.takeAmount, 0);
-    number("refit", c.refitShip, -1);
-    auto fitJson = [](const std::vector<Ships::FitLine>& lines)
+    void operator()(const Act::BuyLicence&) const { Verb("licence"); }
+    void operator()(const Act::SellChart& a) const
     {
-        json fit = json::array();
-        for (const Ships::FitLine& l : lines)
-            fit.push_back(
-                { { "module", l.module }, { "in", l.in }, { "on", l.on }, { "count", l.count } });
-        return fit;
-    };
-    if (c.refit)  // a refit's whole fit (#279), only on the command that asks for one
-        j["fit"] = fitJson(c.refitLines);
-    // The design library (#279 step 3): each only on the command that asks for it.
-    if (!c.saveDesign.empty())
-    {
-        j["saveD"] = c.saveDesign;
-        j["saveFit"] = fitJson(c.saveLines);
+        Verb("sellChart");
+        j["what"] = a.what;
     }
-    if (!c.applyDesign.empty())
-        j["applyD"] = c.applyDesign;
-    if (!c.renameDesign.empty())
+    void operator()(const Act::Refit& a) const
     {
-        j["renameD"] = c.renameDesign;
-        j["renameTo"] = c.renameTo;
+        Verb("refit");
+        j["fit"] = FitJson(a.lines);
     }
-    if (!c.deleteDesign.empty())
-        j["deleteD"] = c.deleteDesign;
-    number("buy", c.buyShip, -1);
-    number("insure", c.insureShip, -1);
-    if (!c.payBountyFaction.empty())
-        j["payB"] = c.payBountyFaction;
-    if (!c.nameSystem.empty())
-        j["nameSys"] = c.nameSystem;
-    if (!c.nameSystemId.empty())
-        j["nameSysId"] = c.nameSystemId;
-    flag("dbgMoney", c.debugMoney);
-    number("acceptM", c.acceptOffer, -1);
-    number("completeM", c.completeMission, -1);
-    if (c.orderKind != 0)  // an order's fields mean something only with an order
+    void operator()(const Act::SaveDesign& a) const
     {
-        j["ordKind"] = c.orderKind;
-        number("ordTarget", c.orderTarget, 0);
-        point("ordPoint", c.orderPoint);
-        if (c.orderStopDist != 120.0f)
-            j["ordStop"] = c.orderStopDist;
-        flag("ordWarp", c.orderWarp);
-        flag("ordFull", c.orderUntilFull);
-        if (!c.orderDestSystem.empty())
-            j["ordDest"] = c.orderDestSystem;
-        if (!c.orderBlueprint.empty())
+        Verb("saveD");
+        j["name"] = a.name;
+        j["fit"] = FitJson(a.lines);
+    }
+    void operator()(const Act::ApplyDesign& a) const
+    {
+        Verb("applyD");
+        j["name"] = a.name;
+    }
+    void operator()(const Act::RenameDesign& a) const
+    {
+        Verb("renameD");
+        j["name"] = a.name;
+        j["to"] = a.to;
+    }
+    void operator()(const Act::DeleteDesign& a) const
+    {
+        Verb("deleteD");
+        j["name"] = a.name;
+    }
+    void operator()(const Act::SetLivery& a) const
+    {
+        Verb("livery");
+        j["livery"] = a.livery;
+    }
+    void operator()(const Act::Move& a) const
+    {
+        Verb("move");
+        j["from"] = a.from;
+        j["to"] = a.to;
+        j["type"] = a.type;
+        j["amt"] = a.amount;
+    }
+    void operator()(const Act::Sell& a) const
+    {
+        Verb("sell");
+        j["type"] = a.type;
+        j["amt"] = a.amount;
+        Text("from", a.from);
+    }
+    void operator()(const Act::Buy& a) const
+    {
+        Verb("buy");
+        j["type"] = a.type;
+        j["amt"] = a.amount;
+        Text("to", a.to);
+    }
+    void operator()(const Act::RentHangar& a) const
+    {
+        Verb("rent");
+        j["amt"] = a.amount;
+    }
+    void operator()(const Act::RequestAssets&) const { Verb("assets"); }
+    void operator()(const Act::Deliver& a) const
+    {
+        Verb("deliver");
+        j["from"] = a.from;
+        j["type"] = a.type;
+        j["amt"] = a.amount;
+    }
+    void operator()(const Act::SwitchShip& a) const
+    {
+        Verb("switch");
+        j["ship"] = a.ship;
+    }
+    void operator()(const Act::BuyShip& a) const
+    {
+        Verb("buyShip");
+        j["ship"] = a.ship;
+    }
+    void operator()(const Act::InsureShip& a) const
+    {
+        Verb("insure");
+        j["ship"] = a.ship;
+    }
+    void operator()(const Act::PayBounty& a) const
+    {
+        Verb("payB");
+        j["faction"] = a.faction;
+    }
+    void operator()(const Act::AcceptOffer& a) const
+    {
+        Verb("accept");
+        j["n"] = a.offer;
+    }
+    void operator()(const Act::CompleteMission& a) const
+    {
+        Verb("complete");
+        j["n"] = a.mission;
+    }
+    void operator()(const Act::GiveOrder& a) const
+    {
+        const Orders::Order& o = a.order;
+        Verb("order");
+        j["kind"] = (int)o.kind;
+        if (o.targetId != 0)
+            j["target"] = o.targetId;
+        if (o.point.x != 0.0f || o.point.y != 0.0f)
+            j["point"] = V2(o.point);
+        if (o.stopDist != 120.0f)
+            j["stop"] = o.stopDist;
+        if (o.useWarp)
+            j["warp"] = true;
+        if (o.untilFull)
+            j["full"] = true;
+        Text("dest", o.destSystem);
+        if (!o.waypoints.empty())
+            j["via"] = o.waypoints;
+        if (o.preference != 0)
+            j["pref"] = o.preference;
+        if (!o.blueprint.empty())
         {
-            j["ordBp"] = c.orderBlueprint;
-            if (!c.orderName.empty())
-                j["ordName"] = c.orderName;
+            j["bp"] = o.blueprint;
+            Text("name", o.name);
         }
-        if (!c.orderWaypoints.empty())
-            j["ordVia"] = c.orderWaypoints;
-        number("ordPref", c.orderPreference, 0);
     }
-    flag("ordAbort", c.abortOrder);
-    if (!c.deploy.empty())  // one command in a great many
+    void operator()(const Act::AbortOrder&) const { Verb("abort"); }
+    void operator()(const Act::Jump& a) const
     {
-        j["deploy"] = c.deploy;
-        j["deployAt"] = V2(c.deployPos);
-        if (!c.deployName.empty())
-            j["deployName"] = c.deployName;
+        Verb("jump");
+        j["id"] = a.gateId;
     }
-    number("dismantle", c.dismantleId, 0);
-    if (c.defenceId != 0)
+    void operator()(const Act::Loot& a) const
     {
-        j["defId"] = c.defenceId;
-        j["def"] = DefenceJson(c.defence);
+        Verb("loot");
+        j["id"] = a.id;
     }
-    flag("scan", c.scan);
-    flag("buyLic", c.buyLicence);
-    if (!c.sellChart.empty())
-        j["sellChart"] = c.sellChart;
+    void operator()(const Act::Scan&) const { Verb("scan"); }
+    void operator()(const Act::Deploy& a) const
+    {
+        Verb("deploy");
+        j["bp"] = a.blueprint;
+        j["at"] = V2(a.at);
+        Text("name", a.name);
+    }
+    void operator()(const Act::Dismantle& a) const
+    {
+        Verb("dismantle");
+        j["id"] = a.id;
+    }
+    void operator()(const Act::SetDefence& a) const
+    {
+        Verb("defence");
+        j["id"] = a.id;
+        j["def"] = DefenceJson(a.defence);
+    }
+};
+}  // namespace
+
+std::string EncodeAction(const Action& a)
+{
+    json j;
+    Stamp(j, "act");
+    std::visit(ActionWriter{ j }, a);
     return j.dump();
 }
 
@@ -874,7 +966,6 @@ bool ReadFit(const json& j, const char* key, bool& present, std::vector<Ships::F
 bool ReadCommand(const json& j, Proto::Command& out)
 {
     const double far = POINT_LIMIT;
-    const int    resources = (int)AllResourceTypes().size();
     bool         ok = true;
     ok = ok && ReadInt(j, "seq", 0, 0, ID_MAX, out.seq);
     ok = ok && ReadBool(j, "thrust", out.thrust);
@@ -884,8 +975,6 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadBool(j, "tStab", out.toggleStabilizer);
     ok = ok && ReadBool(j, "tMine", out.toggleMining);
     ok = ok && ReadBool(j, "tWeap", out.toggleWeapon);
-    ok = ok && ReadBool(j, "dock", out.dock);
-    ok = ok && ReadBool(j, "undock", out.undock);
     ok = ok && ReadInt(j, "target", 0, 0, ID_MAX, out.targetId);
     ok = ok && ReadInt(j, "navMode", 0, 0, 5, out.navMode);
     ok = ok && ReadPoint(j, "nav", out.navTarget);
@@ -894,69 +983,204 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadPoint(j, "navVia", out.navVia);
     ok = ok && ReadInt(j, "navHold", 0, 0, ID_MAX, out.navHoldId);
     ok = ok && ReadFloat(j, "navRange", 0.0f, 0.0, far, out.navRange);
-    ok = ok && ReadInt(j, "gate", 0, 0, ID_MAX, out.jumpGateId);
-    ok = ok && ReadInt(j, "loot", 0, 0, ID_MAX, out.lootId);
-    // Indices into fixed lists: one past the end used to be read and written as if it were
-    // there -- a bounty paid to faction 1000 is memory that is not a bounty.
-    ok = ok && ReadInt(j, "sellType", -1, 0, resources - 1, out.sellType);
-    ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
-    ok = ok && ReadInt(j, "buyType", -1, 0, resources - 1, out.buyType);
-    ok = ok && ReadInt(j, "buyAmt", 0, 0, ID_MAX, out.buyAmount);
-    ok = ok && ReadText(j, "sellFrom", out.sellFrom);
-    ok = ok && ReadText(j, "buyTo", out.buyTo);
-    ok = ok && ReadInt(j, "rentHangar", -1, 0, ID_MAX, out.rentHangar);
-    out.requestAssets = j.value("assets", false);
-    ok = ok && ReadText(j, "dvFrom", out.deliverFrom);
-    ok = ok && ReadInt(j, "dvType", -1, 0, resources - 1, out.deliverType);
-    ok = ok && ReadInt(j, "dvAmt", 0, 0, ID_MAX, out.deliverAmount);
-    ok = ok && ReadText(j, "setLivery", out.setLivery);
-    ok = ok && ReadText(j, "mvFrom", out.moveFrom);
-    ok = ok && ReadText(j, "mvTo", out.moveTo);
-    ok = ok && ReadInt(j, "mvType", -1, 0, resources - 1, out.moveType);
-    ok = ok && ReadInt(j, "mvAmt", 0, 0, ID_MAX, out.moveAmount);
-    ok = ok && ReadInt(j, "storeType", -1, 0, resources - 1, out.storeType);
-    ok = ok && ReadInt(j, "storeAmt", 0, 0, ID_MAX, out.storeAmount);
-    ok = ok && ReadInt(j, "takeType", -1, 0, resources - 1, out.takeType);
-    ok = ok && ReadInt(j, "takeAmt", 0, 0, ID_MAX, out.takeAmount);
-    ok = ok && ReadInt(j, "refit", -1, 0, ID_MAX, out.refitShip);
-    ok = ok && ReadFit(j, "fit", out.refit, out.refitLines);
-    bool saveFit = false;
-    ok = ok && ReadText(j, "saveD", out.saveDesign);
-    ok = ok && ReadFit(j, "saveFit", saveFit, out.saveLines);
-    ok = ok && ReadText(j, "applyD", out.applyDesign);
-    ok = ok && ReadText(j, "renameD", out.renameDesign);
-    ok = ok && ReadText(j, "renameTo", out.renameTo);
-    ok = ok && ReadText(j, "deleteD", out.deleteDesign);
-    ok = ok && ReadInt(j, "buy", -1, 0, ID_MAX, out.buyShip);
-    ok = ok && ReadInt(j, "insure", -1, 0, ID_MAX, out.insureShip);
-    ok = ok && ReadText(j, "payB", out.payBountyFaction);
-    ok = ok && ReadText(j, "nameSys", out.nameSystem);
-    ok = ok && ReadText(j, "nameSysId", out.nameSystemId);
-    ok = ok && ReadBool(j, "dbgMoney", out.debugMoney);
-    ok = ok && ReadInt(j, "acceptM", -1, 0, ID_MAX, out.acceptOffer);
-    ok = ok && ReadInt(j, "completeM", -1, 0, ID_MAX, out.completeMission);
-    ok = ok && ReadInt(j, "ordKind", 0, 0, (int)Orders::Kind::Build, out.orderKind);
-    ok = ok && ReadInt(j, "ordTarget", 0, 0, ID_MAX, out.orderTarget);
-    ok = ok && ReadPoint(j, "ordPoint", out.orderPoint);
-    ok = ok && ReadFloat(j, "ordStop", 120.0f, 0.0, far, out.orderStopDist);
-    ok = ok && ReadBool(j, "ordWarp", out.orderWarp);
-    ok = ok && ReadBool(j, "ordFull", out.orderUntilFull);
-    ok = ok && ReadText(j, "ordDest", out.orderDestSystem);
-    ok = ok && ReadTextList(j, "ordVia", Proto::ROUTE_WAYPOINTS_MAX, out.orderWaypoints);
-    ok = ok && ReadInt(j, "ordPref", 0, 0, Route::PREFERENCE_MAX, out.orderPreference);
-    ok = ok && ReadText(j, "ordBp", out.orderBlueprint);
-    ok = ok && ReadText(j, "ordName", out.orderName);
-    ok = ok && ReadBool(j, "ordAbort", out.abortOrder);
-    ok = ok && ReadText(j, "deploy", out.deploy);
-    ok = ok && ReadPoint(j, "deployAt", out.deployPos);
-    ok = ok && ReadText(j, "deployName", out.deployName);
-    ok = ok && ReadInt(j, "dismantle", 0, 0, ID_MAX, out.dismantleId);
-    ok = ok && ReadInt(j, "defId", 0, 0, ID_MAX, out.defenceId);
-    ok = ok && ReadBool(j, "scan", out.scan);
-    ok = ok && ReadBool(j, "buyLic", out.buyLicence);
-    ok = ok && ReadText(j, "sellChart", out.sellChart);
-    if (ok && j.contains("def"))
-        ok = DefenceFrom(j["def"], out.defence);
+    return ok;
+}
+
+// An action's fields, read as strictly as a command's: a field of the wrong type makes the
+// whole action invalid (#341). The indices are into fixed lists, so one past the end reads as
+// "none" rather than as memory that is not a good.
+bool ReadAction(const json& j, Proto::Action& out)
+{
+    const double far = POINT_LIMIT;
+    const int    resources = (int)AllResourceTypes().size();
+    const auto   v = j.find("verb");
+    if (v == j.end() || !v->is_string())
+        return false;
+    const std::string verb = v->get<std::string>();
+    bool              ok = true;
+    bool              present = false;
+    auto              type = [&](int& t) { return ReadInt(j, "type", -1, 0, resources - 1, t); };
+    auto              text = [&](const char* key, std::string& s) { return ReadText(j, key, s); };
+    auto              amount = [&](int& n) { return ReadInt(j, "amt", 0, 0, ID_MAX, n); };
+    auto index = [&](const char* key, int& n) { return ReadInt(j, key, -1, 0, ID_MAX, n); };
+
+    if (verb == "dock")
+        out = Proto::Act::Dock{};
+    else if (verb == "undock")
+        out = Proto::Act::Undock{};
+    else if (verb == "money")
+        out = Proto::Act::DebugMoney{};
+    else if (verb == "nameSys")
+    {
+        Proto::Act::NameSystem a;
+        ok = text("name", a.name) && text("sys", a.systemId);
+        out = std::move(a);
+    }
+    else if (verb == "licence")
+        out = Proto::Act::BuyLicence{};
+    else if (verb == "sellChart")
+    {
+        Proto::Act::SellChart a;
+        ok = text("what", a.what);
+        out = std::move(a);
+    }
+    else if (verb == "refit")
+    {
+        Proto::Act::Refit a;
+        ok = ReadFit(j, "fit", present, a.lines);
+        out = std::move(a);
+    }
+    else if (verb == "saveD")
+    {
+        Proto::Act::SaveDesign a;
+        ok = text("name", a.name) && ReadFit(j, "fit", present, a.lines);
+        out = std::move(a);
+    }
+    else if (verb == "applyD")
+    {
+        Proto::Act::ApplyDesign a;
+        ok = text("name", a.name);
+        out = std::move(a);
+    }
+    else if (verb == "renameD")
+    {
+        Proto::Act::RenameDesign a;
+        ok = text("name", a.name) && text("to", a.to);
+        out = std::move(a);
+    }
+    else if (verb == "deleteD")
+    {
+        Proto::Act::DeleteDesign a;
+        ok = text("name", a.name);
+        out = std::move(a);
+    }
+    else if (verb == "livery")
+    {
+        Proto::Act::SetLivery a;
+        ok = text("livery", a.livery);
+        out = std::move(a);
+    }
+    else if (verb == "move")
+    {
+        Proto::Act::Move a;
+        ok = text("from", a.from) && text("to", a.to) && type(a.type) && amount(a.amount);
+        out = std::move(a);
+    }
+    else if (verb == "sell")
+    {
+        Proto::Act::Sell a;
+        ok = type(a.type) && amount(a.amount) && text("from", a.from);
+        out = std::move(a);
+    }
+    else if (verb == "buy")
+    {
+        Proto::Act::Buy a;
+        ok = type(a.type) && amount(a.amount) && text("to", a.to);
+        out = std::move(a);
+    }
+    else if (verb == "rent")
+    {
+        Proto::Act::RentHangar a;
+        ok = amount(a.amount);
+        out = std::move(a);
+    }
+    else if (verb == "assets")
+        out = Proto::Act::RequestAssets{};
+    else if (verb == "deliver")
+    {
+        Proto::Act::Deliver a;
+        ok = text("from", a.from) && type(a.type) && amount(a.amount);
+        out = std::move(a);
+    }
+    else if (verb == "switch")
+    {
+        Proto::Act::SwitchShip a;
+        ok = index("ship", a.ship);
+        out = std::move(a);
+    }
+    else if (verb == "buyShip")
+    {
+        Proto::Act::BuyShip a;
+        ok = index("ship", a.ship);
+        out = std::move(a);
+    }
+    else if (verb == "insure")
+    {
+        Proto::Act::InsureShip a;
+        ok = index("ship", a.ship);
+        out = std::move(a);
+    }
+    else if (verb == "payB")
+    {
+        Proto::Act::PayBounty a;
+        ok = text("faction", a.faction);
+        out = std::move(a);
+    }
+    else if (verb == "accept")
+    {
+        Proto::Act::AcceptOffer a;
+        ok = index("n", a.offer);
+        out = std::move(a);
+    }
+    else if (verb == "complete")
+    {
+        Proto::Act::CompleteMission a;
+        ok = index("n", a.mission);
+        out = std::move(a);
+    }
+    else if (verb == "order")
+    {
+        Proto::Act::GiveOrder a;
+        Orders::Order&        o = a.order;
+        int                   kind = 0;
+        ok = ReadInt(j, "kind", 0, 0, (int)Orders::Kind::Build, kind) &&
+             ReadInt(j, "target", 0, 0, ID_MAX, o.targetId) && ReadPoint(j, "point", o.point) &&
+             ReadFloat(j, "stop", 120.0f, 0.0, far, o.stopDist) && ReadBool(j, "warp", o.useWarp) &&
+             ReadBool(j, "full", o.untilFull) && text("dest", o.destSystem) &&
+             ReadTextList(j, "via", Proto::ROUTE_WAYPOINTS_MAX, o.waypoints) &&
+             ReadInt(j, "pref", 0, 0, Route::PREFERENCE_MAX, o.preference) &&
+             text("bp", o.blueprint) && text("name", o.name);
+        o.kind = (Orders::Kind)kind;
+        out = std::move(a);
+    }
+    else if (verb == "abort")
+        out = Proto::Act::AbortOrder{};
+    else if (verb == "jump")
+    {
+        Proto::Act::Jump a;
+        ok = ReadInt(j, "id", 0, 0, ID_MAX, a.gateId);
+        out = std::move(a);
+    }
+    else if (verb == "loot")
+    {
+        Proto::Act::Loot a;
+        ok = ReadInt(j, "id", 0, 0, ID_MAX, a.id);
+        out = std::move(a);
+    }
+    else if (verb == "scan")
+        out = Proto::Act::Scan{};
+    else if (verb == "deploy")
+    {
+        Proto::Act::Deploy a;
+        ok = text("bp", a.blueprint) && ReadPoint(j, "at", a.at) && text("name", a.name);
+        out = std::move(a);
+    }
+    else if (verb == "dismantle")
+    {
+        Proto::Act::Dismantle a;
+        ok = ReadInt(j, "id", 0, 0, ID_MAX, a.id);
+        out = std::move(a);
+    }
+    else if (verb == "defence")
+    {
+        Proto::Act::SetDefence a;
+        ok = ReadInt(j, "id", 0, 0, ID_MAX, a.id);
+        if (ok && j.contains("def"))
+            ok = DefenceFrom(j["def"], a.defence);
+        out = std::move(a);
+    }
+    else
+        return false;  // a verb this build does not know
     return ok;
 }
 }  // namespace
@@ -967,12 +1191,24 @@ namespace Proto
 bool DecodeCommand(const std::string& s, Command& out)
 {
     json j;
-    if (!OpenEnvelope(s, j))
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "cmd")
         return false;
     Command c;
     if (!ReadCommand(j, c))
         return false;
     out = std::move(c);
+    return true;
+}
+
+bool DecodeAction(const std::string& s, Action& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "act")
+        return false;
+    Action a;
+    if (!ReadAction(j, a))
+        return false;
+    out = std::move(a);
     return true;
 }
 

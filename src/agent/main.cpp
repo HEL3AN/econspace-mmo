@@ -300,10 +300,10 @@ int g_reportedEventSeq = 0;
 // Sends an order and reports what the server made of it. The wait is short on purpose:
 // long enough for the server to acknowledge, not long enough to be mistaken for the order
 // itself finishing -- that is what wait_for_event is for.
-std::string GiveOrder(const Proto::Command& cmd, const std::string& what)
+std::string GiveOrder(const Orders::Order& order, const std::string& what)
 {
     const int before = g_session.Snapshot().player.orderId;
-    g_session.Send(cmd);
+    g_session.SendAction(Proto::Act::GiveOrder{ order });
     g_session.WaitUntil([&] { return g_session.Snapshot().player.orderId != before; }, 2.0);
 
     const Proto::PlayerView& p = g_session.Snapshot().player;
@@ -315,10 +315,10 @@ std::string GiveOrder(const Proto::Command& cmd, const std::string& what)
            "). It runs on the server; use wait_for_event to sleep until it finishes.";
 }
 
-Proto::Command OrderCommand(Orders::Kind kind)
+Orders::Order OrderCommand(Orders::Kind kind)
 {
-    Proto::Command c;
-    c.orderKind = (int)kind;
+    Orders::Order c;
+    c.kind = kind;
     return c;
 }
 
@@ -688,9 +688,9 @@ FactionId FactionArg(const Rpc::Json& args)
 // Sends a station command and returns false, with the reason in `why`, if the server never
 // acknowledged it. Two seconds is forty snapshots; a missing acknowledgement means the
 // connection is in trouble, not that the server is thinking.
-bool Confirm(const Proto::Command& c, std::string& why)
+bool Confirm(const Proto::Action& c, std::string& why)
 {
-    if (g_session.SendAndConfirm(c, 2.0))
+    if (g_session.SendActionAndConfirm(c, 2.0))
         return true;
     RequireLive();  // a dead connection is the likelier story; say that if it is
     why = "sent, but the server has not acknowledged it yet; call observe before retrying";
@@ -1089,11 +1089,11 @@ std::vector<Tool> BuildTools()
               if (!args.contains("target_id") && !(args.contains("x") && args.contains("y")))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "say where: target_id, or both x and y" };
               RequireLive();
-              Proto::Command c = OrderCommand(Orders::Kind::MoveTo);
-              c.orderTarget = (int)NumberOr(args, "target_id", 0);
-              c.orderPoint = { (float)NumberOr(args, "x", 0.0), (float)NumberOr(args, "y", 0.0) };
-              c.orderStopDist = (float)NumberOr(args, "stop_distance", 150.0);
-              c.orderWarp = args.value("warp", false);
+              Orders::Order c = OrderCommand(Orders::Kind::MoveTo);
+              c.targetId = (int)NumberOr(args, "target_id", 0);
+              c.point = { (float)NumberOr(args, "x", 0.0), (float)NumberOr(args, "y", 0.0) };
+              c.stopDist = (float)NumberOr(args, "stop_distance", 150.0);
+              c.useWarp = args.value("warp", false);
               return GiveOrder(c, "move_to");
           } });
 
@@ -1106,8 +1106,8 @@ std::vector<Tool> BuildTools()
                       [](const Rpc::Json& args)
                       {
                           RequireLive();
-                          Proto::Command c = OrderCommand(Orders::Kind::Dock);
-                          c.orderTarget = (int)NumberOr(args, "station_id", 0);
+                          Orders::Order c = OrderCommand(Orders::Kind::Dock);
+                          c.targetId = (int)NumberOr(args, "station_id", 0);
                           return GiveOrder(c, "dock");
                       } });
 
@@ -1145,9 +1145,9 @@ std::vector<Tool> BuildTools()
               const double range = NumberOr(args, "range", 500.0);
               if (!(range >= 1.0))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "range is a distance of at least 1" };
-              Proto::Command c = OrderCommand(kind);
-              c.orderTarget = (int)NumberOr(args, "target_id", 0);
-              c.orderStopDist = (float)range;
+              Orders::Order c = OrderCommand(kind);
+              c.targetId = (int)NumberOr(args, "target_id", 0);
+              c.stopDist = (float)range;
               return GiveOrder(c, "hold_station");
           } });
 
@@ -1160,9 +1160,9 @@ std::vector<Tool> BuildTools()
                       [](const Rpc::Json& args)
                       {
                           RequireLive();
-                          Proto::Command c = OrderCommand(Orders::Kind::Mine);
-                          c.orderTarget = (int)NumberOr(args, "field_id", 0);
-                          c.orderUntilFull = args.value("until_full", true);
+                          Orders::Order c = OrderCommand(Orders::Kind::Mine);
+                          c.targetId = (int)NumberOr(args, "field_id", 0);
+                          c.untilFull = args.value("until_full", true);
                           return GiveOrder(c, "mine");
                       } });
 
@@ -1186,10 +1186,10 @@ std::vector<Tool> BuildTools()
           [](const Rpc::Json& args)
           {
               RequireLive();
-              Proto::Command c = OrderCommand(Orders::Kind::Route);
-              c.orderDestSystem = args.value("system", std::string());
-              c.orderWarp = true;
-              if (c.orderDestSystem.empty())
+              Orders::Order c = OrderCommand(Orders::Kind::Route);
+              c.destSystem = args.value("system", std::string());
+              c.useWarp = true;
+              if (c.destSystem.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "system is required" };
               Route::Preference pref = args.value("avoid_danger", false)
                                            ? Route::Preference::Safer
@@ -1199,7 +1199,7 @@ std::vector<Tool> BuildTools()
                   (!p->is_string() || !Route::PreferenceFromName(p->get<std::string>(), pref)))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "preference is 'shortest', 'safer' or 'less_secure'" };
-              c.orderPreference = (int)pref;
+              c.preference = (int)pref;
               const auto via = args.find("via");
               if (via != args.end())
               {
@@ -1212,7 +1212,7 @@ std::vector<Tool> BuildTools()
                   {
                       if (!v.is_string() || v.get<std::string>().empty())
                           throw Rpc::Error{ Rpc::INVALID_PARAMS, "via holds system ids" };
-                      c.orderWaypoints.push_back(v.get<std::string>());
+                      c.waypoints.push_back(v.get<std::string>());
                   }
               }
               return GiveOrder(c, "travel_to_system");
@@ -1222,9 +1222,7 @@ std::vector<Tool> BuildTools()
                       [](const Rpc::Json&)
                       {
                           RequireLive();
-                          Proto::Command c;
-                          c.abortOrder = true;
-                          g_session.Send(c);
+                          g_session.SendAction(Proto::Act::AbortOrder{});
                           return std::string("abort sent");
                       } });
 
@@ -1278,11 +1276,11 @@ std::vector<Tool> BuildTools()
                           if (!g_session.Snapshot().player.docked)
                               throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                                 "not docked; dock at a station first" };
-                          Proto::Command c;
-                          c.sellType = ResourceArg(args);
-                          c.sellAmount = (int)NumberOr(args, "amount", 100000.0);
-                          c.sellFrom = args.value("from", std::string());
-                          g_session.Send(c);
+                          Proto::Act::Sell c;
+                          c.type = ResourceArg(args);
+                          c.amount = (int)NumberOr(args, "amount", 100000.0);
+                          c.from = args.value("from", std::string());
+                          g_session.SendAction(c);
                           g_session.WaitUntil([] { return false; }, 0.5);  // let the ack land
                           return std::string("sell sent; call observe to see the result");
                       } });
@@ -1324,11 +1322,11 @@ std::vector<Tool> BuildTools()
               const int    have = into->Amount(ResourceType::FromIndex(type));
               const double moneyBefore = p.money;
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.buyType = type;
-              c.buyAmount = (int)NumberOr(args, "amount", 100000.0);
-              c.buyTo = to == "hold" ? std::string() : to;
+              const int       seq = g_session.LastEventSeq();
+              Proto::Act::Buy c;
+              c.type = type;
+              c.amount = (int)NumberOr(args, "amount", 100000.0);
+              c.to = to == "hold" ? std::string() : to;
               std::string why;
               if (!Confirm(c, why))
                   return "buy: " + why;
@@ -1393,13 +1391,13 @@ std::vector<Tool> BuildTools()
             throw Rpc::Error{ Rpc::INVALID_PARAMS, "nothing can be put into " + b.name };
         if (b.Room() <= 0)
             throw Rpc::Error{ Rpc::INVALID_PARAMS, b.name + " is full" };
-        const int      before = a.Amount(good);
-        const int      seq = g_session.LastEventSeq();
-        Proto::Command c;
-        c.moveFrom = from;
-        c.moveTo = to;
-        c.moveType = type;
-        c.moveAmount = (int)NumberOr(args, "amount", 100000.0);
+        const int        before = a.Amount(good);
+        const int        seq = g_session.LastEventSeq();
+        Proto::Act::Move c;
+        c.from = from;
+        c.to = to;
+        c.type = type;
+        c.amount = (int)NumberOr(args, "amount", 100000.0);
         std::string why;
         if (!Confirm(c, why))
             return std::string(tool) + ": " + why;
@@ -1440,12 +1438,12 @@ std::vector<Tool> BuildTools()
               const std::string name = ResourceName(ResourceType::FromIndex(type));
               if (have <= 0)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "the hold has no " + name };
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.moveFrom = "hold";
-              c.moveTo = "can";
-              c.moveType = type;
-              c.moveAmount = (int)NumberOr(args, "amount", 100000.0);
+              const int        seq = g_session.LastEventSeq();
+              Proto::Act::Move c;
+              c.from = "hold";
+              c.to = "can";
+              c.type = type;
+              c.amount = (int)NumberOr(args, "amount", 100000.0);
               std::string why;
               if (!Confirm(c, why))
                   return "jettison: " + why;
@@ -1478,9 +1476,9 @@ std::vector<Tool> BuildTools()
               if (units < 0 || units > h.most - h.free)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "units is 0 to " + std::to_string(h.most - h.free) + " here" };
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.rentHangar = units;
+              const int              seq = g_session.LastEventSeq();
+              Proto::Act::RentHangar c;
+              c.amount = units;
               std::string why;
               if (!Confirm(c, why))
                   return "rent_hangar: " + why;
@@ -1510,13 +1508,13 @@ std::vector<Tool> BuildTools()
           {
               RequireLive();
               RequireDocked("requesting a delivery");
-              Proto::Command c;
-              c.deliverFrom = args.value("key", std::string());
-              if (c.deliverFrom.empty())
+              Proto::Act::Deliver c;
+              c.from = args.value("key", std::string());
+              if (c.from.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "name the hangar by its key" };
               if (args.contains("resource"))
-                  c.deliverType = ResourceArg(args);
-              c.deliverAmount = (int)NumberOr(args, "amount", 0.0);
+                  c.type = ResourceArg(args);
+              c.amount = (int)NumberOr(args, "amount", 0.0);
               const int   seq = g_session.LastEventSeq();
               std::string why;
               if (!Confirm(c, why))
@@ -1552,28 +1550,27 @@ std::vector<Tool> BuildTools()
                                          ? args[key].get<std::string>()
                                          : std::string();
                           };
-                          const std::string id = args["livery"].get<std::string>();
-                          std::string       why;
-                          Proto::Command    c;
-                          c.setLivery =
-                              id == "default"
-                                  ? id
-                                  : Obs::LiverySpec(id, word("hull"), word("band"), word("pattern"),
-                                                    word("light"),
-                                                    g_session.Snapshot().player.livery, why);
+                          const std::string     id = args["livery"].get<std::string>();
+                          std::string           why;
+                          Proto::Act::SetLivery c;
+                          c.livery = id == "default"
+                                         ? id
+                                         : Obs::LiverySpec(id, word("hull"), word("band"),
+                                                           word("pattern"), word("light"),
+                                                           g_session.Snapshot().player.livery, why);
                           if (!why.empty())
                               return "set_livery: " + why;
                           const int seq = g_session.LastEventSeq();
                           if (!Confirm(c, why))
                               return "set_livery: " + why;
                           const std::string now = g_session.Snapshot().player.livery;
-                          if (now == (c.setLivery == "default" ? std::string() : c.setLivery))
+                          if (now == (c.livery == "default" ? std::string() : c.livery))
                               return "set_livery: now " + Obs::DescribeLivery(now);
                           // A paint is snapped into the rules, so what was kept may differ from
                           // what was asked: that is an answer, not a refusal. Nothing changing at
                           // all is one.
-                          if (c.setLivery.find('/') != std::string::npos &&
-                              Paint::PaletteOf(now) == Paint::PaletteOf(c.setLivery) &&
+                          if (c.livery.find('/') != std::string::npos &&
+                              Paint::PaletteOf(now) == Paint::PaletteOf(c.livery) &&
                               now.find('/') != std::string::npos)
                               return "set_livery: now " + Obs::DescribeLivery(now) +
                                      " (snapped into the rules)";
@@ -1673,9 +1670,9 @@ std::vector<Tool> BuildTools()
               const Proto::MissionView taken = *found;
               const size_t             activeBefore = before.missionActive.size();
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.acceptOffer = id;
+              const int               seq = g_session.LastEventSeq();
+              Proto::Act::AcceptOffer c;
+              c.offer = id;
               std::string why;
               if (!Confirm(c, why))
                   return "accept_mission: " + why;
@@ -1719,9 +1716,9 @@ std::vector<Tool> BuildTools()
               const double moneyBefore = before.player.money;
               const size_t activeBefore = before.missionActive.size();
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.completeMission = i;
+              const int                   seq = g_session.LastEventSeq();
+              Proto::Act::CompleteMission c;
+              c.mission = i;
               std::string why;
               if (!Confirm(c, why))
                   return "complete_mission: " + why;
@@ -1757,9 +1754,8 @@ std::vector<Tool> BuildTools()
           {
               RequireLive();
               g_session.ForgetAssets();
-              Proto::Command c;
-              c.requestAssets = true;
-              std::string why;
+              Proto::Act::RequestAssets c;
+              std::string               why;
               if (!Confirm(c, why))
                   return "assets: " + why;
               for (int i = 0; i < 40 && !g_session.HasAssets(); i++)
@@ -1807,9 +1803,9 @@ std::vector<Tool> BuildTools()
                                                              Money(p.money) };
               const double moneyBefore = p.money;
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.buyShip = i;
+              const int           seq = g_session.LastEventSeq();
+              Proto::Act::BuyShip c;
+              c.ship = i;
               std::string why;
               if (!Confirm(c, why))
                   return "buy_ship: " + why;
@@ -1854,9 +1850,9 @@ std::vector<Tool> BuildTools()
                                                 "; dock there to switch to it" };
               }
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.refitShip = i;
+              const int              seq = g_session.LastEventSeq();
+              Proto::Act::SwitchShip c;
+              c.ship = i;
               std::string why;
               if (!Confirm(c, why))
                   return "switch_ship: " + why;
@@ -1885,9 +1881,9 @@ std::vector<Tool> BuildTools()
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, q.problem };
               const double moneyBefore = g_session.Snapshot().player.money;
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.insureShip = i;
+              const int              seq = g_session.LastEventSeq();
+              Proto::Act::InsureShip c;
+              c.ship = i;
               std::string why;
               if (!Confirm(c, why))
                   return "insure_ship: " + why;
@@ -1942,10 +1938,9 @@ std::vector<Tool> BuildTools()
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, q.problem };
               const double moneyBefore = g_session.Snapshot().player.money;
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.refit = true;
-              c.refitLines = fit;
+              const int         seq = g_session.LastEventSeq();
+              Proto::Act::Refit c;
+              c.lines = fit;
               std::string why;
               if (!Confirm(c, why))
                   return "refit: " + why;
@@ -2002,10 +1997,10 @@ std::vector<Tool> BuildTools()
               if (q.design.id.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, q.problem };
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.saveDesign = name;
-              c.saveLines = fit;
+              const int              seq = g_session.LastEventSeq();
+              Proto::Act::SaveDesign c;
+              c.name = name;
+              c.lines = fit;
               std::string why;
               if (!Confirm(c, why))
                   return "save_design: " + why;
@@ -2046,9 +2041,9 @@ std::vector<Tool> BuildTools()
               const Obs::FitQuote q = row->quote;
               const double        moneyBefore = g_session.Snapshot().player.money;
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.applyDesign = name;
+              const int               seq = g_session.LastEventSeq();
+              Proto::Act::ApplyDesign c;
+              c.name = name;
               std::string why;
               if (!Confirm(c, why))
                   return "apply_design: " + why;
@@ -2074,12 +2069,12 @@ std::vector<Tool> BuildTools()
                       [](const Rpc::Json& args)
                       {
                           RequireLive();
-                          const std::string from = DesignNameArg(args, "name");
-                          const std::string to = DesignNameArg(args, "to");
-                          const int         seq = g_session.LastEventSeq();
-                          Proto::Command    c;
-                          c.renameDesign = from;
-                          c.renameTo = to;
+                          const std::string        from = DesignNameArg(args, "name");
+                          const std::string        to = DesignNameArg(args, "to");
+                          const int                seq = g_session.LastEventSeq();
+                          Proto::Act::RenameDesign c;
+                          c.name = from;
+                          c.to = to;
                           std::string why;
                           if (!Confirm(c, why))
                               return "rename_design: " + why;
@@ -2097,10 +2092,10 @@ std::vector<Tool> BuildTools()
           [](const Rpc::Json& args)
           {
               RequireLive();
-              const std::string name = DesignNameArg(args, "name");
-              const int         seq = g_session.LastEventSeq();
-              Proto::Command    c;
-              c.deleteDesign = name;
+              const std::string        name = DesignNameArg(args, "name");
+              const int                seq = g_session.LastEventSeq();
+              Proto::Act::DeleteDesign c;
+              c.name = name;
               std::string why;
               if (!Confirm(c, why))
                   return "delete_design: " + why;
@@ -2141,9 +2136,9 @@ std::vector<Tool> BuildTools()
                                                              " and you have " + Money(p.money) };
               const double moneyBefore = p.money;
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.payBountyFaction = Factions::Id(f);
+              const int             seq = g_session.LastEventSeq();
+              Proto::Act::PayBounty c;
+              c.faction = Factions::Id(f);
               std::string why;
               if (!Confirm(c, why))
                   return "pay_bounty: " + why;
@@ -2180,11 +2175,10 @@ std::vector<Tool> BuildTools()
               if (!l.admitted)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     l.holder + " will not license you: " + l.why };
-              const double   before = l.until;
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.buyLicence = true;
-              std::string why;
+              const double           before = l.until;
+              const int              seq = g_session.LastEventSeq();
+              Proto::Act::BuyLicence c;
+              std::string            why;
               if (!Confirm(c, why))
                   return "buy_licence: " + why;
               const Proto::LicenceView& after = g_session.Snapshot().player.licence;
@@ -2230,10 +2224,10 @@ std::vector<Tool> BuildTools()
                                     "charts, at its own desk" };
               if (which == "all")
                   which = "*";
-              const double   before = g_session.Snapshot().player.money;
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.sellChart = which;
+              const double          before = g_session.Snapshot().player.money;
+              const int             seq = g_session.LastEventSeq();
+              Proto::Act::SellChart c;
+              c.what = which;
               std::string why;
               if (!Confirm(c, why))
                   return "sell_charts: " + why;
@@ -2295,10 +2289,10 @@ std::vector<Tool> BuildTools()
                           return si.name == name;
                   return false;
               };
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.nameSystem = name;
-              c.nameSystemId = here;
+              const int              seq = g_session.LastEventSeq();
+              Proto::Act::NameSystem c;
+              c.name = name;
+              c.systemId = here;
               if (!Confirm(c, why))
                   return "name_system: " + why;
               // The new name reaches everyone who knows it, in the index the server resends.
@@ -2322,10 +2316,9 @@ std::vector<Tool> BuildTools()
           Obj({}), [](const Rpc::Json&)
           {
               RequireLive();
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.scan = true;
-              std::string why;
+              const int        seq = g_session.LastEventSeq();
+              Proto::Act::Scan c;
+              std::string      why;
               if (!Confirm(c, why))
                   return "scan: " + why;
               auto said = [&]
@@ -2470,11 +2463,11 @@ std::vector<Tool> BuildTools()
                           return &kv.second;
                   return nullptr;
               };
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.deploy = bp->id;
-              c.deployPos = at;
-              c.deployName = name;
+              const int          seq = g_session.LastEventSeq();
+              Proto::Act::Deploy c;
+              c.blueprint = bp->id;
+              c.at = at;
+              c.name = name;
               if (!Confirm(c, why))
                   return "deploy: " + why;
               // An upgrade keeps the structure's id: it is the site now, of the new blueprint.
@@ -2523,10 +2516,10 @@ std::vector<Tool> BuildTools()
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     it->second.name +
                                         " is not yours; attack takes down another's" };
-              const std::string name = it->second.name;
-              const int         seq = g_session.LastEventSeq();
-              Proto::Command    c;
-              c.dismantleId = id;
+              const std::string     name = it->second.name;
+              const int             seq = g_session.LastEventSeq();
+              Proto::Act::Dismantle c;
+              c.id = id;
               std::string why;
               if (!Confirm(c, why))
                   return "dismantle: " + why;
@@ -2600,9 +2593,9 @@ std::vector<Tool> BuildTools()
               if (!problem.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, problem };
 
-              const int      seq = g_session.LastEventSeq();
-              Proto::Command c;
-              c.defenceId = id;
+              const int              seq = g_session.LastEventSeq();
+              Proto::Act::SetDefence c;
+              c.id = id;
               c.defence = d;
               std::string why;
               if (!Confirm(c, why))
@@ -2640,8 +2633,8 @@ std::vector<Tool> BuildTools()
                   it->second.kind == Proto::EntityKind::Structure && Ours(it->second.owner))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     it->second.name + " is yours; dismantle it instead" };
-              Proto::Command c = OrderCommand(Orders::Kind::Attack);
-              c.orderTarget = id;
+              Orders::Order c = OrderCommand(Orders::Kind::Attack);
+              c.targetId = id;
               return GiveOrder(c, "attack");
           } });
 
@@ -2690,11 +2683,11 @@ std::vector<Tool> BuildTools()
               // A docked ship takes no orders; the station is left first.
               if (g_session.Snapshot().player.docked)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "docked; undock first" };
-              Proto::Command c = OrderCommand(Orders::Kind::Build);
-              c.orderPoint = at;
-              c.orderTarget = onto;
-              c.orderBlueprint = bp->id;
-              c.orderName = name;
+              Orders::Order c = OrderCommand(Orders::Kind::Build);
+              c.point = at;
+              c.targetId = onto;
+              c.blueprint = bp->id;
+              c.name = name;
               return GiveOrder(c, "build");
           } });
 
@@ -2735,10 +2728,10 @@ std::vector<Tool> BuildTools()
               {
                   // Out of reach: the same thing the client's Investigate does -- go there
                   // first. The stop is well inside the reach, so arriving is enough.
-                  Proto::Command c = OrderCommand(Orders::Kind::MoveTo);
-                  c.orderTarget = id;
-                  c.orderStopDist = wreck.size + (reach - wreck.size) * 0.5f;
-                  c.orderWarp = dist > Actions::WARP_MIN;  // as far as the menu offers a warp
+                  Orders::Order c = OrderCommand(Orders::Kind::MoveTo);
+                  c.targetId = id;
+                  c.stopDist = wreck.size + (reach - wreck.size) * 0.5f;
+                  c.useWarp = dist > Actions::WARP_MIN;  // as far as the menu offers a warp
                   char head[160];
                   std::snprintf(head, sizeof(head),
                                 "salvage: %s is %.0f away and the reach is %.0f; flying there. ",
@@ -2750,8 +2743,8 @@ std::vector<Tool> BuildTools()
               const int         held = InventoryList::Total(wreck.holds);     // ...and so may
               const std::string good = InventoryList::Describe(wreck.holds);  // what it holds
               const double      before = p.money;
-              Proto::Command    c;
-              c.lootId = id;
+              Proto::Act::Loot  c;
+              c.id = id;
               std::string why;
               if (!Confirm(c, why))
                   return "salvage: " + why;
