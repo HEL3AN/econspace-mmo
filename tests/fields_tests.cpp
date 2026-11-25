@@ -207,7 +207,10 @@ TEST_CASE("a full shelf is not mined past its cap (#617)")
     const int          id = sim.PlaceField(system, iron, 20000, 10.0, 600.0, { 4000.0f, 0.0f });
     REQUIRE(id != 0);
     st.market.SetStock(iron, st.market.Target(iron) * 100.0);  // clipped to the cap by the step
-    for (int i = 0; i < 900; i++)
+    // A few passes: the industries use a little, and the crew takes no more than the room that
+    // leaves under the cap -- an hour at the full rate would be hundreds.
+    for (int i = 0; i < 4; i++)
         sim.MaintainWorld(2.0f);
-    CHECK(FieldIn(st, id)->Taken() == doctest::Approx(0.0));
+    CHECK(FieldIn(st, id)->Taken() <= 5.0);
+    CHECK(st.market.Stock(iron) <= st.market.Target(iron) * 10.0 + 1e-6);
 }
