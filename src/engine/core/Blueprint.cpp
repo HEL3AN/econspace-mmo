@@ -12,13 +12,7 @@ using json = nlohmann::json;
 
 namespace
 {
-std::vector<Blueprint> g_blueprints;
-std::vector<Blueprint> g_forPlayers;  // the ones a player may build, as All() lists them
-int                    g_perAccount = 0;
-Blueprints::Teardown   g_teardown;
-Blueprints::Upkeep     g_upkeep;
-Blueprints::Siege      g_siege;
-std::string            g_error;
+using Blueprints::Current;
 
 // A non-negative number, or a load error naming the field: a cost of "ten" read as zero
 // would be a free beacon.
@@ -209,20 +203,41 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
 
 namespace Blueprints
 {
+namespace
+{
+Registry  g_process;  // what a process that never makes another registry reads and writes
+Registry* g_current = &g_process;
+}  // namespace
+
+Registry& Current()
+{
+    return *g_current;
+}
+
+Scope::Scope(Registry& r) : previous_(g_current)
+{
+    g_current = &r;
+}
+
+Scope::~Scope()
+{
+    g_current = previous_;
+}
+
 bool Load(const std::string& path)
 {
-    g_error.clear();
+    Current().error.clear();
     std::ifstream in(path);
     if (!in.is_open())
     {
-        g_error = "cannot open " + path;
+        Current().error = "cannot open " + path;
         return false;
     }
     const json j = json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.is_object() || !j.contains("blueprints") ||
         !j["blueprints"].is_array())
     {
-        g_error = path + ": not a blueprint file (no 'blueprints' array)";
+        Current().error = path + ": not a blueprint file (no 'blueprints' array)";
         return false;
     }
     std::string err;
@@ -230,7 +245,7 @@ bool Load(const std::string& path)
             j, { "blueprints", "tiers", "limits", "dismantle", "destruction", "upkeep", "siege" },
             err))
     {
-        g_error = path + ": " + err;
+        Current().error = path + ": " + err;
         return false;
     }
 
@@ -250,7 +265,7 @@ bool Load(const std::string& path)
     const json&       tj = j.contains("tiers") ? j["tiers"] : noTiers;
     if (!tj.is_object())
     {
-        g_error = path + ": 'tiers' is an object of { tier: { \"mend\": share } }";
+        Current().error = path + ": 'tiers' is an object of { tier: { \"mend\": share } }";
         return false;
     }
     const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
@@ -265,14 +280,14 @@ bool Load(const std::string& path)
             !ReadNumber(it.value(), "mendShips", t.mendShips, err) ||
             !ReadShare(it.value(), "armour", t.armour, err))
         {
-            g_error = path + ": tiers: '" + it.key() +
-                      "': " + (err.empty() ? "is not { \"mend\": share }" : err);
+            Current().error = path + ": tiers: '" + it.key() +
+                              "': " + (err.empty() ? "is not { \"mend\": share }" : err);
             return false;
         }
         if (it.value().contains("resist") &&
             !Ships::ReadResist(it.value()["resist"], ships, t.resist, err))
         {
-            g_error = path + ": tiers: '" + it.key() + "': resist: " + err;
+            Current().error = path + ": tiers: '" + it.key() + "': resist: " + err;
             return false;
         }
         if (!ships.damageTypes.empty())
@@ -282,10 +297,10 @@ bool Load(const std::string& path)
                     const float e = Ships::Effect(ships, f.damage, t.resist, layer);
                     if (e < ships.minEffect - 1e-5f)
                     {
-                        g_error = path + ": tiers: '" + it.key() + "': family '" + f.id +
-                                  "' does " + std::to_string(e) + " to its " +
-                                  (layer == Ships::LayerArmour ? "armour" : "hull") +
-                                  ", below minEffect " + std::to_string(ships.minEffect);
+                        Current().error = path + ": tiers: '" + it.key() + "': family '" + f.id +
+                                          "' does " + std::to_string(e) + " to its " +
+                                          (layer == Ships::LayerArmour ? "armour" : "hull") +
+                                          ", below minEffect " + std::to_string(ships.minEffect);
                         return false;
                     }
                 }
@@ -298,13 +313,13 @@ bool Load(const std::string& path)
         Blueprint b;
         if (!ParseBlueprint(bj, b, err))
         {
-            g_error = path + ": blueprint '" + b.id + "': " + err;
+            Current().error = path + ": blueprint '" + b.id + "': " + err;
             return false;
         }
         for (const Blueprint& other : loaded)
             if (other.id == b.id)
             {
-                g_error = path + ": blueprint '" + b.id + "' is defined twice";
+                Current().error = path + ": blueprint '" + b.id + "' is defined twice";
                 return false;
             }
         loaded.push_back(std::move(b));
@@ -319,8 +334,8 @@ bool Load(const std::string& path)
                 found = found || (other.id == o && other.id != b.id);
             if (!found)
             {
-                g_error = path + ": blueprint '" + b.id + "': onto: '" + o +
-                          "' is not another blueprint of the file";
+                Current().error = path + ": blueprint '" + b.id + "': onto: '" + o +
+                                  "' is not another blueprint of the file";
                 return false;
             }
         }
@@ -341,10 +356,11 @@ bool Load(const std::string& path)
             }
         if (!tiered)
         {
-            g_error = path + ": blueprint '" + b.id + "': " +
-                      (b.tier.empty() ? std::string("'tier' is missing")
-                                      : "tier '" + b.tier + "' is not one of the file's 'tiers'") +
-                      ": what it mends is set by its tier";
+            Current().error =
+                path + ": blueprint '" + b.id + "': " +
+                (b.tier.empty() ? std::string("'tier' is missing")
+                                : "tier '" + b.tier + "' is not one of the file's 'tiers'") +
+                ": what it mends is set by its tier";
             return false;
         }
     }
@@ -356,7 +372,7 @@ bool Load(const std::string& path)
         float       n = 0.0f;
         if (!OnlyKnownKeys(l, { "perAccount" }, err) || !ReadNumber(l, "perAccount", n, err))
         {
-            g_error = path + ": limits: " + err;
+            Current().error = path + ": limits: " + err;
             return false;
         }
         perAccount = (int)n;
@@ -371,7 +387,7 @@ bool Load(const std::string& path)
         if (!d.is_object() || !OnlyKnownKeys(d, { "refund" }, err) ||
             !ReadShare(d, "refund", teardown.refund, err))
         {
-            g_error = path + ": dismantle: " + (err.empty() ? "not an object" : err);
+            Current().error = path + ": dismantle: " + (err.empty() ? "not an object" : err);
             return false;
         }
     }
@@ -385,13 +401,14 @@ bool Load(const std::string& path)
             !ReadShare(d, "storageShare", teardown.storageShare, err) ||
             !ReadNumber(d, "wreckSeconds", teardown.wreckSeconds, err))
         {
-            g_error = path + ": destruction: " + (err.empty() ? "not an object" : err);
+            Current().error = path + ": destruction: " + (err.empty() ? "not an object" : err);
             return false;
         }
         if (teardown.siteHull <= 0.0f)
         {
-            g_error = path + ": destruction: 'siteHull' must be more than zero, or a new site "
-                             "could not be hit at all";
+            Current().error = path +
+                              ": destruction: 'siteHull' must be more than zero, or a new site "
+                              "could not be hit at all";
             return false;
         }
     }
@@ -403,7 +420,7 @@ bool Load(const std::string& path)
         if (!u.is_object() || !OnlyKnownKeys(u, { "share", "decay" }, err) ||
             !ReadShare(u, "share", upkeep.share, err) || !ReadShare(u, "decay", upkeep.decay, err))
         {
-            g_error = path + ": upkeep: " + (err.empty() ? "not an object" : err);
+            Current().error = path + ": upkeep: " + (err.empty() ? "not an object" : err);
             return false;
         }
     }
@@ -416,7 +433,7 @@ bool Load(const std::string& path)
         {
             if (!s["reference"].is_string())
             {
-                g_error = path + ": siege: 'reference' is a design id";
+                Current().error = path + ": siege: 'reference' is a design id";
                 return false;
             }
             siege.reference = s["reference"].get<std::string>();
@@ -425,9 +442,10 @@ bool Load(const std::string& path)
         // warship design now (Ships::WarshipDps). Named, so an old file says what to do.
         if (s.is_object() && s.contains("dps"))
         {
-            g_error = path + ": siege: 'dps' is gone -- a besieging ship hits as hard as its "
-                             "faction's warship design (the doctrine's \"warship\" in ships.json); "
-                             "remove the key";
+            Current().error =
+                path + ": siege: 'dps' is gone -- a besieging ship hits as hard as its "
+                       "faction's warship design (the doctrine's \"warship\" in ships.json); "
+                       "remove the key";
             return false;
         }
         if (!s.is_object() ||
@@ -445,7 +463,7 @@ bool Load(const std::string& path)
             !ReadNumber(s, "hop", siege.hop, err) || !ReadNumber(s, "pool", siege.pool, err) ||
             !ReadNumber(s, "referenceShips", referenceShips, err))
         {
-            g_error = path + ": siege: " + (err.empty() ? "not an object" : err);
+            Current().error = path + ": siege: " + (err.empty() ? "not an object" : err);
             return false;
         }
         siege.referenceShips = (int)referenceShips;
@@ -459,8 +477,9 @@ bool Load(const std::string& path)
             const Ships::Fighter ref = Ships::DesignFighter(ships, siege.reference);
             if (ref.dps <= 0.0f || siege.referenceShips <= 0)
             {
-                g_error = path + ": siege: 'reference' names no armed design, or 'referenceShips' "
-                                 "is not more than zero";
+                Current().error = path +
+                                  ": siege: 'reference' names no armed design, or 'referenceShips' "
+                                  "is not more than zero";
                 return false;
             }
             siege.referenceShip = ref.dps;
@@ -471,10 +490,11 @@ bool Load(const std::string& path)
             const float ships_ = tierShips[b.id];
             if ((b.holds > 0.0f || ships_ > 0.0f) && siege.referenceDps <= 0.0f)
             {
-                g_error = path + ": blueprint '" + b.id +
-                          "': 'holds' and a tier's 'mendShips' are in the siege's reference "
-                          "fleet's units: the 'siege' section needs 'reference' and "
-                          "'referenceShips'";
+                Current().error =
+                    path + ": blueprint '" + b.id +
+                    "': 'holds' and a tier's 'mendShips' are in the siege's reference "
+                    "fleet's units: the 'siege' section needs 'reference' and "
+                    "'referenceShips'";
                 return false;
             }
             const float mendDps = ships_ * siege.referenceShip;
@@ -482,12 +502,12 @@ bool Load(const std::string& path)
             {
                 if (siege.referenceDps <= mendDps)
                 {
-                    g_error = path + ": blueprint '" + b.id + "': its tier mends " +
-                              std::to_string(mendDps) +
-                              " a second and the reference fleet "
-                              "fires " +
-                              std::to_string(siege.referenceDps) +
-                              ": no fleet of that strength could ever bring it down";
+                    Current().error = path + ": blueprint '" + b.id + "': its tier mends " +
+                                      std::to_string(mendDps) +
+                                      " a second and the reference fleet "
+                                      "fires " +
+                                      std::to_string(siege.referenceDps) +
+                                      ": no fleet of that strength could ever bring it down";
                     return false;
                 }
                 b.hull = b.holds * (siege.referenceDps - mendDps);
@@ -496,15 +516,15 @@ bool Load(const std::string& path)
                 b.mend = mendDps / b.hull;  // a share of its hull a second, as Structure reads it
         }
     }
-    g_forPlayers.clear();
+    Current().forPlayers.clear();
     for (const Blueprint& b : loaded)
         if (b.byPlayers)
-            g_forPlayers.push_back(b);
-    g_blueprints = std::move(loaded);
-    g_perAccount = perAccount;
-    g_teardown = teardown;
-    g_upkeep = upkeep;
-    g_siege = siege;
+            Current().forPlayers.push_back(b);
+    Current().all = std::move(loaded);
+    Current().perAccount = perAccount;
+    Current().teardown = teardown;
+    Current().upkeep = upkeep;
+    Current().siege = siege;
     return true;
 }
 
@@ -519,7 +539,7 @@ float WallEffect(const Blueprint& bp, const Ships::TypeValues& mix)
 
 const Blueprint* Find(const std::string& id)
 {
-    for (const Blueprint& b : g_blueprints)
+    for (const Blueprint& b : Current().all)
         if (b.id == id)
             return &b;
     return nullptr;
@@ -527,7 +547,7 @@ const Blueprint* Find(const std::string& id)
 
 const Blueprint* Building(const std::string& archetype)
 {
-    for (const Blueprint& b : g_blueprints)
+    for (const Blueprint& b : Current().all)
         if (b.archetype == archetype)
             return &b;
     return nullptr;
@@ -535,27 +555,27 @@ const Blueprint* Building(const std::string& archetype)
 
 const std::vector<Blueprint>& All()
 {
-    return g_forPlayers;
+    return Current().forPlayers;
 }
 
 int PerAccount()
 {
-    return g_perAccount;
+    return Current().perAccount;
 }
 
 const Teardown& Rules()
 {
-    return g_teardown;
+    return Current().teardown;
 }
 
 const Upkeep& UpkeepRules()
 {
-    return g_upkeep;
+    return Current().upkeep;
 }
 
 const Siege& SiegeRules()
 {
-    return g_siege;
+    return Current().siege;
 }
 
 std::vector<std::pair<ResourceType, int>> Refund(const Blueprint& bp, float progress,
@@ -564,7 +584,7 @@ std::vector<std::pair<ResourceType, int>> Refund(const Blueprint& bp, float prog
 {
     const float p = progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress);
     const float h = hullFraction < 0.0f ? 0.0f : (hullFraction > 1.0f ? 1.0f : hullFraction);
-    const float share = (1.0f - p * (1.0f - g_teardown.refund)) * h;
+    const float share = (1.0f - p * (1.0f - Current().teardown.refund)) * h;
     // Each good in the order it is first named, the tiers below first.
     std::vector<std::pair<ResourceType, double>> sum;
     auto                                         add = [&sum](const Blueprint& b, float s)
@@ -581,7 +601,7 @@ std::vector<std::pair<ResourceType, int>> Refund(const Blueprint& bp, float prog
     };
     for (const Blueprint* b : earlier)
         if (b != nullptr)
-            add(*b, g_teardown.refund * h);  // finished, and as hurt as the whole of it
+            add(*b, Current().teardown.refund * h);  // finished, and as hurt as the whole of it
     add(bp, share);
     std::vector<std::pair<ResourceType, int>> back;
     for (const auto& c : sum)
@@ -597,6 +617,6 @@ std::vector<std::pair<ResourceType, int>> Refund(const Blueprint& bp, float prog
 
 const std::string& Error()
 {
-    return g_error;
+    return Current().error;
 }
 }  // namespace Blueprints

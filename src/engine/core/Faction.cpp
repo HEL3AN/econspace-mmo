@@ -78,12 +78,27 @@ Registry Builtin()
     return r;
 }
 
-Registry    g_registry = Builtin();
-std::string g_error;
+}  // namespace
+
+// What a registry is as an instance (#356): the content and the last load's error.
+struct Factions::State
+{
+    Registry    reg = Builtin();
+    std::string error;
+};
+
+namespace
+{
+Factions::State  g_process;  // what a process that never makes another registry reads and writes
+Factions::State* g_current = &g_process;
+Factions::State& Cur()
+{
+    return *g_current;
+}
 
 const FactionDef& Def(FactionId f)
 {
-    return g_registry.factions[(size_t)f.Index()];
+    return Cur().reg.factions[(size_t)f.Index()];
 }
 
 const std::pair<const char*, Stance> STANCE_NAMES[] = {
@@ -516,35 +531,50 @@ Color FactionColor(FactionId faction)
 
 namespace Factions
 {
+
+Content::Content() : s_(new State)
+{
+}
+Content::~Content() = default;
+
+Scope::Scope(Content& c) : previous_(g_current)
+{
+    g_current = c.s_.get();
+}
+
+Scope::~Scope()
+{
+    g_current = previous_;
+}
 bool Load(const std::string& path)
 {
     std::ifstream f(path);
     if (!f.is_open())
     {
-        g_error = path + ": cannot open";
+        Cur().error = path + ": cannot open";
         return false;
     }
     json data = json::parse(f, nullptr, false);
     if (data.is_discarded())
     {
-        g_error = path + ": not valid JSON";
+        Cur().error = path + ": not valid JSON";
         return false;
     }
     Registry    r;
     std::string error;
     if (!Parse(data, r, error))
     {
-        g_error = path + ": " + error;
+        Cur().error = path + ": " + error;
         return false;
     }
-    g_registry = std::move(r);
-    g_error.clear();
+    Cur().reg = std::move(r);
+    Cur().error.clear();
     return true;
 }
 
 const std::string& Error()
 {
-    return g_error;
+    return Cur().error;
 }
 
 bool ReadDef(const json& entry, FactionDef& out, std::string& error)
@@ -553,7 +583,7 @@ bool ReadDef(const json& entry, FactionDef& out, std::string& error)
     if (!ReadFaction(entry, d, error))
         return false;
     // A pack's faction speaks a culture the server's factions.json has (#431 slice 3).
-    if (!d.culture.empty() && FindCulture(g_registry, d.culture) == nullptr)
+    if (!d.culture.empty() && FindCulture(Cur().reg, d.culture) == nullptr)
     {
         error = "faction '" + d.id + "': culture '" + d.culture + "' is not in factions.json";
         return false;
@@ -567,7 +597,7 @@ FactionId Add(const FactionDef& def)
     FactionId existing;
     if (Find(def.id, existing))
         return existing;
-    Registry& r = g_registry;
+    Registry& r = Cur().reg;
     r.factions.push_back(def);
     const int n = (int)r.factions.size();
     for (int a = 0; a < n - 1; a++)
@@ -580,7 +610,7 @@ FactionId Add(const FactionDef& def)
 
 int Count()
 {
-    return (int)g_registry.factions.size();
+    return (int)Cur().reg.factions.size();
 }
 
 const FactionDef& Def(FactionId f)
@@ -590,11 +620,11 @@ const FactionDef& Def(FactionId f)
 
 void SetRelation(FactionId a, FactionId b, Stance stance)
 {
-    const size_t n = g_registry.factions.size();
+    const size_t n = Cur().reg.factions.size();
     if ((size_t)a.Index() >= n || (size_t)b.Index() >= n || a == b)
         return;
-    g_registry.relation[(size_t)a.Index()][(size_t)b.Index()] = stance;
-    g_registry.relation[(size_t)b.Index()][(size_t)a.Index()] = stance;
+    Cur().reg.relation[(size_t)a.Index()][(size_t)b.Index()] = stance;
+    Cur().reg.relation[(size_t)b.Index()][(size_t)a.Index()] = stance;
 }
 
 const char* StanceName(Stance s)
@@ -612,7 +642,7 @@ bool ParseStance(const std::string& s, Stance& out)
 
 bool Find(const std::string& id, FactionId& out)
 {
-    const int i = IndexOf(g_registry, id);
+    const int i = IndexOf(Cur().reg, id);
     if (i < 0)
         return false;
     out = FactionId::FromIndex(i);
@@ -626,17 +656,17 @@ FactionId Unaffiliated()
 
 FactionId Pirates()
 {
-    return FactionId::FromIndex(g_registry.pirates);
+    return FactionId::FromIndex(Cur().reg.pirates);
 }
 
 FactionId DefaultPolice()
 {
-    return FactionId::FromIndex(g_registry.police);
+    return FactionId::FromIndex(Cur().reg.police);
 }
 
 FactionId Traders()
 {
-    return FactionId::FromIndex(g_registry.traders);
+    return FactionId::FromIndex(Cur().reg.traders);
 }
 
 bool FromLegacyIndex(int i, FactionId& out)
@@ -682,22 +712,22 @@ const Temperament& TemperamentOf(FactionId f)
 
 const NameCulture* Culture(const std::string& id)
 {
-    return FindCulture(g_registry, id);
+    return FindCulture(Cur().reg, id);
 }
 
 const Migration& MigrationRules()
 {
-    return g_registry.migration;
+    return Cur().reg.migration;
 }
 
 Stance Relation(FactionId a, FactionId b)
 {
-    return g_registry.relation[(size_t)a.Index()][(size_t)b.Index()];
+    return Cur().reg.relation[(size_t)a.Index()][(size_t)b.Index()];
 }
 
 RepTier TierOf(float rep)
 {
-    const Registry& r = g_registry;
+    const Registry& r = Cur().reg;
     if (rep < r.repHated)
         return RepTier::Hated;
     if (rep < r.repHostile)

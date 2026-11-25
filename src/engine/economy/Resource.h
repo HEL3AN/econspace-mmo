@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -109,6 +110,35 @@ bool ModuleGood(const std::string& moduleId, ResourceType& out);
 
 namespace Goods
 {
+// The registry is an instance (#356): `Load` and everything below read the *current* one, which
+// is a process-wide default until a `Scope` makes a `Content` of its own current. Not
+// thread-local; see Archetypes::Scope.
+struct State;
+class Content
+{
+public:
+    Content();
+    ~Content();
+    Content(const Content&) = delete;
+    Content& operator=(const Content&) = delete;
+
+private:
+    friend class Scope;
+    std::unique_ptr<State> s_;
+};
+
+class Scope
+{
+public:
+    explicit Scope(Content& c);
+    ~Scope();
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+
+private:
+    State* previous_;
+};
+
 // The price a market with `target` of a good (base price `base`) asks of nobody in particular
 // with `stock` on the shelf: base x (target / stock) ^ elasticity, clamped to the rules' floor
 // and ceiling -- the one curve (#343). And what buying `amount` units off that shelf costs at
