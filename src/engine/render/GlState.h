@@ -21,5 +21,13 @@ struct Scissor
 Scissor Current();
 void    Restore(const Scissor& s);
 
+// The viewport of the target being drawn into, in its pixels, origin bottom left.
+void Viewport(int box[4]);
+
+// Clears the depth of a box of the current target, leaving its colour: what a solid drawn
+// over a 2D scene needs before it starts (Built3D), so an earlier solid's depth under it is
+// not read as in front of it.
+void ClearDepth(int x, int y, int w, int h);
+
 }  // namespace GlState
 }  // namespace Render

@@ -206,6 +206,15 @@ written. Below 0 is under the hull -- wings beneath a fuselage, an engine block 
 shows behind the tail -- above 0 is on it. A module's parts take its placement's `z` plus their
 own.
 
+**Height.** `"height"` and `"lift"` on any part, in radii of the object, are read only by the
+renderer that draws built objects as solids (`documents/built_3d.md`, #618); the 2D path ignores
+them. `height` is how far the part stands above what it lies on -- a pylon, a mast, an emitter --
+and zero (the default) leaves it to a rule that derives a thickness from the part's role and
+size. `lift` is for a part that does not stand on anything, a lintel or a claw: its underside is
+that far above the ground and `height` is how thick it is. Both are numbers from 0 to 4, scale
+with a module's `scale`, and anything else is a load error (a misspelt or negative height would
+otherwise be a part silently left to the rule).
+
 **Night side.** `"onlyDark": true` fades a part out where its body faces the light, across
 the terminator rather than at it: a city's lights, an aurora, a station's lit windows. On a
 planet the body is the planet; elsewhere it is the object itself.

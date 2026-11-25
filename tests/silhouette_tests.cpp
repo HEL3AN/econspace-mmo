@@ -1192,6 +1192,32 @@ TEST_CASE("a night-side part says so on its piece, through a module too (#240)")
     CHECK(any);
 }
 
+TEST_CASE("a part's height and lift reach its piece, scale with a module, and are checked (#618)")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "bar", "length": 0.4, "width": 0.1, "height": 0.08 },
+        { "form": "bar", "length": 0.4, "width": 0.1, "height": 0.02, "lift": 0.2, "at": [0.5, 0] } ])");
+    const auto          pieces = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(pieces.size() == 2);
+    CHECK(pieces[0].rise == doctest::Approx(8.0f));
+    CHECK(pieces[0].lift == doctest::Approx(0.0f));
+    CHECK(pieces[1].rise == doctest::Approx(2.0f));
+    CHECK(pieces[1].lift == doctest::Approx(20.0f));
+
+    // A height that means nothing is a load error, said by name, never a part left to the rule.
+    Render::Shape out;
+    std::string   error;
+    for (const char* bad :
+         { R"([{ "form": "bar", "height": -0.1 }])", R"([{ "form": "bar", "lift": "high" }])",
+           R"([{ "form": "bar", "height": 9 }])" })
+    {
+        CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(bad), out, error));
+        CHECK(error.find("radii") != std::string::npos);
+    }
+    CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(R"([{ "form": "bar", "hight": 0.1 }])"),
+                                   out, error));
+}
+
 TEST_CASE("a trapezoid, a jagged polygon and a soft glow are carried to the piece (#240)")
 {
     const Render::Shape s = Parse(R"([

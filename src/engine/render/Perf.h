@@ -44,6 +44,7 @@ enum class Section
     Compose,  // Compose(): sections, kits and modules expanded, pieces placed
     Soft,     // glows: gradient discs and soft surface fans
     Surface,  // marks on a sphere, cut to the body's disc
+    Solid,    // a built object as a solid (Built3D): CPU time handing both passes over
     Solve,    // inside the HUD: Clay laying out a window's content (Layout::End)
     Paint,    // ...painting what it laid out (Layout::Draw), the text included
     Text,     // ...every run of text drawn, wherever from (Ui::DrawString)

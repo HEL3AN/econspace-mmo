@@ -812,7 +812,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                      "tint",    "from",        "to",          "row",         "module",
                      "variant", "variants",    "except",      "scale",       "chance",
                      "group",   "pivot",       "onlyDark",    "tip",         "jagged",
-                     "soft",    "pitch",       "z",           "material",    "fallback" },
+                     "soft",    "pitch",       "z",           "material",    "fallback",
+                     "height",  "lift" },
                 error))
             return false;
         Part p;
@@ -1069,6 +1070,21 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         p.section = isSection;
         p.pitch = e.value("pitch", p.pitch);
         p.z = e.value("z", p.z);
+        for (const char* key : { "height", "lift" })
+        {
+            // Radii of the object, for a renderer that draws it as a solid (#618): a number
+            // from nothing to a few radii. A misspelt or negative one would otherwise be a part
+            // silently left to the rule.
+            if (e.contains(key) &&
+                (!e[key].is_number() || e[key].get<float>() < 0.0f || e[key].get<float>() > 4.0f))
+            {
+                error = std::string("a part's \"") + key +
+                        "\" is a number of radii from 0 to 4 (how high it stands, or floats)";
+                return false;
+            }
+        }
+        p.height = e.value("height", p.height);
+        p.lift = e.value("lift", p.lift);
         if (!field("tip", p.tip, Part::Field::Tip) ||
             !field("jagged", p.jagged, Part::Field::Jagged))
             return false;
@@ -1410,6 +1426,8 @@ void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, S
                     q.radius *= p.scale;
                     q.width *= p.scale;
                     q.length *= p.scale;
+                    q.height *= p.scale;
+                    q.lift *= p.scale;
                     q.rowCount = 1;
                     q.rowStep = { 0.0f, 0.0f };
                     q.alpha *= p.alpha;
@@ -1543,6 +1561,8 @@ Shape ExpandModules(const Shape& in, int seed)
                             q.radius *= p.scale;
                             q.width *= p.scale;
                             q.length *= p.scale;
+                            q.height *= p.scale;
+                            q.lift *= p.scale;
                             const float sx = mp.rowStep.x * p.scale,
                                         sy = mp.rowStep.y * p.scale * flip;
                             q.rowStep = { sx * ca - sy * sa, sx * sa + sy * ca };
@@ -1659,7 +1679,7 @@ uint64_t Fingerprint(const Shape& s)
         f.I(p.tintVar), f.F(p.chance), f.I(p.chanceVar), f.F(p.rowTurn), f.F(p.rowTaper);
         f.B(p.rowTaperStep), f.F(p.rowRing), f.F(p.rowSpread), f.V(p.pivotShift);
         f.B(p.hasPivot), f.V(p.pivot), f.B(p.rowCentred), f.B(p.section), f.F(p.pitch);
-        f.I(p.z), f.B(p.mirrorOnly);
+        f.I(p.z), f.B(p.mirrorOnly), f.F(p.height), f.F(p.lift);
     }
     f.I((int)s.vars.size());
     for (const Shape::Var& v : s.vars)
@@ -1813,10 +1833,11 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
             // A light's place in its cycle. The phase comes from the part's own seed, so
             // six lamps on a ring are a sequence rather than a pulse -- lights in step read
             // as a screensaver.
-            float brightness = p.alpha;
+            float       brightness = p.alpha;
+            const float blinkPhase = Hash01(seed, salt + 13);
             if (p.blink > 0.0f)
             {
-                const float phase = Hash01(seed, salt + 13);
+                const float phase = blinkPhase;
                 const float t = (float)std::fmod(pose.time / p.blink + phase, 1.0);
                 brightness = p.alpha * (0.25f + 0.75f * (0.5f + 0.5f * std::cos(t * 2.0f * PI)));
             }
@@ -1850,9 +1871,15 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
                 piece.width = p.width * size * scale;
                 piece.length = p.length * size * scale;
                 piece.brightness = brightness;
+                piece.spin = p.spin;
+                piece.blink = p.blink;
+                piece.blinkPhase = blinkPhase;
+                piece.alpha = p.alpha;
                 piece.tint = p.tint;
                 piece.onlyDark = p.onlyDark;
                 piece.z = p.z;
+                piece.rise = p.height * size * scale;
+                piece.lift = p.lift * size * scale;
                 piece.tip = p.tip;
                 piece.jagged = p.jagged;
                 piece.jagSeed = (int)(Hash01(seed, salt + 337 + m * 7) * 1000000.0f);

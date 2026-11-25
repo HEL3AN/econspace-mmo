@@ -332,6 +332,89 @@ void ShapeBackend::EndMaterial()
         materials_->End();
 }
 
+ShapeBackend::ShapeBackend()
+{
+    const char* on = std::getenv("ECON_BUILT3D");
+    if (on != nullptr && on[0] != '\0' && on[0] != '0')
+        SetBuilt3D(true, std::string(on) == "ships");
+    const char* q = std::getenv("ECON_BUILT3D_QUALITY");
+    quality3d_ = q != nullptr ? std::clamp(std::atoi(q), 0, 3) : 2;
+    const char* t = std::getenv("ECON_BUILT3D_TILT");
+    if (t != nullptr)
+        tilt3d_ = std::clamp((float)std::atof(t), 0.0f, 60.0f);
+    const char* e = std::getenv("ECON_BUILT3D_ELEV");
+    if (e != nullptr)
+        elevation3d_ = std::clamp((float)std::atof(e), 8.0f, 80.0f);
+    const char* x = std::getenv("ECON_BUILT3D_EXPOSURE");
+    if (x != nullptr)
+        exposure3d_ = std::clamp((float)std::atof(x), 0.3f, 3.0f);
+}
+
+void ShapeBackend::SetBuilt3D(bool on, bool ships)
+{
+    want3d_ = on;
+    ships3d_ = ships;
+}
+
+bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light, bool probe)
+{
+    if (!want3d_ || materials_ == nullptr || item.shape == nullptr || item.shape->Empty())
+        return false;
+    switch (item.kind)
+    {
+        case EntityKind::Station:
+        case EntityKind::Structure:
+        case EntityKind::Derelict: break;
+        case EntityKind::Npc:
+        case EntityKind::PlayerShip:
+            if (!ships3d_)
+                return false;
+            break;
+        default: return false;
+    }
+    // Only what a built surface finishes: a gate that is weather (a wormhole) is not a solid.
+    if (!BuiltSurface(item))
+        return false;
+    if (built3d_ == nullptr)
+    {
+        built3d_ = std::make_unique<Built3D::Renderer>();
+        built3d_->SetQuality((Built3D::Quality)quality3d_);
+        const char* d = std::getenv("ECON_BUILT3D_DETAIL");
+        built3d_->SetDetail(d == nullptr || std::string(d) != "0");
+        if (!built3d_->Load(materials_->DataDir()))
+            TraceLog(LOG_WARNING, "Built3D: %s -- drawing built objects flat",
+                     built3d_->Problem().c_str());
+        built3d_->BeginFrame();
+    }
+    if (!built3d_->Available())
+        return false;
+    if (probe)
+        return true;
+
+    Built3D::Frame f;
+    f.view = view_;
+    f.clock = clock_;
+    f.light = light;
+    f.hasLight = !lighting_.Empty() && (light.dir.x != 0.0f || light.dir.y != 0.0f);
+    f.ambient = lighting_.ambient;
+    f.tiltDeg = tilt3d_;
+    f.elevationDeg = elevation3d_;
+    f.exposure = exposure3d_;
+    f.base = item.color;
+    const Livery* livery = Materials::FindLivery(item.livery.empty() ? "default" : item.livery);
+    if (livery != nullptr)
+    {
+        f.accent = livery->accent;
+        for (int k = 0; k < 4; k++)
+        {
+            f.livery[k] = livery->params[k];
+            f.style[k] = livery->style[k];
+        }
+    }
+    Perf::Scope timed(Perf::Section::Solid);
+    return built3d_->Draw(item, f);
+}
+
 void ShapeBackend::Draw(const Item& described)
 {
     // A ship is never drawn smaller than it can be found (#426); everything below, its
@@ -381,6 +464,19 @@ void ShapeBackend::Draw(const Item& described)
         // whole into the offscreen target at reduced resolution and scaled back up, as a
         // planet flown over is (#426): its surfaces are finished part by part, and a station
         // filling a 1080p screen is two million fragments of them on an integrated GPU.
+        if (paintScale_ == 1.0f && DrawBuilt3D(item, light, true))
+        {
+            // What a solid cannot be is drawn by the 2D path: what lies under the object (a
+            // swirl on the ground a gate is built around) before it, the rest over it.
+            solidsDrawn_ = true;
+            underPass_ = true;
+            DrawComposition(item, item.color, light);
+            underPass_ = false;
+            DrawBuilt3D(item, light, false);
+            DrawComposition(item, item.color, light);
+            solidsDrawn_ = false;
+            return;
+        }
         if (paintScale_ == 1.0f && BuiltSurface(item))
         {
             Rectangle   clip{};
@@ -943,6 +1039,8 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         const Piece& p0 = gone ? torn : original;
         if (p0.fallback && painted)
             continue;
+        if (solidsDrawn_ && (Built3D::Meshable(p0) || (p0.z < 0) != underPass_))
+            continue;
         const Material* ownMat = OwnMaterial(p0);
         if (gone && ownMat == nullptr)  // too small to show a frame: the part is simply gone
             continue;
@@ -959,6 +1057,17 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         // against the point's own direction from the body's centre, so it goes out across
         // the terminator rather than at it (#240). With no light at all it is night.
         Piece p = p0;
+        if (solidsDrawn_ && p.soft && built3d_ != nullptr)
+        {
+            // A glow on a lamp that stands on a mast: lifted with it, as the solid is.
+            Built3D::Frame lf;
+            lf.view = view_;
+            lf.clock = clock_;
+            lf.tiltDeg = tilt3d_;
+            const Vector2 up = built3d_->LiftShift(item, p.pos, p.spin, lf);
+            p.pos.x += up.x;
+            p.pos.y += up.y;
+        }
         if (p.onlyDark)
         {
             const Vector2          body = p.surface ? p.bodyPos : item.pos;
