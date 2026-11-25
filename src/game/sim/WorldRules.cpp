@@ -17,6 +17,7 @@ WorldRules::Jobs        g_jobs;
 WorldRules::Contracts   g_contracts;
 WorldRules::Holes       g_holes;
 WorldRules::Scan        g_scan;
+WorldRules::Ore         g_ore;
 WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
@@ -92,7 +93,8 @@ bool Load(const std::string& path)
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
             it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
-            it.key() != "hangars" && it.key() != "deliveries" && it.key() != "wrecks")
+            it.key() != "hangars" && it.key() != "deliveries" && it.key() != "wrecks" &&
+            it.key() != "ore")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -309,6 +311,17 @@ bool Load(const std::string& path)
     if (sc.seconds <= 0.0 || sc.power <= 0.0)
     {
         g_error = path + ": scan: seconds and power must be more than zero";
+        return false;
+    }
+    Ore oreRules;
+    if (j.contains("ore") && !ReadSection(j["ore"], path + ": ore",
+                                          { { "margin", &oreRules.margin },
+                                            { "fleetTurnover", &oreRules.fleetTurnover } },
+                                          {}, {}, g_error))
+        return false;
+    if (oreRules.margin < 1.0 || oreRules.fleetTurnover < 0.0 || oreRules.fleetTurnover > 1.0)
+    {
+        g_error = path + ": ore: margin must be at least 1, fleetTurnover between 0 and 1";
         return false;
     }
     // #431 slice 9's: the police's answer to a crime.
@@ -564,6 +577,7 @@ bool Load(const std::string& path)
     g_contracts = ct;
     g_holes = h;
     g_scan = sc;
+    g_ore = oreRules;
     g_law = lw;
     g_influence = inf;
     g_licences = lc;
@@ -670,6 +684,16 @@ const Holes& HoleRules()
 const Scan& ScanRules()
 {
     return g_scan;
+}
+
+const Ore& OreRules()
+{
+    return g_ore;
+}
+
+void SetOreRules(const Ore& o)
+{
+    g_ore = o;
 }
 
 void SetHoleRules(const Holes& h)

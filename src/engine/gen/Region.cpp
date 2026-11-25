@@ -15,6 +15,8 @@ namespace
 {
 using nlohmann::json;
 
+OreModel g_oreModel;
+
 constexpr double TWO_PI = 6.283185307179586;
 constexpr double EDGE = 860000.0;      // nothing generated orbits further out than this
 constexpr double CLEARANCE = 15000.0;  // between a planet's swept band and anything static
@@ -1820,6 +1822,123 @@ FactionId RegisterNatives(const nlohmann::json& natives)
     return f;
 }
 
+// A region's belts follow its need (#584). The stations a region has and the holdings that keep
+// fleets use goods up; run back through the recipes, that is so much Iron, Ice and Crystal an
+// hour (OreModel), and a belt gives a tenth of its ore an hour. Where the belts give less than
+// the need asked for with its margin, belts of an ore the region has more than it needs are made
+// the ore it lacks -- not the last of an ore in a system with a station in it -- and, if that is
+// not enough, the belts of the short ore grow, by at most three times. Belts never shrink: what
+// is too much is the miners' idling, not the generator's to take away. Whole numbers, in order
+// of system id and belt, so that every compiler sizes the same belts.
+void SizeOreToNeed(Region& region)
+{
+    const OreModel& m = GetOreModel();
+    if (!m.Active())
+        return;
+    static const char* ORES[3] = { "Iron", "Ice", "Crystal" };
+    auto               indexOf = [&](const std::string& r)
+    {
+        for (int k = 0; k < 3; k++)
+            if (r == ORES[k])
+                return k;
+        return -1;
+    };
+    long long need[3] = { 0, 0, 0 };
+    long long holdings = 0;
+    for (const auto& kv : region.documents)
+    {
+        const json& doc = kv.second;
+        if (!doc.contains("stations") || !doc["stations"].is_array() || doc["stations"].empty())
+            continue;
+        holdings++;
+        for (const json& st : doc["stations"])
+        {
+            const auto it = m.station.find(st.value("role", std::string()));
+            if (it != m.station.end())
+                for (int k = 0; k < 3; k++)
+                    need[k] += it->second[(size_t)k];
+        }
+    }
+    for (int k = 0; k < 3; k++)
+        need[k] += holdings * m.holding[(size_t)k];
+    const long long per = 1000 * m.regrowPermille;
+    long long       want[3];
+    for (int k = 0; k < 3; k++)
+        want[k] = (need[k] * m.marginPermille + per - 1) / per;
+
+    struct Belt
+    {
+        json*       b;
+        std::string system;
+        int         k;
+        bool        stationHere;
+    };
+    std::vector<Belt> belts;
+    for (auto& kv : region.documents)
+    {
+        json& doc = kv.second;
+        if (!doc.contains("asteroidFields") || !doc["asteroidFields"].is_array())
+            continue;
+        const bool here =
+            doc.contains("stations") && doc["stations"].is_array() && !doc["stations"].empty();
+        for (json& b : doc["asteroidFields"])
+            if (!b.contains("archetype") && b.contains("resource") && b["resource"].is_string() &&
+                b.contains("ore") && b["ore"].is_number())
+            {
+                const int k = indexOf(b["resource"].get<std::string>());
+                if (k >= 0)
+                    belts.push_back({ &b, kv.first, k, here });
+            }
+    }
+    long long have[3] = { 0, 0, 0 };
+    for (const Belt& b : belts)
+        have[b.k] += (*b.b)["ore"].get<long long>();
+    auto count = [&](const Belt& of)
+    {
+        int n = 0;
+        for (const Belt& o : belts)
+            n += o.system == of.system && o.k == of.k ? 1 : 0;
+        return n;
+    };
+    for (int k = 0; k < 3; k++)
+    {
+        while (have[k] < want[k])
+        {
+            // The donor: the biggest belt of an ore with more than it needs, whose loss leaves
+            // that ore still enough, and which is not the last of its ore where a station stands.
+            Belt* from = nullptr;
+            for (Belt& b : belts)
+            {
+                const long long ore = (*b.b)["ore"].get<long long>();
+                if (b.k == k || have[b.k] - ore < want[b.k] || (b.stationHere && count(b) <= 1))
+                    continue;
+                if (from == nullptr || ore > (*from->b)["ore"].get<long long>())
+                    from = &b;
+            }
+            if (from == nullptr)
+                break;
+            const long long ore = (*from->b)["ore"].get<long long>();
+            have[from->k] -= ore;
+            have[k] += ore;
+            (*from->b)["resource"] = ORES[k];
+            from->k = k;
+        }
+        if (have[k] > 0 && have[k] < want[k])
+        {
+            const long long to = std::min(want[k], 3 * have[k]);
+            long long       sum = 0;
+            for (Belt& b : belts)
+                if (b.k == k)
+                {
+                    const long long ore = (*b.b)["ore"].get<long long>();
+                    (*b.b)["ore"] = ore * to / have[k];
+                    sum += (*b.b)["ore"].get<long long>();
+                }
+            have[k] = sum;
+        }
+    }
+}
+
 // What nobody has found yet (#346): placed after the natives, who have not found it either --
 // their stations go where they know of ore, and these are placed around them. Hidden until a
 // pilot's scan resolves it, by the archetype's `signature`.
@@ -1880,6 +1999,16 @@ void PlaceHidden(const RegionParams& params, const std::vector<Node>& nodes, Reg
                             { "archetype", "derelict.cache" } });
             }
     }
+}
+
+void SetOreModel(const OreModel& m)
+{
+    g_oreModel = m;
+}
+
+const OreModel& GetOreModel()
+{
+    return g_oreModel;
 }
 
 Region GenerateRegion(const RegionParams& worldParams)
@@ -1949,10 +2078,13 @@ Region GenerateRegion(const RegionParams& worldParams)
         region.documents[n.id] =
             GenerateSystem(params, n, nodes, region.links, centre ? nullptr : &home);
     }
+    // A centre's stations are all there is, and this is where they are known.
+    SizeOreToNeed(region);
     if (centre)
         return region;  // settled long ago: whatever was rare here is in a museum
     PlaceFinds(params, nodes, region);
     PlaceNatives(params, nodes, region);
+    SizeOreToNeed(region);  // ...and the natives' (#566)
     PlaceHidden(params, nodes, region);
 
     // The wormhole's mouth in the home system: at the edge, facing the region, out of the

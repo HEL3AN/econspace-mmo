@@ -239,6 +239,15 @@ struct Scan
     double power = 1.0;
 };
 
+// What the generator sizes a region's belts for (#584): the end demand of its stations and
+// holdings, with `margin` over it, and what a holding's fleet loses an hour as a share of its
+// keep (the rate the cold fights in a bench show, not a tuning).
+struct Ore
+{
+    double margin = 1.0;
+    double fleetTurnover = 0.0;
+};
+
 // The police's answer to a crime (#431 slice 9): always real ships, never an invincible
 // police, and stronger and quicker the higher the system's security. A system is in the high
 // band from `highFrom`, the middle from `midFrom`, the low from `lowFrom`; below that nobody
@@ -580,6 +589,7 @@ const Jobs&        JobRules();
 const Contracts&   ContractRules();
 const Holes&       HoleRules();
 const Scan&        ScanRules();
+const Ore&         OreRules();
 const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
@@ -601,6 +611,7 @@ void SetJobRules(const Jobs& j);
 void SetContractRules(const Contracts& c);
 void SetHoleRules(const Holes& h);
 void SetScanRules(const Scan& s);
+void SetOreRules(const Ore& o);
 void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);

@@ -18,6 +18,7 @@
 #include "core/ShipDesign.h"
 #include "economy/Resource.h"
 #include "gen/Region.h"
+#include "entities/AsteroidField.h"
 #include "entities/Combatant.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
@@ -818,6 +819,24 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
             for (const auto& [k, n] : by)
                 printf(" %s %.0f%%", k.c_str(), 100.0 * n / all);
             printf("\n");
+        }
+        // What the belts give against what the region asks (#584): the ore of each kind in the
+        // centre's region and everywhere else.
+        {
+            double    ore[2][3] = {};
+            const int centre = sim.Skeleton().centres.front();
+            for (const auto& kv : sim.Systems())
+                for (const auto& e : kv.second.entities)
+                    if (e->GetKind() == EntityKind::Field)
+                    {
+                        const AsteroidField& f = static_cast<const AsteroidField&>(*e);
+                        const int            k = f.GetResource().Index();
+                        if (k >= 0 && k < 3)
+                            ore[Gen::SlotOf(kv.first) == centre ? 0 : 1][k] += f.GetOreMax();
+                    }
+            printf("\nBelts, the ore of Iron / Ice / Crystal: centre region %.0f / %.0f / %.0f, "
+                   "the rest %.0f / %.0f / %.0f\n",
+                   ore[0][0], ore[0][1], ore[0][2], ore[1][0], ore[1][1], ore[1][2]);
         }
         for (const auto& [slot, s] : sim.Styles())
         {

@@ -137,4 +137,10 @@ const MarketRules& Rules();
 const Industry* IndustryOf(const std::string& archetypeId);
 // What a planet of archetype `archetypeId` grows for a market in its system, per hour.
 const std::vector<std::pair<ResourceType, double>>* PlanetYield(const std::string& archetypeId);
+// Every kind of station the registry gives an industry, by archetype id.
+std::vector<std::string> IndustryIds();
+// What `demand` (units an hour, by good) comes to in ore, by good index (only the mined goods
+// are non-zero): a module is its parts, and any other good what the first recipe that makes
+// it takes, run back as far as ore. What a planet grows is free and stops the walk (#584).
+std::vector<double> OreFor(const std::vector<std::pair<ResourceType, double>>& demand);
 }  // namespace Goods

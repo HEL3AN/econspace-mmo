@@ -78,6 +78,67 @@ TEST_CASE("the generator's randomness is the same everywhere")
     CHECK(seen == std::set<int>{ 3, 4, 5, 6, 7 });
 }
 
+TEST_CASE("a region's belts follow what its stations and holdings need (#584)")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    // A model by hand: a trade hub uses 50 Iron an hour, a holding another 20; a belt gives a
+    // tenth of its ore an hour, and the region is asked for the need and a third.
+    Gen::OreModel m;
+    m.regrowPermille = 100;
+    m.marginPermille = 1333;
+    m.station["TradeHub"] = { 50000, 0, 0 };
+    m.station["MiningOutpost"] = { 10000, 0, 0 };
+    m.holding = { 20000, 0, 0 };
+    struct Restore
+    {
+        ~Restore() { Gen::SetOreModel(Gen::OreModel()); }
+    } restore;
+
+    const Gen::Region plain = Gen::GenerateRegion(Params(5, 3));
+    Gen::SetOreModel(m);
+    const Gen::Region sized = Gen::GenerateRegion(Params(5, 3));
+    Gen::SetOreModel(Gen::OreModel());
+
+    auto tally = [&](const Gen::Region& r, long long& iron, long long& need)
+    {
+        iron = 0;
+        need = 0;
+        long long holdings = 0;
+        for (const auto& kv : r.documents)
+        {
+            const auto& d = kv.second;
+            if (d.contains("asteroidFields"))
+                for (const auto& b : d["asteroidFields"])
+                    if (!b.contains("archetype") && b.value("resource", std::string()) == "Iron")
+                        iron += b.value("ore", 0);
+            if (d.contains("stations") && !d["stations"].empty())
+            {
+                holdings++;
+                for (const auto& st : d["stations"])
+                {
+                    const std::string role = st.value("role", std::string());
+                    need += role == "TradeHub" ? 50000 : (role == "MiningOutpost" ? 10000 : 0);
+                }
+            }
+        }
+        need += holdings * 20000;
+    };
+    long long ironPlain = 0, ironSized = 0, need = 0, unused = 0;
+    tally(plain, ironPlain, unused);
+    tally(sized, ironSized, need);
+    REQUIRE(need > 0);
+    // The belts give a tenth of their ore an hour: at least the need with its margin -- or, where
+    // the region cannot make that of its belts (a third at most), more than it was rolled with.
+    CHECK((ironSized * 100 * 1000 >= need * 1333 || ironSized > ironPlain));
+    CHECK(ironSized >= ironPlain);
+    // Whole numbers everywhere: the same model sizes the same belts again.
+    Gen::SetOreModel(m);
+    CHECK(Dump(Gen::GenerateRegion(Params(5, 3))) == Dump(sized));
+    Gen::SetOreModel(Gen::OreModel());
+    // ...and with no model the region is as it was rolled.
+    CHECK(Dump(Gen::GenerateRegion(Params(5, 3))) == Dump(plain));
+}
+
 TEST_CASE("the same seed makes the same region, byte for byte")
 {
     CHECK(Dump(Gen::GenerateRegion(Params(7))) == Dump(Gen::GenerateRegion(Params(7))));
@@ -97,7 +158,8 @@ TEST_CASE("the rules have not changed without saying so")
     // Natives name their systems from the cultures in factions.json (#431 slice 3): the
     // shipped file is part of what these hashes hold.
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
-    CHECK(Gen::GENERATOR_VERSION == 13);
+    Gen::SetOreModel(Gen::OreModel());  // as rolled: a simulation test may have armed one (#584)
+    CHECK(Gen::GENERATOR_VERSION == 14);
     // The skeleton has a version of its own (#342 S3): regions are sealed when they open and a
     // change to their rules leaves a live world alone, but the skeleton is always remade, so a
     // change to it is a change to every world -- bump Gen::SKELETON_VERSION with this hash.

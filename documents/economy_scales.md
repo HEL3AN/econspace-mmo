@@ -4,7 +4,7 @@ Status: **analysis, no code change** (refs #584; the rules just built are #566, 
 answers one question: a belt of 358 Iron gives a native holding about 36 Iron an hour, a
 cruiser takes 242, and the stations' recipes draw on the same Iron -- is that a one-off, or
 do the world's scales disagree by design? They disagree by design, and by a lot. The
-recommended set of rules is at the end (section 3); nothing in it is built.
+recommended set of rules is at the end (section 3). **Built since:** the trader pile-up (#594), R1 and R2 (#595), the yard plan that was dropped (#596, the cause of the yards-per-system finding) and R3 (ore from need, `Gen::OreModel`, GENERATOR_VERSION 14). R4 and R5 wait for a measure after these.
 
 ## Method
 

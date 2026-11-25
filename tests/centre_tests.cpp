@@ -267,7 +267,9 @@ TEST_CASE("a new world opens every centre and one frontier beside each (#342)")
     // shows here, by itself. Bump Gen::GENERATOR_VERSION when it does.
     const uint64_t            skeleton = Fnv1a(Gen::SkeletonJson(World(1, 3)).dump());
     const Gen::GalaxySkeleton first = World(1, 3);
-    const uint64_t            centre =
+    // As rolled: what a simulation armed is not the golden's (#584).
+    Gen::SetOreModel(Gen::OreModel());
+    const uint64_t centre =
         Fnv1a(Dump(Gen::GenerateRegion(Gen::SlotParams(first, first.centres.front()))));
     MESSAGE("skeleton with 3 centres, seed 1: " << skeleton);
     MESSAGE("first centre's region, seed 1: " << centre);
