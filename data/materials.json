@@ -687,6 +687,48 @@
             }
         },
         {
+            "id": "gatefield",
+            "note": "A built gate's field: energy held in a lane along its axis by the emitters, gathering into a core (#618). The lane is 2.6 times longer than wide, four emitters stand along it where `rungs` says (the gate's hoops are placed to match) and it ends in a core; amber-white, no hue of a natural phenomenon.",
+            "shader": "gatefield",
+            "bindings": {
+                "centre": "item.screenPos",
+                "radius": "item.screenSize",
+                "time": "clock.time",
+                "seed": "item.seed",
+                "turn": "item.angle",
+                "noiseTex": "texture.noise",
+                "aspect": 2.6,
+                "rungs": [-0.62, 0.34, 4.0],
+                "coreAt": 0.78,
+                "coreSize": 0.9,
+                "warm": [1.0, 0.62, 0.2],
+                "hot": [1.0, 0.93, 0.78],
+                "edgeTint": [0.6, 0.45, 0.95],
+                "tame": 0.0
+            }
+        },
+        {
+            "id": "gatefield.anchor",
+            "note": "The same field held round a natural mouth by an Anchor gate: a round lens with its core at the middle and no rungs, and a faint violet at the very edge, the hole it was made to hold (#618).",
+            "shader": "gatefield",
+            "bindings": {
+                "centre": "item.screenPos",
+                "radius": "item.screenSize",
+                "time": "clock.time",
+                "seed": "item.seed",
+                "turn": "item.angle",
+                "noiseTex": "texture.noise",
+                "aspect": 1.12,
+                "rungs": [0.0, 0.0, 0.0],
+                "coreAt": 0.0,
+                "coreSize": 0.5,
+                "warm": [1.0, 0.62, 0.2],
+                "hot": [1.0, 0.93, 0.78],
+                "edgeTint": [0.6, 0.45, 0.95],
+                "tame": 0.55
+            }
+        },
+        {
             "id": "nebula",
             "shader": "nebula",
             "bindings": {
@@ -757,6 +799,10 @@
         { "id": "ancient", "note": "Older than any culture: dark bronze, a gold line down every spine, worn smooth.",
           "base": [118, 110, 100], "accent": [214, 172, 92],
           "wear": 0.5, "grime": 0.3, "stripes": 2, "panels": 0.7,
-          "aspect": 4.0, "patchwork": 0.0, "warmth": 0.1, "windows": 0.0 }
+          "aspect": 4.0, "patchwork": 0.0, "warmth": 0.1, "windows": 0.0 },
+        { "id": "relay", "note": "A lane gate (#618 concepts): warm alloy like the stations it serves, an amber line, long plates, lit from within.",
+          "base": [236, 226, 210], "accent": [236, 170, 60],
+          "wear": 0.2, "grime": 0.2, "stripes": 1, "panels": 0.8,
+          "aspect": 3.4, "patchwork": 0.0, "warmth": 0.7, "windows": 0.0 }
     ]
 }
