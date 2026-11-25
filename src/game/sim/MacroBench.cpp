@@ -439,10 +439,8 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
         else
             snprintf(mem, sizeof(mem), "n/a");
         printf("| %d | %d | %d | %d | %d | %ld | %ld | %.1f | %.1f | %.3f | %.4f | %.3f | "
-               "%.3f | %.3f | %.2f / %.1f / %.1f | %.2f / %.2f | %.2f | %.2f | %.0f | %s |
-               ",
-               r.region,
-               r.systems, r.links, r.players, r.hot, r.statics, r.npcs, r.generateMs,
+               "%.3f | %.3f | %.2f / %.1f / %.1f | %.2f / %.2f | %.2f | %.2f | %.0f | %s |\n",
+               r.region, r.systems, r.links, r.players, r.hot, r.statics, r.npcs, r.generateMs,
                r.materializeMs, r.agentsMs, r.structuresMs, r.recountMs, r.macroMs, r.topUpMs,
                r.tickMs, r.worstTickMs, r.worstSteadyMs, r.routeKnownMs, r.routeAllMs, r.saveMs,
                r.saveBuildMs, r.saveBytes / 1024.0, mem);
