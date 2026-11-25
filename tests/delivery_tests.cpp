@@ -187,3 +187,70 @@ TEST_CASE("Delivery: a destroyed structure drops half of what it kept into its w
             found += static_cast<const Derelict&>(*e).Contents().Amount(Good::Iron());
     CHECK(found == 25);  // half of 40 and half of 10
 }
+
+TEST_CASE(
+    "Delivery: what is kept at a destroyed NPC station moves to the pilot's home after a day, "
+    "for a fee on arrival (#572)")
+{
+    World                         w;
+    const WorldRules::Deliveries& r = WorldRules::DeliveryRules();
+    const Entity*                 depot = nullptr;
+    for (const auto& e : w.st->entities)
+        if (e->GetId() == 990001)
+            depot = e.get();
+    REQUIRE(depot != nullptr);
+    const std::string depotKey = w.sim.HangarKey(*w.st, *depot);
+    w.sim.HangarOf(depotKey, "hunter", true)->goods.Add(Good::Iron(), 20);
+    w.s->homeStationId = 990002;  // the Annex
+
+    REQUIRE(w.sim.RemoveStatic(w.st->id, 990001));
+    // The hangar is gone with the station, and its goods are on their way -- but not yet there.
+    CHECK(w.sim.HangarOf(depotKey, "hunter", false) == nullptr);
+    const Entity* annex = nullptr;
+    for (const auto& e : w.st->entities)
+        if (e->GetId() == 990002)
+            annex = e.get();
+    REQUIRE(annex != nullptr);
+    const std::string annexKey = w.sim.HangarKey(*w.st, *annex);
+    w.sim.StepShipments();
+    CHECK(w.sim.HangarOf(annexKey, "hunter", false) == nullptr);
+
+    // A day later they are in the home hangar, and the fee -- a share of their value -- is paid.
+    const double money = w.s->account.GetMoney();
+    const Market prices;
+    const double value = 20.0 * prices.GetBasePrice(Good::Iron());
+    w.sim.SetTime(w.sim.Time() + r.lostHours * 3600.0 + 1.0);
+    w.sim.StepShipments();
+    Simulation::Hangar* home = w.sim.HangarOf(annexKey, "hunter", false);
+    REQUIRE(home != nullptr);
+    CHECK(home->goods.Amount(Good::Iron()) == 20);
+    CHECK(money - w.s->account.GetMoney() == doctest::Approx(value * r.lostFee));
+    CHECK(home->owed == doctest::Approx(0.0));
+}
+
+TEST_CASE(
+    "Delivery: a pilot who cannot pay the fee owes it on the hangar they were moved to (#572)")
+{
+    World         w;
+    const Entity* depot = nullptr;
+    for (const auto& e : w.st->entities)
+        if (e->GetId() == 990001)
+            depot = e.get();
+    REQUIRE(depot != nullptr);
+    w.sim.HangarOf(w.sim.HangarKey(*w.st, *depot), "hunter", true)->goods.Add(Good::Iron(), 500);
+    w.s->homeStationId = 990002;
+    w.s->account.SetMoney(0.5);
+    REQUIRE(w.sim.RemoveStatic(w.st->id, 990001));
+    w.sim.SetTime(w.sim.Time() + WorldRules::DeliveryRules().lostHours * 3600.0 + 1.0);
+    w.sim.StepShipments();
+    const Entity* annex = nullptr;
+    for (const auto& e : w.st->entities)
+        if (e->GetId() == 990002)
+            annex = e.get();
+    REQUIRE(annex != nullptr);
+    Simulation::Hangar* home = w.sim.HangarOf(w.sim.HangarKey(*w.st, *annex), "hunter", false);
+    REQUIRE(home != nullptr);
+    CHECK(home->goods.Amount(Good::Iron()) == 500);
+    CHECK(home->owed > 0.0);
+    CHECK(w.s->account.GetMoney() == doctest::Approx(0.5));
+}

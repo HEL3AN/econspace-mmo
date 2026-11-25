@@ -190,7 +190,9 @@
         "minHours": 1,
         "sameSystemHours": 1,
         "riskWeight": 2,
-        "hostileSurcharge": 1.5
+        "hostileSurcharge": 1.5,
+        "lostHours": 24,
+        "lostFee": 0.1
     },
     "security": {
         "policeSwing": 0.3,

@@ -330,6 +330,39 @@ int Simulation::ReservedFor(const std::string& account, const std::string& syste
     return n;
 }
 
+void Simulation::HangarsLost(SystemState& st, const Entity& station)
+{
+    const std::string key = HangarKey(st, station);
+    const auto        at = hangars_.find(key);
+    if (at == hangars_.end())
+        return;
+    const WorldRules::Deliveries& r = WorldRules::DeliveryRules();
+    const Market                  prices;
+    for (auto& [account, h] : at->second)
+    {
+        if (h.goods.Empty())
+            continue;
+        Shipment sh;
+        sh.id = nextShipment_++;
+        sh.account = account;
+        sh.goods = h.goods;
+        sh.from = station.GetName() + ", " + SystemName(st.id) + " (destroyed)";
+        sh.home = true;
+        sh.holder = h.holder;
+        sh.due = time_ + r.lostHours * HOUR;
+        for (const auto& g : sh.goods.All())
+            sh.value += g.second * prices.GetBasePrice(g.first);
+        sh.fee = sh.value * r.lostFee;
+        TellParty(InfluenceMap::PILOT + account,
+                  station.GetName() + " is gone: what you kept there, " +
+                      std::to_string(sh.goods.Used()) +
+                      " volume, will be moved to your home station in " +
+                      std::to_string((int)r.lostHours) + " h, for " + Cr(sh.fee) + " on arrival");
+        shipments_.push_back(std::move(sh));
+    }
+    hangars_.erase(at);
+}
+
 void Simulation::StepShipments()
 {
     for (size_t i = 0; i < shipments_.size();)
@@ -338,6 +371,45 @@ void Simulation::StepShipments()
         if (time_ < sh.due)
         {
             i++;
+            continue;
+        }
+        // From a destroyed station (#572): to the pilot's home, which is known while they are
+        // playing. Until then it waits, as a delivery to a place that is gone does.
+        if (sh.home)
+        {
+            ClientSession* pilot = nullptr;
+            for (auto& kv : sessions_)
+                if (kv.second.accountName == sh.account)
+                    pilot = &kv.second;
+            SystemState*  homeSys = nullptr;
+            const Entity* home = nullptr;
+            if (pilot != nullptr && pilot->homeStationId != 0)
+                for (auto& kv : systems_)
+                    for (const auto& e : kv.second.entities)
+                        if (e->GetId() == pilot->homeStationId &&
+                            e->GetKind() == EntityKind::Station)
+                        {
+                            homeSys = &kv.second;
+                            home = e.get();
+                        }
+            if (home == nullptr)
+            {
+                i++;
+                continue;
+            }
+            Hangar* into = HangarOf(HangarKey(*homeSys, *home), sh.account, true);
+            for (const auto& g : sh.goods.All())
+                into->goods.Add(g.first, g.second);
+            std::string why;
+            const bool  paid = PayRent(InfluenceMap::PILOT + sh.account, sh.holder, sh.fee, why);
+            if (!paid)
+                into->owed += sh.fee;  // the same lien as unpaid rent: closed until it is
+            TellParty(InfluenceMap::PILOT + sh.account,
+                      "What you kept at " + sh.from + " has been moved to " + home->GetName() +
+                          ": " + std::to_string(sh.goods.Used()) + " volume, " +
+                          (paid ? "the fee of " + Cr(sh.fee) + " paid"
+                                : "the fee of " + Cr(sh.fee) + " is owed and closes the hangar"));
+            shipments_.erase(shipments_.begin() + (long)i);
             continue;
         }
         // Into the hangar the pilot named: a station's, or a corporation structure's.
@@ -384,7 +456,9 @@ nlohmann::json Simulation::ShipmentsJson() const
                         { "toName", sh.toName },
                         { "due", sh.due },
                         { "fee", sh.fee },
-                        { "holder", sh.holder } });
+                        { "holder", sh.holder },
+                        { "home", sh.home },
+                        { "value", sh.value } });
     }
     return out;
 }
@@ -408,6 +482,8 @@ void Simulation::ShipmentsFrom(const nlohmann::json& j)
         sh.due = e.value("due", 0.0);
         sh.fee = e.value("fee", 0.0);
         sh.holder = e.value("holder", std::string());
+        sh.home = e.value("home", false);
+        sh.value = e.value("value", 0.0);
         if (e.contains("goods") && e["goods"].is_object())
             for (auto g = e["goods"].begin(); g != e["goods"].end(); ++g)
             {

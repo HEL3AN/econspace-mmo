@@ -429,6 +429,10 @@ struct Deliveries
     double sameSystemHours = 1.0;
     double riskWeight = 2.0;
     double hostileSurcharge = 1.5;
+    // A destroyed NPC station's hangars (#572): what is kept there is moved to the pilot's home
+    // station after `lostHours`, for `lostFee` of its value at base prices, paid on arrival.
+    double lostHours = 24.0;
+    double lostFee = 0.1;
 };
 
 // What security does, and how it is bought (#431 L5, slice 11). A system's security settles

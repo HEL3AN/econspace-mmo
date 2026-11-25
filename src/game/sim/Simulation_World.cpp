@@ -2023,6 +2023,9 @@ bool Simulation::RemoveStatic(const std::string& systemId, int id)
             s.RecordEvent(Ev::Kind::Undocked, (*it)->GetName() + " is gone; you are in space");
         }
     }
+    // What pilots kept in a station that is gone is moved to their homes (#572).
+    if ((*it)->GetKind() == EntityKind::Station)
+        HangarsLost(*st, **it);
     st->defenceCooldown.erase(id);
     st->provokedBy.erase(id);
     st->provokedByNpc.erase(id);
