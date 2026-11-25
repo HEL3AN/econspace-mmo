@@ -24,6 +24,7 @@
 #include "sim/ServerConfig.h"
 #include "sim/ServerLog.h"
 #include "sim/ServerOps.h"
+#include "sim/EventKinds.h"
 #include "sim/WorldRules.h"
 #include "gen/Galaxy.h"
 #include "gen/Pack.h"
@@ -161,6 +162,13 @@ void SetupHostSim(Simulation& sim, const std::string& dataDir, const std::string
     if (!WorldRules::Load(dataDir + "world_rules.json"))
     {
         Log::Errorf("FATAL: %s\n", WorldRules::Error().c_str());
+        exit(1);
+    }
+
+    // The world's own events (#617), after the archetypes their fields are checked against.
+    if (!FieldEvents::Load(dataDir + "events.json"))
+    {
+        Log::Errorf("FATAL: %s\n", FieldEvents::Error().c_str());
         exit(1);
     }
 
@@ -1836,6 +1844,24 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
             Log::Printf("A field of %.0f %s is in %s for %.1f h.\n", amount, ore.c_str(),
                         where.c_str(), hours);
     }
+    else if (verb == "event")
+    {
+        // One of the world's own events now (#617), for trying them and for the news: `event
+        // <kind> <system | pilot>`, made as an epoch's are but paid from no bank. `events` lists
+        // the kinds.
+        std::string kind, where;
+        in >> kind >> where;
+        for (const auto& kv : sim.Sessions())  // a pilot's name: where they are
+            if (!where.empty() && kv.second.accountName == where)
+                where = kv.second.systemId;
+        Simulation::FieldBirth b;
+        std::string            why;
+        if (!sim.BirthFieldNow(kind, where, b, why))
+            Log::Printf("No event: %s. Usage: event <kind> <system | pilot>, kinds:%s\n",
+                        why.c_str(), FieldEvents::Names().c_str());
+        else
+            Log::Printf("%s in %s: a field for %.1f h.\n", kind.c_str(), where.c_str(), b.hours);
+    }
     else if (verb == "drift")
     {
         int slot = -1;
@@ -1955,6 +1981,7 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
                     "tide | open [region] (a mouth now, from the region named or the one "
                     "nearest to breaking) | hole <system> [<to>] (a roaming hole now) | holes | "
                     "field <system | pilot> <ore> <amount> <hours> [size] (a field with a life) | "
+                    "event <kind> <system | pilot> (one of the world's own events now) | "
                     "drift <region> (into the archive now) | pause | resume "
                     "(growth) | destroy <name> (their ship is lost) | allow <name> | deny <name> | "
                     "ban <name> [reason] | unban <name> | "

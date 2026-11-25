@@ -19,6 +19,7 @@ WorldRules::Holes       g_holes;
 WorldRules::Scan        g_scan;
 WorldRules::Ore         g_ore;
 WorldRules::Fields      g_fields;
+WorldRules::Events      g_events;
 WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
@@ -98,7 +99,7 @@ bool Load(const std::string& path)
             it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
             it.key() != "hangars" && it.key() != "offices" && it.key() != "exchange" &&
             it.key() != "deliveries" && it.key() != "wrecks" && it.key() != "ore" &&
-            it.key() != "fields")
+            it.key() != "fields" && it.key() != "events")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -364,6 +365,53 @@ bool Load(const std::string& path)
             g_error = path + ": fields: the curve's shares must run 0 < bloomEnd <= richEnd < "
                              "thinEnd < 1, bloomFrom, thinTo and yieldFloor are shares, crew is "
                              "more than zero";
+            return false;
+        }
+    }
+    // The world's own events (#617).
+    Events eventRules;
+    if (j.contains("events"))
+    {
+        nlohmann::json section = j["events"];
+        if (section.is_object() && section.contains("frontierFlow"))
+        {
+            const nlohmann::json& flow = section["frontierFlow"];
+            if (!flow.is_object())
+            {
+                g_error = path + ": events: frontierFlow is an object of ore id to units an hour";
+                return false;
+            }
+            for (auto it = flow.begin(); it != flow.end(); ++it)
+            {
+                if (!it.value().is_number() || it.value().get<double>() < 0.0)
+                {
+                    g_error = path + ": events: frontierFlow '" + it.key() +
+                              "' is not a number of zero or more";
+                    return false;
+                }
+                eventRules.frontierFlow[it.key()] = it.value().get<double>();
+            }
+            section.erase("frontierFlow");
+        }
+        if (!ReadSection(
+                section, path + ": events",
+                { { "epochHours", &eventRules.epochHours },
+                  { "chance", &eventRules.chance },
+                  { "shareCentre", &eventRules.shareCentre },
+                  { "shareFrontier", &eventRules.shareFrontier },
+                  { "bankHours", &eventRules.bankHours },
+                  { "minOre", &eventRules.minOre },
+                  { "publicOre", &eventRules.publicOre },
+                  { "marketWeight", &eventRules.marketWeight },
+                  { "nearWeight", &eventRules.nearWeight } },
+                { { "preRollEpochs", &eventRules.preRollEpochs }, { "alive", &eventRules.alive } },
+                {}, g_error))
+            return false;
+        if (eventRules.epochHours <= 0.0 || eventRules.chance > 1.0 ||
+            eventRules.shareCentre > 1.0 || eventRules.shareFrontier > 1.0)
+        {
+            g_error = path + ": events: epochHours is above zero, chance and the shares are of 0 "
+                             "to 1";
             return false;
         }
     }
@@ -651,6 +699,7 @@ bool Load(const std::string& path)
     g_scan = sc;
     g_ore = oreRules;
     g_fields = fieldRules;
+    g_events = eventRules;
     g_law = lw;
     g_influence = inf;
     g_licences = lc;
@@ -779,6 +828,16 @@ const Fields& FieldRules()
 void SetFieldRules(const Fields& f)
 {
     g_fields = f;
+}
+
+const Events& EventRules()
+{
+    return g_events;
+}
+
+void SetEventRules(const Events& e)
+{
+    g_events = e;
 }
 
 void SetHoleRules(const Holes& h)

@@ -55,6 +55,11 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 default: break;
             }
 
+        // What this pilot has not found is not in the picture even as a moving point (#346): a
+        // satellite is in every snapshot, so a hidden one must be left out of it here (#617).
+        if (e->GetOrbit() && HiddenFrom(s, it->second, *e))
+            continue;
+
         Proto::EntitySnapshot es;
         es.id = e->GetId();
         es.pos = e->GetPosition();

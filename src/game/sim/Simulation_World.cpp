@@ -367,6 +367,13 @@ Gen::OreModel Simulation::OreModelFromData()
     };
     m.regrowPermille = std::llround(k.beltRegrow * 1000.0);
     m.marginPermille = std::llround(rules.margin * 1000.0);
+    // The belts carry what the events do not (#617): with no chance of an event they carry all.
+    const WorldRules::Events& events = WorldRules::EventRules();
+    if (events.chance > 0.0)
+    {
+        m.eventCentrePermille = std::llround(events.shareCentre * 1000.0);
+        m.eventFrontierPermille = std::llround(events.shareFrontier * 1000.0);
+    }
     if (m.regrowPermille <= 0)
         return Gen::OreModel();
     // A station's role, as a region document says it, from the kind of station it is.

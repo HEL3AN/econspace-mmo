@@ -264,6 +264,32 @@ struct Fields
     double     dockSeconds = 30.0;
 };
 
+// The world's own events that leave a field of ore behind (#617, data/events.json for the
+// kinds): epochs of `epochHours`, in each of which a live region has `chance` of something
+// happening; what it may spend is its ore bank, `share` of the region's need (a centre's and a
+// frontier's own) plus, in a frontier, `frontierFlow` of each ore, kept to `bankHours` of that
+// flow. `preRollEpochs` of past are decided for a region when it opens; a region keeps at most
+// `alive` fields at once; one smaller than `minOre` is not made and one of `publicOre` or more
+// is seen by everybody, a smaller one is a signature (#346); a system with a market is
+// `marketWeight` more likely to be the place and one a gate from a market `nearWeight` more. The
+// defaults are inert -- no chance -- so a world with no events in its data has none.
+struct Events
+{
+    double epochHours = 1.0;
+    double chance = 0.0;
+    double shareCentre = 0.4;
+    double shareFrontier = 0.7;
+    double bankHours = 48.0;
+    int    preRollEpochs = 24;
+    int    alive = 6;
+    double minOre = 100.0;
+    double publicOre = 400.0;
+    double marketWeight = 3.0;
+    double nearWeight = 2.0;
+    // Units an hour a frontier region adds to its bank, by ore id.
+    std::map<std::string, double> frontierFlow;
+};
+
 // The police's answer to a crime (#431 slice 9): always real ships, never an invincible
 // police, and stronger and quicker the higher the system's security. A system is in the high
 // band from `highFrom`, the middle from `midFrom`, the low from `lowFrom`; below that nobody
@@ -635,6 +661,7 @@ const Holes&       HoleRules();
 const Scan&        ScanRules();
 const Ore&         OreRules();
 const Fields&      FieldRules();
+const Events&      EventRules();
 const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
@@ -660,6 +687,7 @@ void SetHoleRules(const Holes& h);
 void SetScanRules(const Scan& s);
 void SetOreRules(const Ore& o);
 void SetFieldRules(const Fields& f);
+void SetEventRules(const Events& e);
 void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
