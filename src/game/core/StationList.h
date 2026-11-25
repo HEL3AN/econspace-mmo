@@ -64,7 +64,8 @@ enum class Berth
 
 struct HangarRow
 {
-    int         index = 0;  // in the catalog: what buy_ship and refit take
+    int         index = 0;  // the hull's, in the catalog: what buy_ship takes
+    int         key = -1;   // an owned ship's (#572): what switching and insuring take; -1 for sale
     std::string name;
     float       speed = 0.0f;
     int         cargo = 0;

@@ -41,7 +41,8 @@ std::string ClientSession::DesignOf(int catalogIndex) const
     if (it != shipDesigns.end())
         return it->second;
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    return catalogIndex >= 0 && catalogIndex < (int)catalog.size()
-               ? catalog[catalogIndex].stats.design
-               : std::string();
+    // `catalogIndex` is a ship's key (#572); the stock design is its hull's.
+    const int hull = ShipHull(catalogIndex);
+    return hull >= 0 && hull < (int)catalog.size() ? catalog[(size_t)hull].stats.design
+                                                   : std::string();
 }

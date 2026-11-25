@@ -195,3 +195,60 @@ TEST_CASE("A delivery on its way does not change the hull the client flies (#554
     REQUIRE(back.player.shipments.size() == 1);
     CHECK(back.player.shipments[0].to == "B");
 }
+
+TEST_CASE("Several ships of one hull: each its own key, hold, fit and policy, and saved (#572)")
+{
+    World w;
+    REQUIRE(w.s->ship->AddCargo(Good::Iron(), 3));
+    // A second scout: the starter is key 0, this one a thousand more.
+    REQUIRE(w.sim.BuyShip(*w.s, 0));
+    const int second = ShipKey(0, 1);
+    REQUIRE(w.s->Owns(0));
+    REQUIRE(w.s->Owns(second));
+    CHECK(w.s->Count(0) == 2);
+    CHECK(w.s->currentShip == second);
+    CHECK(w.s->ship->GetCargoAmount(Good::Iron()) == 0);  // its hold is its own
+    CHECK(w.s->berths.at(0).hold.Amount(Good::Iron()) == 3);
+    // A third takes the next free key, whichever of the two is flown.
+    REQUIRE(w.sim.BuyShip(*w.s, 0));
+    CHECK(w.s->Owns(ShipKey(0, 2)));
+
+    // Switching names the ship, not the hull; insuring does too.
+    REQUIRE(w.sim.SwitchShip(*w.s, 0));
+    CHECK(w.s->currentShip == 0);
+    CHECK(w.s->ship->GetCargoAmount(Good::Iron()) == 3);
+    CHECK_FALSE(w.sim.SwitchShip(*w.s, ShipKey(0, 5)));  // not theirs
+
+    // Lost: the one flown goes, the others stay; a starter that is lost is issued again.
+    REQUIRE(w.sim.SwitchShip(*w.s, second));
+    w.sim.ServerRespawnPlayer(*w.s);
+    CHECK_FALSE(w.s->Owns(second));
+    CHECK(w.s->Owns(0));
+    CHECK(w.s->Owns(ShipKey(0, 2)));
+    CHECK(w.s->currentShip == 0);
+
+    // Saved and read back, with the account version that says what a key is.
+    const TempDir     tmp;
+    const std::string path = tmp.Path("hunter_two_scouts.json");
+    REQUIRE(w.sim.SaveAccount(*w.s, path));
+    ClientSession& again = w.sim.CreateSession(w.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                               GetShipCatalog()[0].stats);
+    again.accountName = "hunter";
+    REQUIRE(w.sim.LoadAccount(again, path) == Save::Result::Ok);
+    CHECK(again.Count(0) == 2);
+    CHECK(again.Owns(0));
+    CHECK(again.Owns(ShipKey(0, 2)));
+    CHECK(Save::ACCOUNT_VERSION >= 13);
+}
+
+TEST_CASE("The snapshot names ships by key, and the hangar lists each one (#572)")
+{
+    World w;
+    REQUIRE(w.sim.BuyShip(*w.s, 0));
+    const Proto::PlayerView p = w.sim.BuildSnapshot(*w.s, w.st->id).player;
+    REQUIRE(p.ownedShips.size() == 2);
+    CHECK(p.ownedShips[0] == 0);
+    CHECK(p.ownedShips[1] == ShipKey(0, 1));
+    CHECK(p.shipIndex == ShipKey(0, 1));
+    CHECK(ShipHull(p.shipIndex) == 0);
+}

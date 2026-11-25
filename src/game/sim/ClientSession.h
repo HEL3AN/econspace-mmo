@@ -5,6 +5,7 @@
 
 #include "core/WorldLoader.h"
 #include "economy/Inventory.h"
+#include "entities/ShipType.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
 
@@ -59,12 +60,31 @@ struct ClientSession
     // The pilot asked for the assets view (#472 slice 9): the next snapshot carries it, once.
     mutable bool assetsDue = false;
 
-    bool Owns(int catalogIndex) const
+    // Whether this account has the ship with that key (see ShipKey): a first ship of a hull is
+    // its catalog index, so an old caller that asks by hull asks after the first.
+    bool Owns(int shipKey) const
     {
         for (int i : ownedShips)
-            if (i == catalogIndex)
+            if (i == shipKey)
                 return true;
         return false;
+    }
+    // How many ships of one hull the account has, and the key a new one takes: the first copy
+    // not in use (#572).
+    int Count(int hull) const
+    {
+        int n = 0;
+        for (int i : ownedShips)
+            if (ShipHull(i) == hull)
+                n++;
+        return n;
+    }
+    int NextKey(int hull) const
+    {
+        int copy = 0;
+        while (Owns(ShipKey(hull, copy)))
+            copy++;
+        return ShipKey(hull, copy);
     }
 
     // The design each owned hull flies (#279 fitting), by hull index: its stock design until

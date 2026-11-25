@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    80;  // 80: the market carries each good's target stock (a fourth number a line), so a client
+    81;  // 81: ships are told apart by a key (#572): `ships`, `ship`, `insure` and the switch
+         // command name a ship's key -- its hull's catalog index, plus 1000 for each earlier
+         // ship of that hull -- so an account may own several of a kind; `buy` names a hull;
+         // 80: the market carries each good's target stock (a fourth number a line), so a client
          // quotes several modules by the server's own price curve (#572);
          // 79: a mission may be a raid job (#345): MissionType::Raid;
          // 78: a mission may be a survey job (#345): MissionType::Survey, a plan's job like the

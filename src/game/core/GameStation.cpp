@@ -496,14 +496,16 @@ void Game::DrawHangarContent(const Ui::Frame& f)
         const Proto::PlayerView& pv = snapshot_.player;
         for (StationList::HangarRow& r : rows)
             for (size_t k = 0; k < pv.ownedShips.size(); k++)
-                if (pv.ownedShips[k] == r.index)
+                if (r.key >= 0 && pv.ownedShips[k] == r.key)
                 {
                     r.here = k >= pv.shipHere.size() || pv.shipHere[k] != 0;
                     r.place = k < pv.shipPlaces.size() ? pv.shipPlaces[k] : std::string();
                 }
     }
     if (hangarSel_ < 0)
-        hangarSel_ = CurrentShipIndex();
+        for (size_t k = 0; k < rows.size(); k++)
+            if (rows[k].key == CurrentShipIndex())
+                hangarSel_ = (int)k;
     hangarSel_ = rows.empty() ? -1 : std::clamp(hangarSel_, 0, (int)rows.size() - 1);
 
     Obs::View view;
@@ -523,11 +525,11 @@ void Game::DrawHangarContent(const Ui::Frame& f)
         switch (r.berth)
         {
             case StationList::Berth::Current:
-                return std::string(insured(r.index) ? "flying, ins." : "flying");
+                return std::string(insured(r.key) ? "flying, ins." : "flying");
             case StationList::Berth::Owned:
                 if (!r.here)
                     return std::string("parked away");
-                return std::string(insured(r.index) ? "owned, ins." : "owned");
+                return std::string(insured(r.key) ? "owned, ins." : "owned");
             case StationList::Berth::ForSale: break;
         }
         return Credits(r.price);
@@ -580,7 +582,7 @@ void Game::DrawHangarContent(const Ui::Frame& f)
         // (Obs::QuoteInsurance), refused here for the reasons the server would give.
         if (h.berth != StationList::Berth::ForSale)
         {
-            const Obs::InsuranceQuote q = Obs::QuoteInsurance(view, h.index);
+            const Obs::InsuranceQuote q = Obs::QuoteInsurance(view, h.key);
             L.Field("Worth here", TextFormat("%.0f cr", q.value), t.colors.text);
             if (q.cover > 0.0)
                 L.Field("Insured",
@@ -595,7 +597,7 @@ void Game::DrawHangarContent(const Ui::Frame& f)
                 if (L.Button("insure", TextFormat("Insure  %.0f cr", q.premium), true))
                 {
                     Proto::Command ic;
-                    ic.insureShip = h.index;
+                    ic.insureShip = h.key;
                     clientLink_->Send(Proto::EncodeCommand(ic));
                 }
                 L.Text(TextFormat("Pays %.0f cr if it is lost. A lost ship is gone with its fit "
@@ -635,7 +637,7 @@ void Game::DrawHangarContent(const Ui::Frame& f)
         {
             if (L.Button("switch", "Switch to it", true))
             {
-                c.refitShip = h.index;
+                c.refitShip = h.key;
                 clientLink_->Send(Proto::EncodeCommand(c));
             }
         }

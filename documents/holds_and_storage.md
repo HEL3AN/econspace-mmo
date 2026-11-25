@@ -177,6 +177,17 @@ storage is free, as Starsector's colony is.
 - **The faction changes, or the station becomes hostile.** The rent is owed to whoever owns the
   station when it falls due. Hostility is section 8.
 
+### Several hulls of one type (#572)
+
+An account may own as many ships of a hull as it can pay for. A ship is told apart by a **key**:
+the hull's catalog index for the first of a kind (so every older save and caller reads
+unchanged), and `index + 1000 x n` for the n-th more (`ShipKey`, `ShipHull` in `ShipType.h`).
+Every per-ship map -- berths, designs, policies, the account's `ships` -- is by key; the snapshot
+(`ownedShips`, `shipIndex`) and the switch and insure commands name keys, `buy` a hull.
+`ACCOUNT_VERSION` 13, `PROTO_VERSION` 81. The Ships tab lists each owned ship (the second Scout
+is "Scout #2") and then every hull on sale; the agent's `hangar` does the same, and
+`switch_ship` / `insure_ship` take "Scout #2".
+
 ### 2. Volume per good
 
 **Decided: yes, as integers**, with the tiers: Iron, Ice 10; Crystal, Food, Steel, Fuel 5;
