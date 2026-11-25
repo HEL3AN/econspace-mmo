@@ -687,6 +687,11 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                 }
             }
         }
+        // When each faction's shipyards were begun and opened (#566).
+        for (const ChronicleEntry& e : sim.Chronicle())
+            if (e.text.find("shipyard") != std::string::npos ||
+                e.text.find("Yards") != std::string::npos)
+                printf("YARD hour %.1f: %s\n", e.time / 3600.0, e.text.c_str());
         printf("\nSieges: %d sent, %d laid, %d destroyed an outpost, %d gave up, %d driven off, "
                "%d void; %d still running; %d relieved\n",
                sieges.sent, sieges.laid, sieges.destroyed, sieges.gaveUp, sieges.repelled,

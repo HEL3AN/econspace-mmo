@@ -99,7 +99,7 @@ void Simulation::StepHauls()
         // half of what it keeps, so a yard that others buy from is not emptied of the people
         // who run it while the migration that brings them back takes its time (#566).
         if (st.profile.markets <= 0 || st.agg.traders < WHOLE ||
-            st.agg.traders - 1.0f < 0.5f * (float)flags.traders)
+            st.agg.traders - 1.0f < (float)k.haulKeep * (float)flags.traders)
             continue;
         // One moment in each stretch of the clock, drawn from what is decided -- this system,
         // this stretch -- never from what came before.

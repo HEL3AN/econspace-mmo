@@ -10,7 +10,8 @@
         "haulEvery": 120,
         "haulCargo": 30,
         "haulMargin": 0.1,
-        "moduleMargin": 1.3
+        "moduleMargin": 1.3,
+        "haulKeep": 0.5
     },
     "goods": [
         { "id": "Iron",        "name": "Iron",         "tier": 0, "price": 10,  "stock": 400, "supply": "local", "mined": true, "volume": 10 },

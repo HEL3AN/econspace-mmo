@@ -93,6 +93,8 @@ struct MarketRules
     double haulEvery = 0.0;
     double haulCargo = 0.0;
     double haulMargin = 0.1;
+    // A system sends a hauler only if it is left with this share of the traders it keeps (#566).
+    double haulKeep = 0.5;
     // What a yard asks over the goods a module is made of (#472 slice 10): data, not code.
     double moduleMargin = 1.3;
 };

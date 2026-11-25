@@ -2210,6 +2210,11 @@ TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#
     sim.Seed(1234u);
     sim.InitGalaxy();
     sim.MaterializeAllSystems(systems);
+    // Ships are bought off the shelves (#566); this case is about where factions reach, not
+    // whether the markets can build their ships.
+    for (auto& kv : sim.Systems())
+        for (ResourceType g : AllResourceTypes())
+            sim.SystemById(kv.first)->market.SetStock(g, 1.0e5);
 
     std::map<std::string, FactionId> held;
     for (auto& kv : sim.Systems())

@@ -19,6 +19,7 @@
 // an enemy.
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
+#include "gen/Region.h"
 
 #include "core/Blueprint.h"
 #include "core/World.h"
@@ -793,7 +794,8 @@ void Simulation::Think(FactionId f)
         Settle,
         Siege,
         Anchor,
-        Upgrade
+        Upgrade,
+        Yard
     };
     Act         act = Act::None;
     float       bestScore = 0.0f;
@@ -1290,9 +1292,53 @@ void Simulation::Think(FactionId f)
             }
         }
 
+    // A yard where a market is held and the region has none to refit at (#566): any faction's,
+    // a native people's too, and a gang's where it holds a market -- from whatever it holds, a
+    // generated station as well as an outpost it founded. One a region, by the same need. No
+    // reserve is asked of it: it keeps no outposts for one to be set by, and what it can store
+    // is no more than a yard costs.
+    if ((int)upgrading.size() < works && BlueprintCost(Outposts::SHIPYARD_BLUEPRINT) > 0.0f)
+        for (auto& kv : systems_)
+        {
+            const SystemState& st = kv.second;
+            if (!st.agg.claimed || st.agg.controller != f || st.profile.markets <= 0 ||
+                upgrading.count(kv.first) != 0 || !RegionWantsYard(Gen::SlotOf(kv.first)) ||
+                mind.stock < BlueprintCost(Outposts::SHIPYARD_BLUEPRINT))
+                continue;
+            // The same gates as a yard grown from an outpost (#432): after a station to bring
+            // pilots, where enough passes through or is mined, none within reach, and room in
+            // the region's budget of stations.
+            const WorldRules::Growth& g = WorldRules::GrowthRules();
+            const int   slotStations = StationsIn(Gen::SlotOf(kv.first));
+            const float busy = std::max(std::clamp(st.agg.prosperity, 0.0f, 1.0f),
+                                        std::min(1.0f, st.profile.belts / 3.0f));
+            if (slotStations < g.shipyardAfter || slotStations >= g.stationsPerRegion ||
+                busy < (float)g.shipyardNeed || !ShipyardWanted(kv.first))
+                continue;
+            const float worth = (float)g.shipyardWorth * busy * std::min(1.0f, t.traffic + t.ore);
+            float       hostile = 0.0f;
+            for (FactionId o : Factions::All())
+                if (Hostile(f, o))
+                    hostile += st.agg.presence[o];
+            const float risk = hostile / t.capacity +
+                               Intelligence::LossRisk(mind.lostAt, kv.first, time_);
+            const float score = worth - risk / t.appetite;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                act = Act::Yard;
+                from = kv.first;
+            }
+        }
+
     if (act == Act::Upgrade)
     {
         BeginUpgrade(f, from, grow);
+        return;
+    }
+    if (act == Act::Yard)
+    {
+        BeginYard(f, from);
         return;
     }
     if (act == Act::Anchor)

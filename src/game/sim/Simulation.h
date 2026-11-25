@@ -636,6 +636,13 @@ public:
     // Whether a faction would want a shipyard for `systemId` (#432): none in its region,
     // standing or going up, and none within the growth rules' `shipyardReach` jumps.
     bool ShipyardWanted(const std::string& systemId) const;
+    // Whether region `slot` has no shipyard, standing or going up (#566): the one rule for every
+    // region, whoever holds a market in it -- a native people included.
+    bool RegionWantsYard(int slot) const;
+    // `f` begins a shipyard beside a station or market it holds at `systemId`: paid from its
+    // stock as any growth is, built in the blueprint's time, a station of its own when it is
+    // done. The plan's id, or 0.
+    int BeginYard(FactionId f, const std::string& systemId);
     // How many jumps from `systemId` the nearest market is -- a station's, or an outpost
     // market's: 0 where it has one, -1 where none is within reach.
     int MarketJumps(const std::string& systemId);
