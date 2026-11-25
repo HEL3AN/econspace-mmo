@@ -330,7 +330,7 @@ TEST_CASE("the wire carries a hauler's cargo, a wreck's and what is left of a be
     npc.cargo = Good::Named("Fuel").Index();
     npc.cargoAmount = 30;
     s.entities.push_back(npc);
-    s.belts.push_back({ 7, 120, 300 });
+    s.belts.push_back({ 7, 120, 300, 250 });
     Proto::Snapshot r;
     REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), r));
     REQUIRE(r.entities.size() == 1);
@@ -367,6 +367,7 @@ TEST_CASE("the wire carries a hauler's cargo, a wreck's and what is left of a be
         {
             CHECK(e.oreLeft == 120);
             CHECK(e.oreMax == 300);
+            CHECK(e.oreCap == 250);
         }
         if (e.id == 8)
             CHECK(e.holds == wreck.holds);

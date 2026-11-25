@@ -13,7 +13,7 @@ MCP protocol version: `2024-11-05`.
 
 ### `observe`
 
-Look at the world: the ship, the system, what is nearby, hostiles, and recent events. Start here, and call it again after anything changes. Use detail='full' only when deciding something. A structure says what it mends a second (#431): fire below that rate does nothing to it. Full detail lists your corporation's patrols; a guard ship nearby is a corporation's.
+Look at the world: the ship, the system, what is nearby, hostiles, and recent events. Start here, and call it again after anything changes. Use detail='full' only when deciding something. A structure says what it mends a second (#431): fire below that rate does nothing to it. A field of ore says what is left and, when it has a life (#617), what it can hold now and when it disperses: it thins as it ages, mining it gets slower, and what is not mined by the end is lost. Full detail lists your corporation's patrols; a guard ship nearby is a corporation's.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

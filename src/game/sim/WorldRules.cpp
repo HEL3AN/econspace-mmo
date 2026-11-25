@@ -18,6 +18,7 @@ WorldRules::Contracts   g_contracts;
 WorldRules::Holes       g_holes;
 WorldRules::Scan        g_scan;
 WorldRules::Ore         g_ore;
+WorldRules::Fields      g_fields;
 WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
@@ -95,7 +96,7 @@ bool Load(const std::string& path)
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
             it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
             it.key() != "hangars" && it.key() != "offices" && it.key() != "deliveries" &&
-            it.key() != "wrecks" && it.key() != "ore")
+            it.key() != "wrecks" && it.key() != "ore" && it.key() != "fields")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -324,6 +325,45 @@ bool Load(const std::string& path)
     {
         g_error = path + ": ore: margin must be at least 1, fleetTurnover between 0 and 1";
         return false;
+    }
+    // Fields with a life (#617): how they are worked, and the curve a new one follows.
+    Fields fieldRules;
+    if (j.contains("fields"))
+    {
+        nlohmann::json section = j["fields"];
+        if (section.is_object() && section.contains("curve"))
+        {
+            nlohmann::json curve = section["curve"];
+            section.erase("curve");
+            FieldCurve& c = fieldRules.curve;
+            if (!ReadSection(curve, path + ": fields.curve",
+                             { { "bloomEnd", &c.bloomEnd },
+                               { "bloomFrom", &c.bloomFrom },
+                               { "richEnd", &c.richEnd },
+                               { "thinEnd", &c.thinEnd },
+                               { "thinTo", &c.thinTo } },
+                             {}, {}, g_error))
+                return false;
+        }
+        if (!ReadSection(section, path + ": fields",
+                         { { "yieldFloor", &fieldRules.yieldFloor },
+                           { "crew", &fieldRules.crew },
+                           { "dockSeconds", &fieldRules.dockSeconds } },
+                         {}, {}, g_error))
+            return false;
+    }
+    {
+        const FieldCurve& c = fieldRules.curve;
+        if (!(c.bloomEnd > 0.0 && c.bloomEnd <= c.richEnd && c.richEnd < c.thinEnd &&
+              c.thinEnd < 1.0) ||
+            c.bloomFrom > 1.0 || c.thinTo > 1.0 || fieldRules.yieldFloor > 1.0 ||
+            fieldRules.crew <= 0.0)
+        {
+            g_error = path + ": fields: the curve's shares must run 0 < bloomEnd <= richEnd < "
+                             "thinEnd < 1, bloomFrom, thinTo and yieldFloor are shares, crew is "
+                             "more than zero";
+            return false;
+        }
     }
     // #431 slice 9's: the police's answer to a crime.
     Law lw;
@@ -592,6 +632,7 @@ bool Load(const std::string& path)
     g_holes = h;
     g_scan = sc;
     g_ore = oreRules;
+    g_fields = fieldRules;
     g_law = lw;
     g_influence = inf;
     g_licences = lc;
@@ -709,6 +750,16 @@ const Ore& OreRules()
 void SetOreRules(const Ore& o)
 {
     g_ore = o;
+}
+
+const Fields& FieldRules()
+{
+    return g_fields;
+}
+
+void SetFieldRules(const Fields& f)
+{
+    g_fields = f;
 }
 
 void SetHoleRules(const Holes& h)

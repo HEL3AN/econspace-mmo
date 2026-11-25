@@ -120,7 +120,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         if (e->GetKind() == EntityKind::Field && !HiddenFrom(s, it->second, *e))
         {
             const AsteroidField& f = static_cast<const AsteroidField&>(*e);
-            snap.belts.push_back({ f.GetId(), (int)f.GetOre(), f.GetOreMax() });
+            snap.belts.push_back(
+                { f.GetId(), (int)f.OreAt(time_), f.GetOreMax(), (int)f.CapAt(time_) });
         }
 
     // Physical view of the player's ship. Everything here is authoritative: the client
@@ -408,8 +409,14 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             break;
         }
         case EntityKind::Field:
-            el.resource = static_cast<const AsteroidField&>(e).GetResource().Index();
+        {
+            const AsteroidField& f = static_cast<const AsteroidField&>(e);
+            el.resource = f.GetResource().Index();
+            // A field with a life says when it is gone (#617).
+            if (f.HasLife())
+                el.expiresAt = f.EndsAt();
             break;
+        }
         case EntityKind::Gate:
             el.dest = static_cast<const JumpGate&>(e).GetDestination();
             // An unstable mouth's collapse (#342 S4): a time, so every client counts it down.

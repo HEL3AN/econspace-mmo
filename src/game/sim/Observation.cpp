@@ -176,8 +176,17 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
     if (e.kind == Proto::EntityKind::Field && e.ore >= 0)
     {
         extra = "  " + ResourceName(ResourceType::FromIndex(e.ore));
-        if (e.oreMax > 0)  // what is left of it (#348)
-            extra += Fmt(" %d/%d left", e.oreLeft, e.oreMax);
+        if (e.oreMax > 0)  // what is left of it (#348), and of what it can hold now (#617)
+            extra += e.oreCap >= 0 && e.oreCap < e.oreMax
+                         ? Fmt(" %d/%d left (holds %d now)", e.oreLeft, e.oreMax, e.oreCap)
+                         : Fmt(" %d/%d left", e.oreLeft, e.oreMax);
+        // A field with a life says when it is gone.
+        if (layout != nullptr)
+        {
+            auto it = layout->find(e.id);
+            if (it != layout->end() && it->second.expiresAt > now)
+                extra += Fmt("  disperses in %.1f h", (it->second.expiresAt - now) / 3600.0);
+        }
     }
     // What a wreck or a can holds (#343, #472).
     if (e.kind == Proto::EntityKind::Derelict && InventoryList::Total(e.holds) > 0)

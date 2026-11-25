@@ -114,6 +114,11 @@ double Market::Stock(ResourceType type) const
     return i < stock_.size() ? stock_[i] : Target(type);
 }
 
+double Market::Room(ResourceType type) const
+{
+    return std::max(0.0, Target(type) * STOCK_CAP - Stock(type));
+}
+
 void Market::SetStock(ResourceType type, double stock)
 {
     Fit();
@@ -158,6 +163,30 @@ double Market::Buy(ResourceType type, int amount, int& bought)
     return cost;
 }
 
+Market::Flow Market::FlowOf(ResourceType type) const
+{
+    const size_t i = (size_t)type.Index();
+    return i < flow_.size() ? flow_[i] : Flow();
+}
+
+void Market::NoteMined(ResourceType type, double amount, bool fromField)
+{
+    const size_t i = (size_t)type.Index();
+    if (flow_.size() <= i)
+        flow_.resize(i + 1);
+    flow_[i].mined += amount;
+    if (fromField)
+        flow_[i].fromFields += amount;
+}
+
+void Market::NoteDispersed(ResourceType type, double amount)
+{
+    const size_t i = (size_t)type.Index();
+    if (flow_.size() <= i)
+        flow_.resize(i + 1);
+    flow_[i].dispersed += amount;
+}
+
 void Market::Reserve(ResourceType type, double amount)
 {
     const size_t i = (size_t)type.Index();
@@ -170,6 +199,16 @@ void Market::Step(const MarketRates& rates, double hours)
 {
     Fit();
     const size_t n = stock_.size();
+    if (flow_.size() < n)
+        flow_.resize(n);
+    // What the industries would draw, for the bench (#617): every recipe at its rate and every
+    // use, whatever the shelf holds.
+    for (const Recipe& r : rates.recipes)
+        for (const auto& in : r.in)
+            if ((size_t)in.first.Index() < n)
+                flow_[(size_t)in.first.Index()].wanted += r.rate * in.second * hours;
+    for (size_t i = 0; i < n && i < rates.use.size(); i++)
+        flow_[i].wanted += rates.use[i] * hours;
     for (size_t i = 0; i < n && i < rates.source.size(); i++)
         stock_[i] += rates.source[i] * hours;
     // Recipes in the order the system lists them: an input two of them share goes to the
@@ -212,7 +251,12 @@ void Market::Step(const MarketRates& rates, double hours)
     for (size_t i = 0; i < n && i < rates.use.size(); i++)
         stock_[i] -= std::min(stock_[i], rates.use[i] * hours);
     for (size_t i = 0; i < n; i++)
-        stock_[i] = std::clamp(stock_[i], 0.0, Target(ResourceType::FromIndex((int)i)) * STOCK_CAP);
+    {
+        const double cap = Target(ResourceType::FromIndex((int)i)) * STOCK_CAP;
+        if (stock_[i] > cap)
+            flow_[i].clipped += stock_[i] - cap;
+        stock_[i] = std::clamp(stock_[i], 0.0, cap);
+    }
 }
 
 int HaulAmount(const Market& from, const Market& to, ResourceType type, int cap)

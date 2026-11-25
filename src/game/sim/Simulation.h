@@ -321,6 +321,15 @@ public:
     // `maxMass`, for `hours`, `budget` in all. Its id, or empty when either system is not.
     std::string OpenHoleNow(const std::string& a, const std::string& b, double maxMass,
                             double hours, double budget);
+    // Fields with a life (#617, documents/mining_and_fields.md). Admin and tests: a field of
+    // `ore`, made to hold `amount` at its fullest, born now and gone in `hours`, at `pos` of
+    // `systemId` -- added through AddStatic, so a layout delta tells the clients, and ended by
+    // the schedule. Its id, or 0 when the system, the ore or the numbers are no good.
+    int PlaceField(const std::string& systemId, ResourceType ore, int amount, double hours,
+                   float size, Vector2 pos);
+    // A spot for one by hand: `distance` ahead of the pilot `pilot` is flying, or where nothing
+    // else is, in the system `systemId`.
+    Vector2 FieldSpot(const std::string& systemId, const ClientSession* pilot) const;
     // The links this pilot knows through roaming holes, each with its tail (kind "hole").
     std::vector<WorldLoader::SystemLink> HoleLinksOf(const ClientSession& s) const;
     // The galaxy index as this pilot knows it (#144, #431): the public charts, their own and
@@ -2231,6 +2240,10 @@ private:
     // `seconds` of what a system's belts, planets and stations do to its market, and of the
     // trade nobody flies (#343): the same arithmetic hot or cold, in the coarse pass.
     void StepMarket(SystemState& st, float seconds);
+    // The system's miners at its fields with a life (#617): each takes what a ship of the
+    // faction's miner design carries between the field and the nearest market, and no more
+    // than the shelf has room for. The belts' own rule stays as it was.
+    void WorkFields(SystemState& st, const std::vector<AsteroidField*>& fields, double hours);
     // A hot system nobody has been in for COOL_AFTER: its ships are counted into the
     // aggregate and let go.
     void Cool(SystemState& st);
@@ -2590,6 +2603,8 @@ private:
     FactionDirector director_;
     // FighterOf by faction id and role, for the catalogue load it was derived from. Not saved.
     mutable std::map<std::pair<std::string, int>, Ships::Fighter> fighters_;
+    mutable Ships::Miner                                          miner_;
+    mutable unsigned                                              minerFrom_ = ~0u;
     mutable unsigned                                              fightersFrom_ = 0;
     // Ships::DesignFighter by design id (#464), the same way. Not saved.
     mutable std::map<std::string, Ships::Fighter> designFighters_;

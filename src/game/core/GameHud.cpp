@@ -767,10 +767,22 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 // What is left (#348): mined by everyone, growing back slowly.
                 if (e->oreMax > 0)
                 {
-                    const float left = (float)e->oreLeft / (float)e->oreMax;
-                    L.Field("Left", TextFormat("%d of %d", e->oreLeft, e->oreMax),
+                    // A field with a life holds less as it ages (#617): of what it can hold now.
+                    const int   cap = e->oreCap >= 0 ? std::min(e->oreCap, e->oreMax) : e->oreMax;
+                    const float left = (float)e->oreLeft / (float)std::max(1, cap);
+                    L.Field("Left", TextFormat("%d of %d", e->oreLeft, cap),
                             left > 0.3f ? t.colors.text : t.colors.warn);
                     L.Bar(Clamp(left, 0.0f, 1.0f), left > 0.3f ? t.colors.good : t.colors.warn);
+                }
+                const auto lay = layout_.byId.find(e->id);
+                if (lay != layout_.byId.end() && lay->second.expiresAt > 0.0)
+                {
+                    const double gone =
+                        std::max(0.0, lay->second.expiresAt - worldClock_.Now(GetTime()));
+                    L.Field(
+                        "Disperses in",
+                        TextFormat("%d h %02d min", (int)(gone / 3600.0), (int)(gone / 60.0) % 60),
+                        t.colors.dim);
                 }
             }
             else if (e->kind == Proto::EntityKind::Gate)

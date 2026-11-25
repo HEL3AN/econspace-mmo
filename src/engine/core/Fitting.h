@@ -105,6 +105,18 @@ Fighter RoleFighter(const Catalogue& c, const std::string& faction, const std::s
 // does not derive or is not known.
 Fighter DesignFighter(const Catalogue& c, const std::string& id);
 
+// What a faction's miners do (#617): the mean of the designs its doctrine names for the
+// "miner" role -- the mining rate in units a second at a deposit's extract rate of 1, the
+// ore they hold, and the speed they fly at -- from the same stats a player's ship of that
+// design has. Zero for a doctrine with no miner that derives.
+struct Miner
+{
+    float rate = 0.0f;
+    float hold = 0.0f;
+    float speed = 0.0f;
+};
+Miner RoleMiner(const Catalogue& c, const std::string& faction);
+
 // What one of `faction`'s warships takes off a structure per second (the owner's rule of
 // 2026-10-22: no hand-tuned number stands in for the world): RoleFighter's dps for "warship".
 // A siege's ship is the faction's own warship design, so a faction that fields a heavier gun

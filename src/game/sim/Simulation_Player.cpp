@@ -716,6 +716,12 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
             continue;
         AsteroidField* field =
             e->GetKind() == EntityKind::Field ? static_cast<AsteroidField*>(e.get()) : nullptr;
+        if (field != nullptr && field->HasLife())
+        {
+            const double lost = field->Age(time_);  // the cap's fall since the last look (#617)
+            if (lost > 0.0)
+                st.market.NoteDispersed(field->GetResource(), lost);
+        }
         if (field == nullptr || !field->HasOre())
             continue;
         // A belt nobody told them of is not theirs to mine (#346): it is scanned for first.
@@ -732,8 +738,10 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
         // The ship sets the pace, the deposit how rich it is (#193), and the mining skill
         // (passed as a multiplier) speeds both up.
         // ...and the poorer the system's security, the richer the pickings (#431 L5, slice 11).
+        // ...and the thinner a field with a life is, the slower it gives (#617).
         float rate = s.ship->GetStats().miningRate * e->GetArchetype()->extractRate * miningBonus *
-                     (float)WorldRules::SecurityRules().Ore(st.agg.security);
+                     (float)WorldRules::SecurityRules().Ore(st.agg.security) *
+                     (float)field->Density(time_, WorldRules::FieldRules().yieldFloor);
         s.miningProgress += rate * dt;
         while (s.miningProgress >= 1.0f)
         {

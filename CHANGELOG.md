@@ -15,6 +15,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 0.1 client cannot join and the next playtest starts on a fresh world.
 
 ### World, knowledge and territory
+- A field of ore can have a life: its cap rises, holds, thins and ends with its age, a pull is slower the thinner it is, ore the cap takes away unmined is lost, and the system's miners work it at the rate of the miner design -- the hold they carry between the field and the market -- never past the shelf's room. An admin places one with the console's `field`; the target panel shows what it holds now and when it disperses (#617).
 - A player's finished station (trade, mining, shipyard) has a mission board -- the holder's jobs and work of its own -- and counts against the region's cap on stations, as a faction's does (#438).
 - A job nobody takes is filled by the faction's own hauler or patrol after a while, at the same price to its stock (#345).
 - Plan jobs are in the chronicle: taken, and done -- a raid or a siege broken is news too (#345).
