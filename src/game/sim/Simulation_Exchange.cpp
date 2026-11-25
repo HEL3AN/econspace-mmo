@@ -560,7 +560,8 @@ void Simulation::ApplyDeal(ClientSession& s, const Proto::Act::Deal& a)
         }
         if (s.trade.with != 0)
             CancelTrade(s, "");
-        s.trade = ClientSession::Trade{ p->id };
+        s.trade = ClientSession::Trade{};
+        s.trade.with = p->id;
         s.trade.version = 1;
         if (p->trade.with == s.id)  // they asked first: the trade is open
         {
