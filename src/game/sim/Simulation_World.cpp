@@ -1227,6 +1227,7 @@ bool Simulation::SaveWorld(const std::string& path) const
                     pj["reliefForce"] = p.reliefForce;
                     pj["reliefAt"] = p.reliefAt;
                     pj["reliefHere"] = p.reliefHere;
+                    pj["reliefIn"] = p.reliefIn;
                 }
                 json resist = json::array();
                 for (const auto& row : p.resist)
@@ -1563,6 +1564,18 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                     p.reliefForce = std::max(0.0f, pj.value("reliefForce", 0.0f));
                     p.reliefAt = pj.value("reliefAt", 0.0);
                     p.reliefHere = pj.value("reliefHere", false);
+                    // A plan saved when the whole relief came together at `reliefAt` (the
+                    // farthest contingent's landing): all of it, or none.
+                    if (pj.contains("reliefIn"))
+                        p.reliefIn = std::clamp(pj.value("reliefIn", 0), 0, (int)p.relief.size());
+                    else
+                    {
+                        p.reliefIn = p.reliefHere ? (int)p.relief.size() : 0;
+                        int far = 1;
+                        for (const Plan::Lent& l : p.relief)
+                            far = std::max(far, l.hops);
+                        p.reliefAt -= far * (double)Blueprints::SiegeRules().hop;
+                    }
                 }
                 // What they have to lose (#568); an older plan reads as the doctrine's.
                 const json* rs =

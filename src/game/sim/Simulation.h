@@ -725,21 +725,38 @@ public:
     // Hull one of `f`'s besieging warships takes off a structure a second: its own warship
     // design's guns (Ships::WarshipDps). The planner and the siege pass both read it.
     float WarshipDps(FactionId f) const { return FighterOf(f, NpcRole::Warship).dps; }
-    // How a siege would go by the pass's own arithmetic (#568), played forward in steps: `f`'s
-    // `sent` warships against `g`'s `garrison` and the `relief` its holdings in reach would lend,
-    // which stands with it `reliefAfter` seconds in; the wall `wall` points, mended `mend` a
-    // second if `mends`, taking `fx` of what the besiegers fire (Blueprints::WallEffect). Both
-    // sides bleed by Ships::Bite as the pass has them. `falls` says whether the wall comes down
-    // within the siege's seconds, `seconds` when, `left` what is left of the force.
+    // How a siege would go by the pass's own arithmetic (#568), played forward in steps: the
+    // fleet `by` and `sent` ships against `g`'s `garrison` and its relief (force, seconds in:
+    // each contingent stands with the garrison when its jumps are done); the wall `wall`
+    // points, mended `mend` a second if `mends`, taking `fx` of what the besiegers fire
+    // (Blueprints::WallEffect). Both sides bleed by Ships::Bite as the pass has them. `falls`
+    // says whether the wall comes down within the siege's seconds, `seconds` when, `left` what
+    // is left of the force.
     struct SiegeOdds
     {
         bool  falls = false;
         float seconds = 0.0f, left = 0.0f;
     };
-    SiegeOdds ForecastSiege(FactionId f, FactionId g, float sent, float garrison, float relief,
-                            double reliefAfter, float wall, float mend, bool mends, float fx) const;
-    // What `g`'s holdings in reach of `target` could lend a siege there, and the farthest jump.
-    std::pair<float, int> ReliefFor(FactionId g, const std::string& target) const;
+    SiegeOdds ForecastSiege(const Ships::Fighter& by, FactionId g, float sent, float garrison,
+                            const std::vector<std::pair<float, double>>& relief, float wall,
+                            float mend, bool mends, float fx) const;
+    // What `g`'s holdings in reach of `target` could actually lend a siege there, each with its
+    // jumps: what the pass's relief would take.
+    std::vector<Plan::Lent> ReliefFor(FactionId g, const std::string& target) const;
+    // The mean of the warship fleets of the holdings that would lend `lent`, by force: what a
+    // siege from them would fight with, as BeginSiege takes it.
+    Ships::Fighter FleetOf(FactionId f, const std::vector<Plan::Lent>& lent) const;
+    // The chance a siege of `wall` by `f`'s `lend` takes it, and the ships it expects to lose
+    // (#568): the forecast played over what the planner cannot know -- the garrison as last
+    // seen (`staleness` in Intelligence units widens it), the relief in whole, in part or not at
+    // all, on time or late. Equal weight to each case.
+    struct SiegeChance
+    {
+        float win = 0.0f, lost = 0.0f;
+    };
+    SiegeChance AssessSiege(FactionId f, FactionId g, const std::vector<Plan::Lent>& lend,
+                            const std::string& target, float garrison, float staleness,
+                            const Blueprint& wall, bool mends) const;
     // The strength of `f` in a system that is besieging an outpost there rather than
     // patrolling it: warships where the system is hot, never the director's police or pirates.
     float SiegeForceIn(const std::string& systemId, FactionId f) const;

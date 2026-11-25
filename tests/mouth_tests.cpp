@@ -370,6 +370,8 @@ TEST_CASE("an Anchor makes a mouth permanent gates named for its builder, until 
 TEST_CASE("a faction anchors a mouth by its own reckoning, and the same cold as hot (#342 S4)")
 {
     LoadRegistries();
+    // The shipped walls: nobody can take one cheaply, so the stock goes into the Anchor.
+    REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     Rules      r;
     Simulation cold, hot;
     hot.SetAllHot(true);

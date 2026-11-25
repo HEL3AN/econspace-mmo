@@ -756,6 +756,11 @@ void Simulation::Think(FactionId f)
     const bool canSiege = !weak && !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
     // ...and what each of its own warships would take off the wall a second.
     const float dps = WarshipDps(f);
+    // What the ships a siege is expected to lose cost it (#568): the share of the force it
+    // stakes, and the less the more it can make good -- a deep stock, in outposts' worth, buys
+    // ships and a faction with it minds a lost fleet less (its stock, not a number of ours).
+    auto ventureCost = [&](float lost, float stake)
+    { return lost / std::max(stake, 1.0f) / (1.0f + mind.stock / std::max(cost, 1.0f)); };
     // ...made of what its warships fire (#557): how much of it a wall's layers take, read by
     // the wall it would be against.
     const Ships::TypeValues fire = FighterOf(f, NpcRole::Warship).mix;
@@ -765,9 +770,6 @@ void Simulation::Think(FactionId f)
     // next door, so the ordinary one's hull, mended as a supplied one is.
     const Blueprint* plain = Blueprints::Find(Outposts::BLUEPRINT);
     const float      wall = plain != nullptr ? plain->hull : 0.0f;
-    // ...at its tier's rate, hull a second (#431 D1): fire below it does nothing.
-    const float mend = plain != nullptr ? plain->mend * wall : 0.0f;
-    const float plainFx = wallFx(plain);
     // One Anchor at a time, paid for like an outpost (#342 S4) -- and an Anchor's hull, for a
     // rival weighing whether it could bring one down.
     const float      anchorCost = AnchorCost();
@@ -775,8 +777,6 @@ void Simulation::Think(FactionId f)
                                  anchorCost > 0.0f && mind.stock >= anchorCost + reserve;
     const Blueprint* anchorBp = Blueprints::Find(ANCHOR_BLUEPRINT);
     const float      anchorWall = anchorBp != nullptr ? anchorBp->hull : 0.0f;
-    const float      anchorMend = anchorBp != nullptr ? anchorBp->mend * anchorWall : 0.0f;
-    const float      anchorFx = wallFx(anchorBp);
 
     enum class Act
     {
@@ -988,13 +988,14 @@ void Simulation::Think(FactionId f)
                     hops = std::max(hops, l.hops);
                 }
                 const float travel = hops * siege.hop;
-                // How it would go by the pass's own arithmetic, with the relief the holder's
-                // holdings in reach would lend counted (#568).
-                const auto relief = ReliefFor(g, nid);
-                const auto odds = ForecastSiege(f, g, sent, garrison, relief.first,
-                                                (double)relief.second * siege.hop, wall, mend,
-                                                seen->claimed, plainFx);
-                if (sent < 1.5f || !odds.falls)
+                // The chance it takes the wall, and what it expects to lose trying (#568): the
+                // pass's own arithmetic over what it cannot know of the holder's answer.
+                if (plain == nullptr || sent < 1.5f)
+                    break;
+                const auto chance = AssessSiege(f, g, pool->second.first, nid, garrison,
+                                                Intelligence::Staleness(*seen, time_ + travel),
+                                                *plain, seen->claimed);
+                if (chance.win <= 0.0f)
                     break;
                 int guns = 0;
                 for (FactionId d : o.defenders)
@@ -1012,12 +1013,11 @@ void Simulation::Think(FactionId f)
                 // The share of its force the garrison would tie up, the guns, and how much
                 // of its time there it would take to bring the outpost down -- all as it
                 // saw them, and that sighting will be older by the time it has got there.
-                const float risk = siege.defence * garrison / sent + 0.5f * guns +
-                                   odds.seconds / siege.seconds + (sent - odds.left) / sent;
-                const float score =
-                    worth - Intelligence::BelievedRisk(
-                                risk, Intelligence::Staleness(*seen, time_ + travel)) /
-                                t.appetite;
+                // Worth what it wins, weighed by the chance; against what it expects to lose
+                // and what it spends either way, which a faction with a deep stock and a big
+                // fleet minds less (its stock and its ships, not a number).
+                const float score = chance.win * worth -
+                                    (ventureCost(chance.lost, sent) + 0.5f * guns) / t.appetite;
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -1076,21 +1076,18 @@ void Simulation::Think(FactionId f)
                     hops = std::max(hops, l.hops);
                 }
                 const float garrison = seen.presence[g];
-                const auto  relief = ReliefFor(g, nid);
-                const auto  odds = ForecastSiege(f, g, sent, garrison, relief.first,
-                                                 (double)relief.second * siege.hop, anchorWall,
-                                                 anchorMend, true, anchorFx);  // it always mends
-                if (sent < 1.5f || !odds.falls)
+                if (anchorBp == nullptr || sent < 1.5f)
+                    break;
+                const auto chance = AssessSiege(
+                    f, g, pool->second.first, nid, garrison,
+                    Intelligence::Staleness(seen, time_ + static_cast<double>(hops) * siege.hop),
+                    *anchorBp, true);  // an Anchor always mends
+                if (chance.win <= 0.0f)
                     break;
                 const float worth =
                     entry != mind.intel.end() ? promise(entry->second) : t.unclaimed + t.curiosity;
-                const float risk = siege.defence * garrison / sent + odds.seconds / siege.seconds +
-                                   (sent - odds.left) / sent;
                 const float score =
-                    worth - Intelligence::BelievedRisk(
-                                risk, Intelligence::Staleness(
-                                          seen, time_ + static_cast<double>(hops) * siege.hop)) /
-                                t.appetite;
+                    chance.win * worth - ventureCost(chance.lost, sent) / t.appetite;
                 if (score > bestScore)
                 {
                     bestScore = score;
