@@ -96,8 +96,8 @@ void Simulation::StepHauls()
     size_t       nth = 0;
     for (auto& kv : systems_)
     {
-        const Population& flags = passTargets_[nth++];
-        SystemState&      st = kv.second;
+        Population&  flags = passTargets_[nth++];
+        SystemState& st = kv.second;
         // A system keeps its traders: a hauler goes only if the system is left with at least
         // half of what it keeps, so a yard that others buy from is not emptied of the people
         // who run it while the migration that brings them back takes its time (#566).
@@ -123,7 +123,9 @@ void Simulation::StepHauls()
             }
         }
         if (!to.empty())
-            SetOut(st, to, NpcRole::Trader, flags.tradeFaction, best);
+            // On loan: the director, later in this very pass, does not make up for it (#584).
+            if (SetOut(st, to, NpcRole::Trader, flags.tradeFaction, best, true))
+                flags.traders = std::max(0, flags.traders - 1);
     }
 }
 
@@ -178,6 +180,13 @@ void Simulation::DeliverCargo(SystemState& st, bool all)
     if (!any)
         return;
     std::vector<Vector2> lanes;  // where a trader goes once it has unloaded: its usual work
+    struct Home
+    {
+        int         id;
+        std::string home;
+        FactionId   faction;
+    };
+    std::vector<Home> homeward;  // haulers on loan that have unloaded (#584)
     for (auto& e : st.entities)
     {
         if (e->GetKind() != EntityKind::Npc)
@@ -198,6 +207,11 @@ void Simulation::DeliverCargo(SystemState& st, bool all)
             continue;
         Unload(st, n.GetCargo(), n.GetCargoAmount());
         n.SetCargo(n.GetCargo(), 0);
+        if (!n.GetLoanHome().empty())
+        {
+            homeward.push_back({ n.GetId(), n.GetLoanHome(), n.GetFaction() });
+            continue;
+        }
         if (all)
             continue;
         if (lanes.empty())
@@ -208,6 +222,15 @@ void Simulation::DeliverCargo(SystemState& st, bool all)
         }
         if (!lanes.empty())
             n.SetRoute(lanes);
+    }
+    // A hauler on loan goes home when it has unloaded: it is not this system's (#584).
+    for (const Home& h : homeward)
+    {
+        st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
+                                         [&](const std::unique_ptr<Entity>& e)
+                                         { return e->GetId() == h.id; }),
+                          st.entities.end());
+        ReturnLoan(h.home, st.id, h.faction);
     }
 }
 

@@ -110,6 +110,70 @@ TEST_CASE("haulers carry a surplus next door, and no unit is made or lost on the
     CHECK(sim.SystemById(to)->market.Mid(medicine) >= glut.market.Mid(medicine));
 }
 
+TEST_CASE("a haul moves a trader and never makes one: the count does not pile up (#584)")
+{
+    GoodsFile  file;
+    Simulation sim;
+    StartServer(sim);
+    for (const auto& kv : sim.Systems())
+        sim.SystemById(kv.first)->profile.rates = MarketRates{};
+    auto traders = [&]
+    {
+        double n = 0.0;
+        for (const auto& kv : sim.Systems())
+            n += kv.second.agg.traders;
+        for (const auto& m : sim.Migrants())
+            n += m.second.role == NpcRole::Trader ? 1.0 : 0.0;
+        return n;
+    };
+    for (int i = 0; i < 900; i++)  // settle: the director tops every system up
+        sim.MaintainWorld(2.0f);
+    // A glut at one market with a market next door, so that there are hauls.
+    const ResourceType medicine = Good::Named("Medicine");
+    bool               glutted = false;
+    std::string        glutAt;
+    for (const auto& kv : sim.Systems())
+        for (const std::string& n : sim.Neighbors(kv.first))
+            if (!glutted && kv.second.profile.markets > 0 && sim.SystemById(n)->profile.markets > 0)
+            {
+                SystemState& st = *sim.SystemById(kv.first);
+                st.market.SetMarkets(st.profile.markets);
+                st.market.SetStock(medicine, st.market.Target(medicine) * 60.0);
+                glutted = true;
+                glutAt = kv.first;
+            }
+    REQUIRE(glutted);
+    const double start = traders();
+    double       worst = 0.0;
+    bool         lent = false;
+    double       away = -100.0;
+    for (int i = 0; i < 5400; i++)  // three hours of hauling
+    {
+        sim.MaintainWorld(2.0f);
+        for (const auto& m : sim.Migrants())
+            if (m.second.loan)
+            {
+                lent = true;
+                // Its own is away, so the system it left is short of it and does not make
+                // another: it is not back at what it keeps while the hauler is out.
+                if (m.second.leftAt + 10.0 < sim.Time())
+                    away = std::max(away, (double)sim.SystemById(m.second.from)->agg.traders -
+                                              (double)sim.KeepOf(m.second.from, NpcRole::Trader));
+            }
+        if (i % 100 == 0)  // the glut is made good again, so that the hauling goes on
+            sim.SystemById(glutAt)->market.SetStock(
+                medicine, sim.SystemById(glutAt)->market.Target(medicine) * 9.0);
+        for (const auto& kv : sim.Systems())
+            worst = std::max(worst, (double)kv.second.agg.traders -
+                                        (double)sim.KeepOf(kv.first, NpcRole::Trader));
+    }
+    // Every system holds about what it keeps, and the world has not made traders.
+    CHECK(lent);
+    CHECK(away < -0.5);
+    CHECK(worst <= 3.0);
+    CHECK(traders() <= start + 2.0);
+}
+
 TEST_CASE("a hauler shot down leaves its cargo in its wreck, for whoever searches it (#343)")
 {
     GoodsFile  file;
@@ -234,7 +298,7 @@ TEST_CASE("the fee is the market owner's, and its treasury is kept (#343)")
         ClientSession& s = sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                              GetShipCatalog()[0].stats);
         SystemState&   st = *sim.SystemOf(s);
-        auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
+        auto           station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
                                                  Fac::TradersGuild(), StationRole::TradeHub);
         station->SetId(990001);
         st.entities.push_back(std::move(station));

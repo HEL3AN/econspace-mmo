@@ -1258,6 +1258,9 @@ public:
         // arrives at, and in neither while it is on its way. Saved.
         ResourceType good;
         int          cargo = 0;
+        // A hauler is its home's ship on loan: the system it left does not make up for it while
+        // it is away (loans_), so that a haul moves a trader and never makes one. Saved.
+        bool loan = false;
     };
     const std::map<long long, Migrant>& Migrants() const { return migrants_; }
     // Goods on their way between systems, by good: what haulers carry and no market holds.
@@ -1974,8 +1977,8 @@ public:
     // system, and (through heading, when given) facing away from it. Without such a gate,
     // SafeArrival.
     static constexpr float ARRIVAL_CLEARANCE = 200.0f;
-    Vector2 ArrivalFrom(const std::string& destId, const std::string& fromId,
-                        const ClientSession* who = nullptr, float* heading = nullptr) const;
+    Vector2                ArrivalFrom(const std::string& destId, const std::string& fromId,
+                                       const ClientSession* who = nullptr, float* heading = nullptr) const;
 
     // How close a body must be for a saved ship to be kept beside it rather than at a point
     // in space (#258): within this of its surface.
@@ -2134,7 +2137,9 @@ private:
     Population  PopulationOf(const SystemState& st, const Room& room) const;
 
     // Ships leaving (#295): those on their way, by id and by when they arrive. Saved.
-    std::map<long long, Migrant>           migrants_;
+    std::map<long long, Migrant> migrants_;
+    // Traders each system has out on loan as haulers, rebuilt from migrants_ every pass.
+    std::map<std::string, int>             loans_;
     std::set<std::pair<double, long long>> arrivals_;
     long long                              nextMigrant_ = 1;
     // What the director keeps in each system this pass, in the order of systems_: worked out
@@ -2165,6 +2170,8 @@ private:
     void StepMigration();
     // A migrant has come: a number in a cold system, a ship at the gate in a hot one.
     void ArriveMigrant(const Migrant& m);
+    // A hauler on loan has unloaded and is its home's again (#584): counted there, or flying in.
+    void ReturnLoan(const std::string& home, const std::string& from, FactionId faction);
     // --- Haulers (#343; Simulation_Haulers.cpp) ---
     // What a trader setting out from `from` to `to` should carry: the good whose bid there
     // beats the ask here by the most, as much of it as still pays. Nothing, where nothing does
@@ -2180,7 +2187,7 @@ private:
     // count here, on its way for `travel` seconds, then counted there. In a hot system a real
     // ship turns for the gate; false, and nothing changed, when there is none to send.
     bool SetOut(SystemState& st, const std::string& to, NpcRole role, FactionId faction,
-                const Haul& haul);
+                const Haul& haul, bool loan = false);
     // Once a pass, after migration: in each system with a market and a trader, one moment in
     // every `haulEvery` seconds, a trader sets out with the haul that pays best.
     void StepHauls();
@@ -2752,7 +2759,7 @@ private:
     // Turned back with what is left: the escort and the freight go home, another sets out later.
     void TurnBackConvoy(Plan& p, const std::string& where, const std::string& why);
     // A convoy's end, counted for the report.
-    void                       TallyConvoy(const Plan& p, long long ConvoyTally::* what);
+    void                       TallyConvoy(const Plan& p, long long ConvoyTally::*what);
     ConvoyTally                convoyTally_;
     std::map<int, ConvoyTally> convoyRegions_;
     // Its ships, where the system it is in is hot: the hauler and the escort, on their way

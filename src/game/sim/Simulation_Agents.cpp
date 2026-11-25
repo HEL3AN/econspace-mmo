@@ -1067,8 +1067,7 @@ void Simulation::RecallResponse(const Plan& p)
     SystemState* st = SystemById(p.target);
     if (st != nullptr && IsHot(*st))
         st->entities.erase(std::remove_if(st->entities.begin(), st->entities.end(),
-                                          [&](const std::unique_ptr<Entity>& e)
-                                          {
+                                          [&](const std::unique_ptr<Entity>& e) {
                                               return e->GetKind() == EntityKind::Npc &&
                                                      static_cast<const NpcShip&>(*e).GetTask() ==
                                                          p.id;
@@ -1179,7 +1178,8 @@ void Simulation::RecountAgg(SystemState& st)
     for (auto& e : st.entities)
         if (NpcShip* n = e->GetKind() == EntityKind::Npc &&
                                  !static_cast<NpcShip&>(*e).IsLeaving() &&
-                                 static_cast<NpcShip&>(*e).GetTask() == 0
+                                 static_cast<NpcShip&>(*e).GetTask() == 0 &&
+                                 static_cast<NpcShip&>(*e).GetLoanHome().empty()
                              ? static_cast<NpcShip*>(e.get())
                              : nullptr)
             switch (n->GetRole())
@@ -1367,6 +1367,9 @@ Simulation::Population Simulation::PopulationOf(const SystemState& st, const Roo
     p.miners = (int)roundf(p.keep[1] * (1.0f - agg.supMiners));
     p.police = (int)roundf(p.keep[2] * (1.0f - agg.supPolice));
     p.pirates = (int)roundf(p.keep[3] * (1.0f - agg.supPirates));
+    // Its haulers on a trip are its own, only away (#584): not made up for from nothing.
+    if (const auto on = loans_.find(st.id); on != loans_.end())
+        p.traders = std::max(0, p.traders - on->second);
 
     // Nowhere to put them, none of them: traders need two ends of a lane, miners a belt,
     // police a beat, pirates somewhere dark.

@@ -741,6 +741,32 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                 }
             }
         }
+        // Traders per system against what a system keeps (#584): a haul moves one, and never makes
+        // one.
+        {
+            double      sum = 0.0, keepSum = 0.0, worst = 0.0;
+            int         over = 0, systems = 0;
+            std::string worstId;
+            for (const auto& kv : sim.Systems())
+            {
+                const double keep = sim.KeepOf(kv.first, NpcRole::Trader);
+                const double have = kv.second.agg.traders;
+                if (keep <= 0.0 && have <= 0.0)
+                    continue;
+                systems++;
+                sum += have;
+                keepSum += keep;
+                over += have > keep + 2.0 ? 1 : 0;
+                if (have - keep > worst)
+                {
+                    worst = have - keep;
+                    worstId = kv.first;
+                }
+            }
+            printf("\nTraders: %.0f in %d systems against a keep of %.0f; %d systems more than 2 "
+                   "over, worst %s (+%.0f)\n",
+                   sum, systems, keepSum, over, worstId.c_str(), worst);
+        }
         printf("\nSieges: %d sent, %d laid, %d destroyed an outpost, %d gave up, %d driven off, "
                "%d void; %d still running; %d relieved\n",
                sieges.sent, sieges.laid, sieges.destroyed, sieges.gaveUp, sieges.repelled,

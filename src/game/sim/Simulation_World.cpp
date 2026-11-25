@@ -1281,6 +1281,8 @@ bool Simulation::SaveWorld(const std::string& path) const
                              { "faction", Factions::Id(m.faction) },
                              { "leftAt", m.leftAt },
                              { "arrivesAt", m.arrivesAt } });
+        if (m.loan)
+            migrants.back()["loan"] = true;
         // What a hauler carries (#343): on the trip and in no market, so lost if not here.
         if (m.cargo > 0)
             migrants.back()["cargo"] = { { Goods::Id(m.good), m.cargo } };
@@ -1687,6 +1689,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 continue;
             m.leftAt = mj.value("leftAt", 0.0);
             m.arrivesAt = mj.value("arrivesAt", 0.0);
+            m.loan = mj.value("loan", false);
             if (mj.contains("cargo") && mj["cargo"].is_object())
                 for (auto c = mj["cargo"].begin(); c != mj["cargo"].end(); ++c)
                     if (c.value().is_number_integer() && Goods::Find(c.key(), m.good))
