@@ -252,11 +252,12 @@ TEST_CASE(
     REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
     CHECK(back.player.livery == "guild");
 
-    Proto::Command c;
-    c.setLivery = "guild";
-    Proto::Command c2;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), c2));
-    CHECK(c2.setLivery == "guild");
+    Proto::Act::SetLivery c;
+    c.livery = "guild";
+    Proto::Action c2;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), c2));
+    REQUIRE(std::holds_alternative<Proto::Act::SetLivery>(c2));
+    CHECK(std::get<Proto::Act::SetLivery>(c2).livery == "guild");
 
     const TempDir     tmp;
     const std::string path = tmp.Path("pilot.json");

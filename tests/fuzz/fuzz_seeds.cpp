@@ -84,19 +84,33 @@ int main(int argc, char** argv)
     nav.navViaSet = true;
     Proto::Command trade;
     trade.seq = 9;
-    trade.sellType = 1;
-    trade.sellAmount = 10;
-    trade.buyType = 2;
-    trade.buyAmount = 5;
-    trade.moveFrom = "hold";
-    trade.moveTo = "storage";
-    trade.moveType = 1;
-    trade.moveAmount = 3;
+    trade.thrust = true;
+    trade.brake = true;
+    trade.targetId = 42;
     Proto::Command dock;
     dock.seq = 10;
-    dock.dock = true;
+    dock.toggleWeapon = true;
     dock.targetId = 42;
-    dock.jumpGateId = 3;
+
+    // One of a few verbs, each a message of its own (#354).
+    Proto::Act::Sell sell;
+    sell.type = 1;
+    sell.amount = 10;
+    Proto::Act::Buy buy;
+    buy.type = 2;
+    buy.amount = 5;
+    buy.to = "storage";
+    Proto::Act::Move move;
+    move.from = "hold";
+    move.to = "storage";
+    move.type = 1;
+    move.amount = 3;
+    Proto::Act::GiveOrder order;
+    order.order.kind = Orders::Kind::Route;
+    order.order.destSystem = "sol";
+    order.order.waypoints = { "reach", "haven" };
+    Proto::Act::Refit refit;
+    refit.lines.push_back({ "laser", "slot1", "", 1 });
 
     Proto::ChooseStart start;
     start.system = "sol";
@@ -161,6 +175,10 @@ int main(int argc, char** argv)
         { Proto::EncodeCorpView(Proto::CorpView{}) },
         { Proto::EncodeUniverse(WorldLoader::Universe{}) },
         { Proto::EncodeSnapshot(Proto::Snapshot{}) },
+        { Proto::EncodeAction(Proto::Action{ Proto::Act::Dock{} }),
+          Proto::EncodeAction(Proto::Action{ sell }), Proto::EncodeAction(Proto::Action{ buy }),
+          Proto::EncodeAction(Proto::Action{ move }), Proto::EncodeAction(Proto::Action{ order }),
+          Proto::EncodeAction(Proto::Action{ refit }) },
     };
 
     int n = 0;

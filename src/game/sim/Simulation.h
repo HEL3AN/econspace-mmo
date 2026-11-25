@@ -1668,13 +1668,15 @@ public:
 
     // What an input's shots look like to the clients in each system, by system id.
     using FireMap = std::map<std::string, std::vector<FireEvent>>;
-    // One client input = ONE player tick (#354): the verbs it carries, then movement, jump,
-    // loot, fire and mining. The client predicts one StepPlayerShip per input, so the server
-    // must step the same way or the acknowledged numbers and the step count diverge and the
-    // ship jerks. A sale or purchase adds its acknowledgement to `acks`, a shot its beam to
-    // `fires`. Returns true if the session changed system, so its layout must be sent again.
-    bool ApplyCommand(ClientSession& s, const Proto::Command& c, float dt,
-                      std::vector<Proto::TradeAck>& acks, FireMap& fires);
+    // One client input = ONE player tick (#354): movement, fire and mining. The client
+    // predicts one StepPlayerShip per input, so the server must step the same way or the
+    // acknowledged numbers and the step count diverge and the ship jerks. A shot adds its beam
+    // to `fires`.
+    void ApplyCommand(ClientSession& s, const Proto::Command& c, float dt, FireMap& fires);
+    // A verb asked for once (#354): not a tick, and applied in the order it arrived among the
+    // session's commands. A sale or purchase adds its acknowledgement to `acks`. Returns true
+    // if the session changed system, so its layout must be sent again.
+    bool ApplyAction(ClientSession& s, const Proto::Action& a, std::vector<Proto::TradeAck>& acks);
     // Server step of a player ship: applies the movement axes/toggles from the command,
     // the piloting bonus, and updates the physics. Combat/mining — via separate methods.
     void StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus, float dt);

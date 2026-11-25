@@ -506,11 +506,9 @@ TEST_CASE("holes and finds round-trip through the world save (#342 S9)")
 
 TEST_CASE("a scan and the scanner survive the wire (#346)")
 {
-    Proto::Command c;
-    c.scan = true;
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.scan);
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(Proto::Act::Scan{}), back));
+    CHECK(std::holds_alternative<Proto::Act::Scan>(back));
 
     WorldLoader::Universe u;
     u.links.push_back({ "r1-1-1", "r2-1-1" });

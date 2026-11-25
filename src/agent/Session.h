@@ -65,6 +65,12 @@ public:
     // its effect, because the server applies a command before it builds the next one. False
     // if no acknowledgement came in time (the server may be throttling this client).
     bool SendAndConfirm(const Proto::Command& c, double timeoutSeconds);
+    // A verb asked for once (#354): sent as an action, which is not a tick and has no number.
+    // The server applies actions and commands in the order they arrive, so a plain command
+    // sent after one is acknowledged only once the action has been applied: SendActionAndConfirm
+    // waits on exactly that, and gives the same guarantee SendAndConfirm gave a verb.
+    void SendAction(const Proto::Action& a);
+    bool SendActionAndConfirm(const Proto::Action& a, double timeoutSeconds);
 
     const Proto::Snapshot& Snapshot() const { return snapshot_; }
     // The last assets view the server sent (#472 slice 9), kept because it comes once.

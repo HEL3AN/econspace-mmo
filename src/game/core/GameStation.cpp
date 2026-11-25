@@ -55,11 +55,7 @@ void Game::SellCargo(ResourceType type, int amount, const std::string& where)
         return;
     // An order to the server; ApplyTradeAcks credits the revenue on its acknowledgement, at
     // the server's price, and a refusal comes back in the journal (#219).
-    Proto::Command c;
-    c.sellType = type.Index();
-    c.sellAmount = amount;
-    c.sellFrom = where;
-    clientLink_->Send(Proto::EncodeCommand(c));
+    SendAction(Proto::Act::Sell{ type.Index(), amount, where });
 }
 
 void Game::BuyCargo(ResourceType type, int amount, const std::string& where)
@@ -68,11 +64,7 @@ void Game::BuyCargo(ResourceType type, int amount, const std::string& where)
         return;
     // The server counts what the stock, the hold and the money allow; ApplyTradeAcks says what
     // it came to, and a refusal comes back in the journal.
-    Proto::Command c;
-    c.buyType = type.Index();
-    c.buyAmount = amount;
-    c.buyTo = where;
-    clientLink_->Send(Proto::EncodeCommand(c));
+    SendAction(Proto::Act::Buy{ type.Index(), amount, where });
 }
 
 const Entity* Game::DockedStructure() const
@@ -214,9 +206,7 @@ void Game::DrawStationContent(const Ui::Frame& f)
                                TextStyle::Body().Tint(t.colors.bad).Wrap());
                         if (L.Button("bounty", TextFormat("Pay the bounty  %.0f cr", bounty)))
                         {
-                            Proto::Command c;
-                            c.payBountyFaction = Factions::Id(sf);
-                            clientLink_->Send(Proto::EncodeCommand(c));
+                            SendAction(Proto::Act::PayBounty{ Factions::Id(sf) });
                         }
                     }
                     DrawLicenceOffer(L);  // building in this system (#431 slice 6, #509)
@@ -598,9 +588,7 @@ void Game::DrawHangarContent(const Ui::Frame& f)
             {
                 if (L.Button("insure", TextFormat("Insure  %.0f cr", q.premium), true))
                 {
-                    Proto::Command ic;
-                    ic.insureShip = h.key;
-                    clientLink_->Send(Proto::EncodeCommand(ic));
+                    SendAction(Proto::Act::InsureShip{ h.key });
                 }
                 L.Text(TextFormat("Pays %.0f cr if it is lost. A lost ship is gone with its fit "
                                   "and cargo.",
@@ -629,7 +617,6 @@ void Game::DrawHangarContent(const Ui::Frame& f)
                    TextStyle::Small().Tint(t.colors.warn).Wrap());
             return;
         }
-        Proto::Command c;
         if (h.berth == StationList::Berth::Owned && !h.here)
         {
             L.Text(TextFormat("Parked at %s. Dock there to switch to it.", h.place.c_str()),
@@ -639,16 +626,14 @@ void Game::DrawHangarContent(const Ui::Frame& f)
         {
             if (L.Button("switch", "Switch to it", true))
             {
-                c.refitShip = h.key;
-                clientLink_->Send(Proto::EncodeCommand(c));
+                SendAction(Proto::Act::SwitchShip{ h.key });
             }
         }
         // The purchase is the server's: it charges, records the ship as owned and refits,
         // and the snapshot brings all three back (#5).
         else if (L.Button("buy", TextFormat("Buy  %.0f cr", h.price), true))
         {
-            c.buyShip = h.index;
-            clientLink_->Send(Proto::EncodeCommand(c));
+            SendAction(Proto::Act::BuyShip{ h.index });
         }
     };
 
@@ -866,15 +851,11 @@ void Game::DrawPaintPainter(Ui::Layout& L)
           {
               if (L.Button("paint_apply", "Apply paint", false, spec != wearing))
               {
-                  Proto::Command c;
-                  c.setLivery = spec;
-                  clientLink_->Send(Proto::EncodeCommand(c));
+                  SendAction(Proto::Act::SetLivery{ spec });
               }
               if (L.Button("paint_clear", "Back to the palette", false, wearing != palette))
               {
-                  Proto::Command c;
-                  c.setLivery = palette;
-                  clientLink_->Send(Proto::EncodeCommand(c));
+                  SendAction(Proto::Act::SetLivery{ palette });
               }
           });
 }
@@ -1107,9 +1088,7 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                                 id == "default" ? wearing.empty() : id == Paint::PaletteOf(wearing);
                             if (L.Button("livery_" + id, id == "default" ? "plain" : id, !current))
                             {
-                                Proto::Command c;
-                                c.setLivery = id;
-                                clientLink_->Send(Proto::EncodeCommand(c));
+                                SendAction(Proto::Act::SetLivery{ id });
                             }
                         }
                     });

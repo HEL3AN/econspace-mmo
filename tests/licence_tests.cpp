@@ -375,11 +375,9 @@ TEST_CASE("licences outlive a restart: a corporation's in corps.json, a pilot's 
 TEST_CASE("a licence on the wire: the command, the snapshot's view, a structure's state, the "
           "corporation's list (#431 slice 6)")
 {
-    Proto::Command c;
-    c.buyLicence = true;
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.buyLicence);
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(Proto::Act::BuyLicence{}), back));
+    CHECK(std::holds_alternative<Proto::Act::BuyLicence>(back));
 
     Proto::CorpView v;
     v.id = "c1";

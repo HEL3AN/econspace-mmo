@@ -149,10 +149,10 @@ int HostSelftest()
     // first, as if it had flown -- this tests the wire, not travel.
     // The start is a faction's space: building there takes its licence (#431 slice 6).
     sim.GrantLicence(s.accountName, s.systemId);
-    auto placeFor = [&](const Blueprint& bp, Proto::Command& c)
+    auto placeFor = [&](const Blueprint& bp, Proto::Act::Deploy& d)
     {
         const Vector2 from = s.ship->GetPosition();
-        for (int k = 0; k < 400 && c.deploy.empty(); k++)
+        for (int k = 0; k < 400 && d.blueprint.empty(); k++)
         {
             const Vector2 p = { 150000.0f + 9100.0f * (float)(k % 20),
                                 -90000.0f + 9300.0f * (float)(k / 20) };
@@ -160,13 +160,13 @@ int HostSelftest()
             const Vector2 near = { p.x + bp.reach * 0.5f, p.y };
             if (sim.PlacementProblem(s, bp, near).empty())
             {
-                c.deploy = bp.id;
-                c.deployPos = near;
+                d.blueprint = bp.id;
+                d.at = near;
             }
         }
-        if (c.deploy.empty())
+        if (d.blueprint.empty())
             s.ship->Teleport(from);
-        return !c.deploy.empty();
+        return !d.blueprint.empty();
     };
 
     int         lastSeq = 0;
@@ -176,18 +176,31 @@ int HostSelftest()
         thrust.seq = i + 1;  // client: numbered input
         Proto::Command c = thrust;
         if (i == 100 && tryDeploy)
-            tryDeploy = placeFor(*Blueprints::Find("buoy"), c);
-        if (i == 104 && battery != nullptr && !placeFor(*battery, c))
-            battery = nullptr;
+        {
+            Proto::Act::Deploy d;
+            tryDeploy = placeFor(*Blueprints::Find("buoy"), d);
+            if (tryDeploy)
+                link.Client().Send(Proto::EncodeAction(d));
+        }
+        if (i == 104 && battery != nullptr)
+        {
+            Proto::Act::Deploy d;
+            if (placeFor(*battery, d))
+                link.Client().Send(Proto::EncodeAction(d));
+            else
+                battery = nullptr;
+        }
         if (i == 108 && battery != nullptr)
         {
             for (const auto& kv : sim.SystemById(s.systemId)->entities)
                 if (kv->GetKind() == EntityKind::Structure && kv->GetOwner() == s.accountName &&
                     static_cast<const Structure&>(*kv).GetBlueprintId() == battery->id)
                     batteryId = kv->GetId();
-            c.defenceId = batteryId;
-            c.defence.engage = Engage::Strangers;
-            c.defence.players = { "friend" };
+            Proto::Act::SetDefence d;
+            d.id = batteryId;
+            d.defence.engage = Engage::Strangers;
+            d.defence.players = { "friend" };
+            link.Client().Send(Proto::EncodeAction(d));
         }
         link.Client().Send(Proto::EncodeCommand(c));
         std::vector<Proto::TradeAck>                  acks;
@@ -310,9 +323,11 @@ int HostNameSelftest()
     bool           indexSent = false;
     auto           send = [&](const std::string& name)
     {
+        Proto::Act::NameSystem a;
+        a.name = name;
+        link.Client().Send(Proto::EncodeAction(a));
         Proto::Command c;
         c.seq = ++seq;
-        c.nameSystem = name;
         link.Client().Send(Proto::EncodeCommand(c));
         std::vector<Proto::TradeAck>                  acks;
         std::map<std::string, std::vector<FireEvent>> fires;
@@ -674,17 +689,16 @@ int OrderSelftest()
             s.ship->Teleport(e->GetPosition());
             if (sim.StepPlayerDock(s, *sim.SystemOf(s)) == 0)
                 continue;
-            std::vector<Proto::TradeAck>                  acks;
-            std::map<std::string, std::vector<FireEvent>> fires;
-            Proto::Command                                go;
-            go.orderKind = (int)Orders::Kind::MoveTo;
-            go.orderPoint = { 0.0f, 0.0f };
-            sim.ApplyCommand(s, go, dt, acks, fires);
-            const bool     refused = s.orderStatus == Orders::Status::Failed &&
-                                     s.orderDetail == "docked; undock first" && s.IsDocked();
-            Proto::Command leave;
-            leave.orderKind = (int)Orders::Kind::Undock;
-            sim.ApplyCommand(s, leave, dt, acks, fires);
+            std::vector<Proto::TradeAck> acks;
+            Proto::Act::GiveOrder        go;
+            go.order.kind = Orders::Kind::MoveTo;
+            go.order.point = { 0.0f, 0.0f };
+            sim.ApplyAction(s, go, acks);
+            const bool            refused = s.orderStatus == Orders::Status::Failed &&
+                                            s.orderDetail == "docked; undock first" && s.IsDocked();
+            Proto::Act::GiveOrder leave;
+            leave.order.kind = Orders::Kind::Undock;
+            sim.ApplyAction(s, leave, acks);
             run(10);
             dockedOrders = refused && !s.IsDocked() && s.orderStatus == Orders::Status::Done;
         }

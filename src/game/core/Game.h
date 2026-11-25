@@ -309,6 +309,7 @@ private:
     // of who is in which.
     void DrawCorpContent(const Ui::Frame& f);
     void SendCorpAct(const Proto::CorpAct& act);
+    void SendAction(const Proto::Action& act);  // a one-shot verb, sent now (#354)
     // What building in this system takes (#431 slice 6), and the button that buys or renews
     // the licence: in the station window and the corporation window alike.
     void DrawLicenceOffer(Ui::Layout& L);  // a station's: bought where it is granted (#509)

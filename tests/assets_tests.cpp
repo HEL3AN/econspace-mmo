@@ -84,11 +84,9 @@ TEST_CASE("Assets: the places a pilot keeps things, once, when asked for (#472)"
             CHECK(a.locked);
 
     // The wire, and the agent's text.
-    Proto::Command c;
-    c.requestAssets = true;
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.requestAssets);
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(Proto::Act::RequestAssets{}), back));
+    CHECK(std::holds_alternative<Proto::Act::RequestAssets>(back));
     s.assetsDue = true;
     Proto::Snapshot snap = sim.BuildSnapshot(s, st->id);
     Proto::Snapshot got;

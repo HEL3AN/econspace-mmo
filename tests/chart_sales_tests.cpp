@@ -336,11 +336,12 @@ TEST_CASE("the chart rules read, and a misspelt one is an error (#431 slice 16)"
 
 TEST_CASE("a chart sale and the faction's prices survive the wire (#431 slice 16)")
 {
-    Proto::Command c;
-    c.sellChart = "r7-1-2";
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.sellChart == "r7-1-2");
+    Proto::Act::SellChart c;
+    c.what = "r7-1-2";
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), back));
+    REQUIRE(std::holds_alternative<Proto::Act::SellChart>(back));
+    CHECK(std::get<Proto::Act::SellChart>(back).what == "r7-1-2");
 
     Proto::GalaxyState g;
     g.chartBuyer = true;

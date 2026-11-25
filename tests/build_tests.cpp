@@ -789,11 +789,10 @@ TEST_CASE("damage and wrecks outlive a restart; a command and a layout carry the
     CHECK_FALSE(ghost);
 
     // On the wire: the verb, and what a client needs to show the hull.
-    Proto::Command c;
-    c.dismantleId = 42;
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.dismantleId == 42);
+    Proto::Action back;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(Proto::Act::Dismantle{ 42 }), back));
+    REQUIRE(std::holds_alternative<Proto::Act::Dismantle>(back));
+    CHECK(std::get<Proto::Act::Dismantle>(back).id == 42);
     Proto::SystemLayout lay = b.BuildLayout(sys), wire;
     REQUIRE(Proto::DecodeLayout(Proto::EncodeLayout(lay), wire));
     bool seen = false;
@@ -870,16 +869,18 @@ TEST_CASE("a build order flies to the spot and lays the site down there (#39)")
     }
 
     // On the wire: the order names its blueprint and what to call the site.
-    Proto::Command c;
-    c.orderKind = (int)Orders::Kind::Build;
-    c.orderPoint = at;
-    c.orderBlueprint = "beacon";
-    c.orderName = "Waypoint";
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.orderKind == (int)Orders::Kind::Build);
-    CHECK(back.orderBlueprint == "beacon");
-    CHECK(back.orderName == "Waypoint");
+    Proto::Act::GiveOrder c;
+    c.order.kind = Orders::Kind::Build;
+    c.order.point = at;
+    c.order.blueprint = "beacon";
+    c.order.name = "Waypoint";
+    Proto::Action got;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), got));
+    REQUIRE(std::holds_alternative<Proto::Act::GiveOrder>(got));
+    const Orders::Order& back = std::get<Proto::Act::GiveOrder>(got).order;
+    CHECK(back.kind == Orders::Kind::Build);
+    CHECK(back.blueprint == "beacon");
+    CHECK(back.name == "Waypoint");
     CHECK(std::string(Orders::KindName(Orders::Kind::Build)) == "build");
 }
 
@@ -1784,19 +1785,19 @@ TEST_CASE("one verb moves goods between any two containers here, as far as there
     CHECK(Told(s, seq, "storage is full"));
 
     // The command carries it, and the older pair is the same move.
-    Proto::Command cmd, back;
-    cmd.moveFrom = "storage";
-    cmd.moveTo = "hold";
-    cmd.moveType = Good::Ice().Index();
-    cmd.moveAmount = 3;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(cmd), back));
-    CHECK(back.moveFrom == "storage");
-    CHECK(back.moveTo == "hold");
-    CHECK(back.moveType == Good::Ice().Index());
-    CHECK(back.moveAmount == 3);
-    Proto::Command none;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(Proto::Command()), none));
-    CHECK(none.moveType == -1);
+    Proto::Act::Move cmd;
+    Proto::Action    got;
+    cmd.from = "storage";
+    cmd.to = "hold";
+    cmd.type = Good::Ice().Index();
+    cmd.amount = 3;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(cmd), got));
+    REQUIRE(std::holds_alternative<Proto::Act::Move>(got));
+    const Proto::Act::Move& back = std::get<Proto::Act::Move>(got);
+    CHECK(back.from == "storage");
+    CHECK(back.to == "hold");
+    CHECK(back.type == Good::Ice().Index());
+    CHECK(back.amount == 3);
     CHECK(sim.TakeCargo(s, Good::Ice().Index(), 3) == 3);
     CHECK(s.ship->GetCargoAmount(Good::Ice()) == 3);
 }

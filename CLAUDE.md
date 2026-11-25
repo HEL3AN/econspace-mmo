@@ -181,7 +181,7 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   2026-10-22). Before adding a component, find the one the feature belongs to and grow it:
   an attack notice is an entry in the pilot's journal and the corporation's record, not a
   notices store; a pilot's knowledge generalises the account's `scanned`, not a second set;
-  a rule's number goes in `data/world_rules.json`; a verb is a `Command`/`CorpAct`; what a
+  a rule's number goes in `data/world_rules.json`; a verb is a `Proto::Act` struct (an `Action`) or a `CorpAct`; `Command` is only the per-tick input; what a
   player sees reaches econagent's `observe` too. A PR that adds a new type, store, window or
   message says why no existing one could carry it. Weigh a design against how comparable
   games (EVE first) solve it, then fit it to this game's premises above.

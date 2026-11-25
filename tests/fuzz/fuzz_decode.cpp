@@ -29,7 +29,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     const unsigned    which = data[0];
     const std::string s((const char*)data + 1, size - 1);
 
-    switch (which % 22)
+    switch (which % 23)
     {
         // What the server decodes.
         case 0: Try(Proto::DecodeCommand, s); break;
@@ -65,6 +65,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
             (void)rx.Decode(s, snap);  // a delta is read against what the first one left
             break;
         }
+        // What the server decodes, once more: a verb is its own message (#354).
+        case 22: Try(Proto::DecodeAction, s); break;
     }
     return 0;
 }

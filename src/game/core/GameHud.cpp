@@ -941,8 +941,7 @@ void Game::DrawDefenceControls(Ui::Layout& L, const Proto::EntityLayout& el)
 
     if (send && want != now)
     {
-        cmd_.defenceId = el.id;
-        cmd_.defence = want;
+        SendAction(Proto::Act::SetDefence{ el.id, want });
     }
 }
 

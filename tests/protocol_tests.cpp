@@ -9,8 +9,12 @@
 #include "sim/Protocol.h"
 #include "factions_named.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cmath>
 #include <string>
+#include <variant>
+#include <vector>
 
 TEST_CASE("command round-trips through JSON")
 {
@@ -22,16 +26,6 @@ TEST_CASE("command round-trips through JSON")
     c.navMode = 1;
     c.navTarget = { 123.5f, -67.0f };
     c.navStopDist = 18.0f;
-    c.jumpGateId = 7;
-    c.lootId = 3;
-    c.sellType = 2;
-    c.sellAmount = 15;
-    c.refitShip = 4;
-    c.buyShip = 3;
-    c.payBountyFaction = "TradersGuild";
-    c.debugMoney = true;
-    c.acceptOffer = 2;
-    c.completeMission = 5;
 
     Proto::Command r;
     REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), r));
@@ -42,16 +36,216 @@ TEST_CASE("command round-trips through JSON")
     CHECK(r.navMode == 1);
     CHECK(r.navTarget.x == doctest::Approx(123.5f));
     CHECK(r.navStopDist == doctest::Approx(18.0f));
-    CHECK(r.jumpGateId == 7);
-    CHECK(r.lootId == 3);
-    CHECK(r.sellType == 2);
-    CHECK(r.sellAmount == 15);
-    CHECK(r.refitShip == 4);
-    CHECK(r.buyShip == 3);
-    CHECK(r.payBountyFaction == "TradersGuild");
-    CHECK(r.debugMoney);
-    CHECK(r.acceptOffer == 2);
-    CHECK(r.completeMission == 5);
+}
+
+namespace
+{
+// An action through the wire, or a failure.
+bool RoundTrip(const Proto::Action& a, Proto::Action& out)
+{
+    return Proto::DecodeAction(Proto::EncodeAction(a), out);
+}
+
+template <typename T> const T& As(const Proto::Action& a)
+{
+    REQUIRE(std::holds_alternative<T>(a));
+    return std::get<T>(a);
+}
+}  // namespace
+
+TEST_CASE("every verb round-trips as an action (#354)")
+{
+    std::vector<Proto::Action> all;
+    all.emplace_back(Proto::Act::Dock{});
+    all.emplace_back(Proto::Act::Undock{});
+    all.emplace_back(Proto::Act::DebugMoney{});
+    all.emplace_back(Proto::Act::NameSystem{ "Haven", "r1-1-1" });
+    all.emplace_back(Proto::Act::BuyLicence{});
+    all.emplace_back(Proto::Act::SellChart{ "r7-1-2" });
+    Ships::FitLine line;
+    line.module = "laser";
+    line.in = "mid";
+    line.on = "top";
+    line.count = 2;
+    all.emplace_back(Proto::Act::Refit{ { line } });
+    all.emplace_back(Proto::Act::SaveDesign{ "Scout", { line } });
+    all.emplace_back(Proto::Act::ApplyDesign{ "Scout" });
+    all.emplace_back(Proto::Act::RenameDesign{ "Scout", "Hauler" });
+    all.emplace_back(Proto::Act::DeleteDesign{ "Hauler" });
+    all.emplace_back(Proto::Act::SetLivery{ "guild" });
+    all.emplace_back(Proto::Act::Move{ "hold", "storage", 1, 3 });
+    all.emplace_back(Proto::Act::Sell{ 2, 15, "storage" });
+    all.emplace_back(Proto::Act::Buy{ 1, 9, "hold" });
+    all.emplace_back(Proto::Act::RentHangar{ 40 });
+    all.emplace_back(Proto::Act::RequestAssets{});
+    all.emplace_back(Proto::Act::Deliver{ "locked:1", 2, 6 });
+    all.emplace_back(Proto::Act::SwitchShip{ 1 });
+    all.emplace_back(Proto::Act::BuyShip{ 3 });
+    all.emplace_back(Proto::Act::InsureShip{ 2 });
+    all.emplace_back(Proto::Act::PayBounty{ "TradersGuild" });
+    all.emplace_back(Proto::Act::AcceptOffer{ 2 });
+    all.emplace_back(Proto::Act::CompleteMission{ 5 });
+    Proto::Act::GiveOrder order;
+    order.order.kind = Orders::Kind::Route;
+    order.order.destSystem = "reach";
+    order.order.waypoints = { "haven" };
+    order.order.preference = 1;
+    all.emplace_back(order);
+    all.emplace_back(Proto::Act::AbortOrder{});
+    all.emplace_back(Proto::Act::Jump{ 7 });
+    all.emplace_back(Proto::Act::Loot{ 3 });
+    all.emplace_back(Proto::Act::Scan{});
+    Proto::Act::Deploy deploy;
+    deploy.blueprint = "beacon";
+    deploy.at = { 100.0f, -200.0f };
+    deploy.name = "Waypoint";
+    all.emplace_back(deploy);
+    all.emplace_back(Proto::Act::Dismantle{ 42 });
+    Proto::Act::SetDefence def;
+    def.id = 9;
+    all.emplace_back(def);
+
+    // One of every alternative, so a verb added to the variant and not here fails this.
+    REQUIRE(all.size() == std::variant_size_v<Proto::Action>);
+    for (size_t i = 0; i < all.size(); ++i)
+    {
+        CHECK(all[i].index() == i);
+        Proto::Action back;
+        REQUIRE(RoundTrip(all[i], back));
+        CHECK(back.index() == all[i].index());
+    }
+
+    // And the fields that matter come through.
+    Proto::Action r;
+    REQUIRE(RoundTrip(all[3], r));
+    CHECK(As<Proto::Act::NameSystem>(r).name == "Haven");
+    CHECK(As<Proto::Act::NameSystem>(r).systemId == "r1-1-1");
+    REQUIRE(RoundTrip(all[6], r));
+    REQUIRE(As<Proto::Act::Refit>(r).lines.size() == 1);
+    CHECK(As<Proto::Act::Refit>(r).lines[0].module == "laser");
+    CHECK(As<Proto::Act::Refit>(r).lines[0].count == 2);
+    REQUIRE(RoundTrip(all[12], r));
+    CHECK(As<Proto::Act::Move>(r).from == "hold");
+    CHECK(As<Proto::Act::Move>(r).to == "storage");
+    CHECK(As<Proto::Act::Move>(r).type == 1);
+    CHECK(As<Proto::Act::Move>(r).amount == 3);
+    REQUIRE(RoundTrip(all[13], r));
+    CHECK(As<Proto::Act::Sell>(r).type == 2);
+    CHECK(As<Proto::Act::Sell>(r).amount == 15);
+    CHECK(As<Proto::Act::Sell>(r).from == "storage");
+    REQUIRE(RoundTrip(all[17], r));
+    CHECK(As<Proto::Act::Deliver>(r).from == "locked:1");
+    CHECK(As<Proto::Act::Deliver>(r).amount == 6);
+    REQUIRE(RoundTrip(all[21], r));
+    CHECK(As<Proto::Act::PayBounty>(r).faction == "TradersGuild");
+    REQUIRE(RoundTrip(all[22], r));
+    CHECK(As<Proto::Act::AcceptOffer>(r).offer == 2);
+    REQUIRE(RoundTrip(all[23], r));
+    CHECK(As<Proto::Act::CompleteMission>(r).mission == 5);
+    REQUIRE(RoundTrip(all[26], r));
+    CHECK(As<Proto::Act::Jump>(r).gateId == 7);
+    REQUIRE(RoundTrip(all[27], r));
+    CHECK(As<Proto::Act::Loot>(r).id == 3);
+    REQUIRE(RoundTrip(all[29], r));
+    CHECK(As<Proto::Act::Deploy>(r).blueprint == "beacon");
+    CHECK(As<Proto::Act::Deploy>(r).at.y == doctest::Approx(-200.0f));
+    CHECK(As<Proto::Act::Deploy>(r).name == "Waypoint");
+    REQUIRE(RoundTrip(all[30], r));
+    CHECK(As<Proto::Act::Dismantle>(r).id == 42);
+    REQUIRE(RoundTrip(all[31], r));
+    CHECK(As<Proto::Act::SetDefence>(r).id == 9);
+
+    // It is its own message type, and a command is not an action.
+    CHECK(Proto::MessageType(Proto::EncodeAction(all[0])) == "act");
+    CHECK_FALSE(Proto::DecodeAction(Proto::EncodeCommand(Proto::Command{}), r));
+    Proto::Command notCommand;
+    CHECK_FALSE(Proto::DecodeCommand(Proto::EncodeAction(all[0]), notCommand));
+}
+
+TEST_CASE("an action a client made up is refused or read as none (#354)")
+{
+    // A hostile action is an honest one with a field changed: the wire's own key names are
+    // found in what EncodeAction wrote, not assumed here.
+    auto wire = [](const Proto::Action& a)
+    { return nlohmann::json::parse(Proto::EncodeAction(a)); };
+    auto decode = [](const nlohmann::json& j, Proto::Action& out)
+    { return Proto::DecodeAction(j.dump(), out); };
+    // The key the verb is written under: the one whose value is its name.
+    auto verbKey = [&](const Proto::Action& a, const char* name)
+    {
+        const nlohmann::json j = wire(a);
+        for (auto it = j.begin(); it != j.end(); ++it)
+            if (it.value().is_string() && it.value().get<std::string>() == name)
+                return it.key();
+        return std::string();
+    };
+    Proto::Action out;
+
+    SUBCASE("an unknown verb, and a missing one, are refused")
+    {
+        nlohmann::json    j = wire(Proto::Act::Scan{});
+        const std::string key = verbKey(Proto::Act::Scan{}, "scan");
+        REQUIRE_FALSE(key.empty());
+        REQUIRE(decode(j, out));
+        j[key] = "teleport";
+        CHECK_FALSE(decode(j, out));
+        j[key] = 7;  // a verb is a name
+        CHECK_FALSE(decode(j, out));
+        j.erase(key);
+        CHECK_FALSE(decode(j, out));
+    }
+    SUBCASE("a field of the wrong type refuses the action instead of throwing")
+    {
+        nlohmann::json j = wire(Proto::Act::Sell{ 1, 5, "" });
+        REQUIRE(decode(j, out));
+        j["amt"] = "five";
+        CHECK_FALSE(decode(j, out));
+        j = wire(Proto::Act::SellChart{ "x" });
+        j["what"] = 3;
+        CHECK_FALSE(decode(j, out));
+        j = wire(Proto::Act::PayBounty{ "TradersGuild" });
+        j["faction"] = 3;  // a faction is named, never numbered (#355)
+        CHECK_FALSE(decode(j, out));
+    }
+    SUBCASE("a resource index past the end of the list is no resource")
+    {
+        nlohmann::json j = wire(Proto::Act::Sell{ 1, 5, "" });
+        j["type"] = 99;
+        REQUIRE(decode(j, out));
+        CHECK(As<Proto::Act::Sell>(out).type == -1);
+        j["type"] = -4;
+        REQUIRE(decode(j, out));
+        CHECK(As<Proto::Act::Sell>(out).type == -1);
+    }
+    SUBCASE("text is bounded")
+    {
+        nlohmann::json j = wire(Proto::Act::SetLivery{ "guild" });
+        j["livery"] = std::string(256, 'x');
+        CHECK(decode(j, out));
+        j["livery"] = std::string(257, 'x');
+        CHECK_FALSE(decode(j, out));
+        j["livery"] = std::string(100000, 'x');
+        CHECK_FALSE(decode(j, out));
+    }
+    SUBCASE("a number that is not finite is refused, and a point is held inside the system")
+    {
+        Proto::Act::GiveOrder o;
+        o.order.kind = Orders::Kind::MoveTo;
+        // 1e400 is a fine double on the wire and an infinity once read: written as text, since
+        // a json value cannot hold it.
+        std::string text = Proto::EncodeAction(o);
+        text.insert(text.size() - 1, ",\"stop\":1e400");
+        CHECK_FALSE(Proto::DecodeAction(text, out));
+        nlohmann::json j;
+        j = wire(Proto::Act::Deploy{ "beacon", { 0.0f, 0.0f }, "" });
+        j["at"] = { 1e30, -1e30 };
+        REQUIRE(decode(j, out));
+        CHECK(std::isfinite(As<Proto::Act::Deploy>(out).at.x));
+        CHECK(As<Proto::Act::Deploy>(out).at.x <= 4.0f * World::SYSTEM_RADIUS);
+        CHECK(As<Proto::Act::Deploy>(out).at.y >= -4.0f * World::SYSTEM_RADIUS);
+        j["at"] = { 1, 2, 3 };
+        CHECK_FALSE(decode(j, out));
+    }
 }
 
 TEST_CASE("snapshot round-trips through JSON")
@@ -262,38 +456,45 @@ TEST_CASE("protocol version is stamped and enforced")
     }
 }
 
-// A standing order travels as an intent on the ordinary command: the server decides
-// whether it is possible. If these fields stop round-tripping, an agent silently loses
-// the ability to give orders at all.
-TEST_CASE("standing orders round-trip on the command")
+// A standing order travels as an intent in an action: the server decides whether it is
+// possible. If these fields stop round-tripping, an agent silently loses the ability to give
+// orders at all.
+TEST_CASE("standing orders round-trip as an action")
 {
-    Proto::Command c;
-    c.orderKind = (int)Orders::Kind::Route;
-    c.orderTarget = 42;
-    c.orderPoint = { -300.0f, 900.0f };
-    c.orderStopDist = 250.0f;
-    c.orderWarp = true;
-    c.orderUntilFull = true;
-    c.orderDestSystem = "reach";
-    c.abortOrder = true;
+    Proto::Act::GiveOrder c;
+    c.order.kind = Orders::Kind::Route;
+    c.order.targetId = 42;
+    c.order.point = { -300.0f, 900.0f };
+    c.order.stopDist = 250.0f;
+    c.order.useWarp = true;
+    c.order.untilFull = true;
+    c.order.destSystem = "reach";
 
-    Proto::Command r;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), r));
-    CHECK(r.orderKind == (int)Orders::Kind::Route);
-    CHECK(r.orderTarget == 42);
-    CHECK(r.orderPoint.y == doctest::Approx(900.0f));
-    CHECK(r.orderStopDist == doctest::Approx(250.0f));
-    CHECK(r.orderWarp);
-    CHECK(r.orderUntilFull);
-    CHECK(r.orderDestSystem == "reach");
-    CHECK(r.abortOrder);
+    Proto::Action got;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), got));
+    const Orders::Order& r = As<Proto::Act::GiveOrder>(got).order;
+    CHECK(r.kind == Orders::Kind::Route);
+    CHECK(r.targetId == 42);
+    CHECK(r.point.y == doctest::Approx(900.0f));
+    CHECK(r.stopDist == doctest::Approx(250.0f));
+    CHECK(r.useWarp);
+    CHECK(r.untilFull);
+    CHECK(r.destSystem == "reach");
 
-    SUBCASE("a command with no order carries none")
+    SUBCASE("dropping the order is a verb of its own")
     {
-        Proto::Command plain, back;
-        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(plain), back));
-        CHECK(back.orderKind == 0);
-        CHECK_FALSE(back.abortOrder);
+        Proto::Action back;
+        REQUIRE(Proto::DecodeAction(Proto::EncodeAction(Proto::Act::AbortOrder{}), back));
+        CHECK(std::holds_alternative<Proto::Act::AbortOrder>(back));
+    }
+    SUBCASE("a default order stays sparse")
+    {
+        Proto::Act::GiveOrder plain;
+        plain.order.kind = Orders::Kind::MoveTo;
+        const std::string wire = Proto::EncodeAction(plain);
+        CHECK(wire.find("stop") == std::string::npos);
+        CHECK(wire.find("warp") == std::string::npos);
+        CHECK(wire.find("via") == std::string::npos);
     }
 }
 
@@ -538,7 +739,6 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
         CHECK(c.turn == 1.0f);
         CHECK(std::isfinite(c.navTarget.x));
         CHECK(c.navRange == 0.0f);
-        CHECK_FALSE(decode("\"ordStop\":1e400", c));
         CHECK_FALSE(decode("\"turn\":-1e400", c));
     }
     SUBCASE("a point is held inside the reach of a system")
@@ -551,9 +751,7 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
     }
     SUBCASE("an index past the end of a list is no index")
     {
-        REQUIRE(decode("\"sellType\":99,\"ordKind\":77,\"navMode\":9", c));
-        CHECK(c.sellType == -1);
-        CHECK(c.orderKind == 0);
+        REQUIRE(decode("\"navMode\":9", c));
         CHECK(c.navMode == 0);
         REQUIRE(decode("\"target\":-3,\"seq\":99999999999", c));
         CHECK(c.targetId == 0);
@@ -565,8 +763,6 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
         // JSON ended the server for everyone.
         CHECK_FALSE(decode("\"seq\":\"x\"", c));
         CHECK_FALSE(decode("\"thrust\":1", c));
-        CHECK_FALSE(decode("\"nameSys\":[]", c));
-        CHECK_FALSE(decode("\"payB\":3", c));  // a faction is named, never numbered (#355)
         CHECK_FALSE(decode("\"turn\":\"fast\"", c));
         CHECK(Proto::MessageVersion("{\"v\":\"21\",\"t\":\"cmd\"}") == 0);
         CHECK(Proto::MessageType("{\"v\":21,\"t\":7}").empty());
@@ -583,17 +779,11 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
         sent.turn = -0.5f;
         sent.navMode = 2;
         sent.navTarget = { 123456.0f, -98765.0f };
-        sent.payBountyFaction = "Pirates";
-        sent.sellType = 2;
-        sent.orderKind = (int)Orders::Kind::Build;
         REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(sent), c));
         CHECK(c.seq == 41);
         CHECK(c.turn == -0.5f);
         CHECK(c.navMode == 2);
         CHECK(c.navTarget.x == 123456.0f);
-        CHECK(c.payBountyFaction == "Pirates");
-        CHECK(c.sellType == 2);
-        CHECK(c.orderKind == (int)Orders::Kind::Build);
     }
 }
 
@@ -673,38 +863,40 @@ TEST_CASE("a standing hold survives the wire, and costs nothing when nobody aske
 // the order names the systems to pass through on its way.
 TEST_CASE("a route order's preference and waypoints survive the wire")
 {
-    Proto::Command c;
-    c.orderKind = 1;
-    c.orderDestSystem = "verge";
-    c.orderWaypoints = { "reach", "haven" };
-    c.orderPreference = 2;
+    Proto::Act::GiveOrder c;
+    c.order.kind = Orders::Kind::Route;
+    c.order.destSystem = "verge";
+    c.order.waypoints = { "reach", "haven" };
+    c.order.preference = 2;
 
-    Proto::Command back;
-    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
-    CHECK(back.orderDestSystem == "verge");
-    CHECK(back.orderWaypoints == std::vector<std::string>{ "reach", "haven" });
-    CHECK(back.orderPreference == 2);
+    Proto::Action got;
+    REQUIRE(Proto::DecodeAction(Proto::EncodeAction(c), got));
+    const Orders::Order& back = As<Proto::Act::GiveOrder>(got).order;
+    CHECK(back.destSystem == "verge");
+    CHECK(back.waypoints == std::vector<std::string>{ "reach", "haven" });
+    CHECK(back.preference == 2);
 
-    SUBCASE("and a command that does not ask does not pay for the field")
+    SUBCASE("and an order that does not ask does not pay for the field")
     {
-        Proto::Command plain;
-        plain.orderKind = 1;
-        plain.orderDestSystem = "verge";
-        const std::string wire = Proto::EncodeCommand(plain);
-        CHECK(wire.find("ordPref") == std::string::npos);
-        CHECK(wire.find("ordVia") == std::string::npos);
+        Proto::Act::GiveOrder plain;
+        plain.order.kind = Orders::Kind::Route;
+        plain.order.destSystem = "verge";
+        const std::string wire = Proto::EncodeAction(plain);
+        CHECK(wire.find("pref") == std::string::npos);
+        CHECK(wire.find("via") == std::string::npos);
     }
 
     SUBCASE("a preference past the last, or too many waypoints, is not an order")
     {
-        Proto::Command odd = c;
-        odd.orderPreference = 9;
-        Proto::Command got;
-        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(odd), got));
-        CHECK(got.orderPreference == 0);  // read as the default, like any index out of range
-        Proto::Command many = c;
-        many.orderWaypoints.assign(Proto::ROUTE_WAYPOINTS_MAX + 1, "reach");
-        CHECK_FALSE(Proto::DecodeCommand(Proto::EncodeCommand(many), got));
+        Proto::Act::GiveOrder odd = c;
+        odd.order.preference = 9;
+        Proto::Action g;
+        REQUIRE(Proto::DecodeAction(Proto::EncodeAction(odd), g));
+        // read as the default, like any index out of range
+        CHECK(As<Proto::Act::GiveOrder>(g).order.preference == 0);
+        Proto::Act::GiveOrder many = c;
+        many.order.waypoints.assign(Proto::ROUTE_WAYPOINTS_MAX + 1, "reach");
+        CHECK_FALSE(Proto::DecodeAction(Proto::EncodeAction(many), g));
     }
 }
 
@@ -939,29 +1131,27 @@ TEST_CASE("a command that says nothing is a few bytes, and still says it (#341)"
     Proto::Command back;
     REQUIRE(Proto::DecodeCommand(wire, back));
     CHECK(back.seq == 1234);
-    CHECK(back.sellType == -1);
-    CHECK(back.payBountyFaction.empty());
-    CHECK(back.orderStopDist == 120.0f);
-    CHECK(back.orderKind == 0);
     CHECK_FALSE(back.thrust);
+
+    // Seq and a held thrust, all a pilot flying in a straight line sends.
+    Proto::Command flying;
+    flying.seq = 1234;
+    flying.thrust = true;
+    CHECK(Proto::EncodeCommand(flying).size() < 80);
 
     // And everything that is not a default comes through as it was.
     Proto::Command busy;
     busy.thrust = true;
     busy.turn = 0.5f;
-    busy.orderKind = 1;
-    busy.orderStopDist = 0.0f;
-    busy.orderPoint = { 10.0f, 0.0f };
-    busy.sellType = 0;
-    busy.refitShip = 0;
+    busy.navMode = 1;
+    busy.navStopDist = 0.0f;
+    busy.navTarget = { 10.0f, 0.0f };
     REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(busy), back));
     CHECK(back.thrust);
     CHECK(back.turn == 0.5f);
-    CHECK(back.orderKind == 1);
-    CHECK(back.orderStopDist == 0.0f);
-    CHECK(back.orderPoint.x == 10.0f);
-    CHECK(back.sellType == 0);
-    CHECK(back.refitShip == 0);
+    CHECK(back.navMode == 1);
+    CHECK(back.navStopDist == 0.0f);
+    CHECK(back.navTarget.x == 10.0f);
 }
 
 // Found by the fuzzers (#518): the client-side decoders read their fields with nlohmann's
