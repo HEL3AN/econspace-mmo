@@ -166,6 +166,11 @@ struct Convoys
 //   has `surveyWindow` seconds, and the faction's own survey waits for the report.
 // - Raid: a lawful faction's stations pay `raidShare` of what a lawless faction's base going up
 //   is worth -- its blueprint's cost at base prices -- to the pilot who destroys it.
+// - NPCs compete (#345): a job nobody has taken is filled by the faction's own people, so a plan
+//   never waits for ever. `npcAfter` seconds after a plan began -- and again for each delivery
+//   already made -- a hauler of the faction delivers the site's goods at their base price, paid
+//   from its stock, and a lawful faction's patrol from the nearest hostile holding within `reach`
+//   brings a lawless base down for what the bounty would have been. Zero: never.
 // Done, a job is worth `rep` standing with the poster; failed by the pilot, `failRep` less.
 // A station's own work (bounty, mining, delivery) stays on its board, under the same number,
 // for `offerLife` seconds of world time (#425), `stationOffers` of it at a time: docking again
@@ -193,6 +198,7 @@ struct Jobs
     double surveyWait = 240.0;
     double surveyWindow = 900.0;
     double raidShare = 0.5;
+    double npcAfter = 900.0;
     double rep = 3.0;
     double failRep = 1.5;
 };

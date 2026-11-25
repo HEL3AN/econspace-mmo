@@ -215,6 +215,7 @@ bool Load(const std::string& path)
                                              { "surveyWait", &jb.surveyWait },
                                              { "surveyWindow", &jb.surveyWindow },
                                              { "raidShare", &jb.raidShare },
+                                             { "npcAfter", &jb.npcAfter },
                                              { "rep", &jb.rep },
                                              { "failRep", &jb.failRep },
                                              { "offerLife", &jb.offerLife } },

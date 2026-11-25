@@ -103,6 +103,13 @@ bool Sited(const Plan& p)
            ((p.kind == Plan::Kind::Anchor || p.kind == Plan::Kind::Upgrade) && p.arrived);
 }
 
+// At war or hostile: the stance a patrol acts on.
+bool AtOdds(FactionId a, FactionId b)
+{
+    const Stance s = Factions::Relation(a, b);
+    return a != b && (s == Stance::War || s == Stance::Hostile);
+}
+
 bool Holds(const ClientSession& s, int planId, MissionType type)
 {
     for (const Mission& m : s.missions.Active())
@@ -674,8 +681,92 @@ void Simulation::SiegeOver(const Plan& p)
     }
 }
 
+void Simulation::StepNpcJobs()
+{
+    const WorldRules::Jobs& r = WorldRules::JobRules();
+    if (r.npcAfter <= 0.0)
+        return;
+    std::vector<int> ids;
+    for (const auto& kv : plans_)
+        ids.push_back(kv.first);
+    // A pilot who has taken a plan's job has it: the faction's people wait for them.
+    auto taken = [&](int planId, MissionType type)
+    {
+        for (const auto& kv : sessions_)
+            if (Holds(kv.second, planId, type))
+                return true;
+        return false;
+    };
+    for (int id : ids)
+    {
+        const auto it = plans_.find(id);
+        if (it == plans_.end())
+            continue;
+        Plan&            p = it->second;
+        const Structure* site = JobSite(p);
+        if (site == nullptr)
+            continue;
+        FactionMind& mind = minds_[p.faction];
+        ResourceType good{};
+        int          most = 0;
+        if (Factions::IsLawful(p.faction) || p.kind != Plan::Kind::Settle)
+        {
+            // Supply: a hauler brings what the site is short of. The goods are paid at their base
+            // price, no pilot's markup; the n-th is due npcAfter seconds after the one before it,
+            // counted from the plan's start, so it is the same answer whenever it is asked.
+            if (p.supplied >= r.supplyMax || time_ < p.startedAt + r.npcAfter * (p.supplied + 1) ||
+                !MainGood(site->GetBlueprint(), good, most) || taken(p.id, MissionType::Supply))
+                continue;
+            const int    amount = std::max(1, (int)std::lround(r.supplyShare * most));
+            const double units = amount * Market::DefaultBasePrice(good) / r.creditsPerStock;
+            if (mind.stock < (float)units)
+                continue;
+            mind.stock -= (float)units;
+            p.supplied++;
+            SpeedSite(p);
+            continue;
+        }
+        // Raid: the patrol of the nearest lawful holding at odds with the base's faction brings
+        // it down, for what the bounty would have been.
+        if (time_ < p.startedAt + r.npcAfter || taken(p.id, MissionType::Raid))
+            continue;
+        double worth = 0.0;
+        if (const Blueprint* bp = site->GetBlueprint())
+            for (const auto& c : bp->cost)
+                worth += c.second * Market::DefaultBasePrice(c.first);
+        const double                             units = worth * r.raidShare / r.creditsPerStock;
+        const std::map<std::string, int>         near = JumpsFrom(*this, p.target, r.reach);
+        std::vector<std::pair<int, std::string>> ring;
+        for (const auto& kv : near)
+            ring.push_back({ kv.second, kv.first });
+        std::sort(ring.begin(), ring.end());
+        for (const auto& at : ring)
+        {
+            const SystemState* held = SystemById(at.second);
+            if (held == nullptr || !held->agg.claimed ||
+                !Factions::IsLawful(held->agg.controller) ||
+                !AtOdds(held->agg.controller, p.faction) ||
+                minds_[held->agg.controller].stock < (float)units)
+                continue;
+            const FactionId poster = held->agg.controller;
+            minds_[poster].stock -= (float)units;
+            SystemState* st = SystemById(p.target);
+            Structure*   base = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
+            if (base == nullptr)
+                break;
+            const std::string where = SystemName(p.target);
+            Announce("job", poster, p.target,
+                     FactionName(poster) + " patrols brought down the " + FactionName(p.faction) +
+                         " base going up in " + where);
+            HitStructure(*st, base->GetId(), 1.0e9f, nullptr, Loss::Siege, poster);
+            break;
+        }
+    }
+}
+
 void Simulation::StepJobs()
 {
+    StepNpcJobs();
     const WorldRules::Jobs& r = WorldRules::JobRules();
     for (auto& kv : sessions_)
     {

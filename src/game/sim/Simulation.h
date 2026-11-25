@@ -1860,6 +1860,9 @@ public:
     // A plan's job taken or done is history, and where it matters news (#345): a raid or a siege
     // broken is the feed's, the rest the chronicle's.
     void JobNews(const ClientSession& s, const Mission& m, bool done);
+    // Once a pass: the faction's own people fill the jobs no pilot has taken (#345), by the same
+    // arithmetic hot and cold, from the plan's own saved state.
+    void StepNpcJobs();
     // The besieged side's strength at a siege that a pilot can find there as ships -- its
     // pirates, or the police flying its flag -- in ships; 0 when it is numbers only (#407).
     float DefendersShown(const Plan& p) const;
