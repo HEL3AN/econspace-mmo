@@ -339,6 +339,15 @@ ShapeBackend::ShapeBackend()
         SetBuilt3D(true, std::string(on) == "ships");
     const char* q = std::getenv("ECON_BUILT3D_QUALITY");
     quality3d_ = q != nullptr ? std::clamp(std::atoi(q), 0, 3) : 2;
+    const char* t = std::getenv("ECON_BUILT3D_TILT");
+    if (t != nullptr)
+        tilt3d_ = std::clamp((float)std::atof(t), 0.0f, 60.0f);
+    const char* e = std::getenv("ECON_BUILT3D_ELEV");
+    if (e != nullptr)
+        elevation3d_ = std::clamp((float)std::atof(e), 8.0f, 80.0f);
+    const char* x = std::getenv("ECON_BUILT3D_EXPOSURE");
+    if (x != nullptr)
+        exposure3d_ = std::clamp((float)std::atof(x), 0.3f, 3.0f);
 }
 
 void ShapeBackend::SetBuilt3D(bool on, bool ships)
@@ -347,7 +356,7 @@ void ShapeBackend::SetBuilt3D(bool on, bool ships)
     ships3d_ = ships;
 }
 
-bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light)
+bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light, bool probe)
 {
     if (!want3d_ || materials_ == nullptr || item.shape == nullptr || item.shape->Empty())
         return false;
@@ -371,6 +380,8 @@ bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light)
     {
         built3d_ = std::make_unique<Built3D::Renderer>();
         built3d_->SetQuality((Built3D::Quality)quality3d_);
+        const char* d = std::getenv("ECON_BUILT3D_DETAIL");
+        built3d_->SetDetail(d == nullptr || std::string(d) != "0");
         if (!built3d_->Load(materials_->DataDir()))
             TraceLog(LOG_WARNING, "Built3D: %s -- drawing built objects flat",
                      built3d_->Problem().c_str());
@@ -378,6 +389,8 @@ bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light)
     }
     if (!built3d_->Available())
         return false;
+    if (probe)
+        return true;
 
     Built3D::Frame f;
     f.view = view_;
@@ -385,6 +398,9 @@ bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light)
     f.light = light;
     f.hasLight = !lighting_.Empty() && (light.dir.x != 0.0f || light.dir.y != 0.0f);
     f.ambient = lighting_.ambient;
+    f.tiltDeg = tilt3d_;
+    f.elevationDeg = elevation3d_;
+    f.exposure = exposure3d_;
     f.base = item.color;
     const Livery* livery = Materials::FindLivery(item.livery.empty() ? "default" : item.livery);
     if (livery != nullptr)
@@ -449,10 +465,21 @@ void ShapeBackend::Draw(const Item& described)
         // whole into the offscreen target at reduced resolution and scaled back up, as a
         // planet flown over is (#426): its surfaces are finished part by part, and a station
         // filling a 1080p screen is two million fragments of them on an integrated GPU.
-        if (paintScale_ == 1.0f && DrawBuilt3D(item, light))
+        if (paintScale_ == 1.0f && DrawBuilt3D(item, light, true))
         {
+            // A gate faces where it leads: out from the system's centre, toward its neighbour
+            // (the generator lays a gate out on the bearing of the system it joins).
+            Item faced = item;
+            if (item.kind == EntityKind::Gate && item.heading == 0.0f)
+                faced.heading = std::atan2(item.pos.y, item.pos.x);
+            // What a solid cannot be is drawn by the 2D path: what lies under the object (a
+            // swirl on the ground a gate is built around) before it, the rest over it.
             solidsDrawn_ = true;
-            DrawComposition(item, item.color, light);
+            underPass_ = true;
+            DrawComposition(faced, faced.color, light);
+            underPass_ = false;
+            DrawBuilt3D(faced, light, false);
+            DrawComposition(faced, faced.color, light);
             solidsDrawn_ = false;
             return;
         }
@@ -1018,7 +1045,7 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         const Piece& p0 = gone ? torn : original;
         if (p0.fallback && painted)
             continue;
-        if (solidsDrawn_ && Built3D::Meshable(p0))
+        if (solidsDrawn_ && (Built3D::Meshable(p0) || (p0.z < 0) != underPass_))
             continue;
         const Material* ownMat = OwnMaterial(p0);
         if (gone && ownMat == nullptr)  // too small to show a frame: the part is simply gone

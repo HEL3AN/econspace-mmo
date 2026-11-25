@@ -98,6 +98,13 @@ public:
         if (built3d_ != nullptr)
             built3d_->SetQuality((Built3D::Quality)q);
     }
+    // The camera's lean in degrees, and the star's height over the plane (ECON_BUILT3D_TILT,
+    // ECON_BUILT3D_ELEV, ECON_BUILT3D_EXPOSURE until they are settings).
+    void SetBuilt3DLook(float tiltDeg, float elevationDeg)
+    {
+        tilt3d_ = tiltDeg;
+        elevation3d_ = elevationDeg;
+    }
     bool               Built3DOn() const { return want3d_; }
     Built3D::Renderer* Built3DRenderer() { return built3d_.get(); }
 
@@ -162,7 +169,7 @@ private:
     bool DrawComposition(const Item& item, Color c, const Lighting::Sample& light);
     // The solids of a built object, if it is one and this driver can: true when drawn, and
     // the 2D path then draws only what a solid cannot be (glows, orbiting parts).
-    bool DrawBuilt3D(const Item& item, const Lighting::Sample& light);
+    bool DrawBuilt3D(const Item& item, const Lighting::Sample& light, bool probe);
     void DrawPiece(const Piece& p, Color c);
     // A glow on a planet's surface: projected and cut like any surface piece, lit as the
     // body, and still fading to nothing at its rim.
@@ -207,7 +214,11 @@ private:
     bool                               want3d_ = false;
     bool                               ships3d_ = false;
     int                                quality3d_ = 2;
+    float                              tilt3d_ = Built3D::TILT_DEG;
+    float                              elevation3d_ = Built3D::LIGHT_ELEVATION_DEG;
+    float                              exposure3d_ = Built3D::EXPOSURE;
     bool                               solidsDrawn_ = false;  // the 2D pass is only the rest
+    bool                               underPass_ = false;    // ...the part that lies beneath
 
     Lighting lighting_;  // a copy: a backend outlives the scene that handed it over
     int      own_ = -1;  // index in lighting_ of the drawn item's own light, or -1

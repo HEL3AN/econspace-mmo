@@ -218,6 +218,7 @@ add_library(engine STATIC
     src/engine/render/Lighting.cpp     # where a system's light comes from, and how much (#119)
     src/engine/render/Silhouette.cpp       # what an object is made of, as data (#122)
     src/engine/render/Built3DMesh.cpp      # a built object as bevelled solids, from the same composition (#618)
+    src/engine/render/Built3DDetail.cpp    # the structure a composition implies: trusses, plating, ribs, spokes (#618)
     src/engine/render/Built3D.cpp          # ...lit by the star, shadowed from its own heights (#618)
     src/engine/render/CameraRig.cpp        # the player's camera, not the ship's (#158)
     src/engine/render/Material.cpp         # a shader plus what feeds it -- the data half (#121)

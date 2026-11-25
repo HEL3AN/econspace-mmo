@@ -271,6 +271,14 @@ struct Part
     // fuselage -- above 0 on it.
     int z = 0;
 
+    // How far the part stands above what it lies on, in the object's radii, for a renderer
+    // that draws built objects as solids (Built3D, #618): a pylon, a mast, an emitter. Zero is
+    // the rule, which derives a thickness from the part's role and size.
+    float height = 0.0f;
+    // A part that does not stand on anything: a lintel across a gate, a beam over a pad. Its
+    // underside is this far above the ground, in radii, and `height` is how thick it is.
+    float lift = 0.0f;
+
     // Only the reflected copy of a mirrored part: how a kit places the twin of a module on a
     // bilateral object, so the module's own shape is reflected and not merely turned.
     bool mirrorOnly = false;
@@ -483,7 +491,9 @@ struct Piece
     // Faded out on the lit side of the body it belongs to; the backend knows the light.
     bool onlyDark = false;
 
-    int z = 0;  // draw order after depth (see Part::z)
+    int   z = 0;        // draw order after depth (see Part::z)
+    float lift = 0.0f;  // world units: the underside's height, for a part that floats (Part::lift)
+    float rise = 0.0f;  // world units above what it lies on; 0 leaves it to the rule (Part::height)
 
     // A band is not a primitive: it is the visible part of a latitude strip, projected.
     // Stored as a strip -- upper edge and lower edge alternating -- in world coordinates.

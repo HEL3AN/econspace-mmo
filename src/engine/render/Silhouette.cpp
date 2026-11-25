@@ -812,7 +812,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                      "tint",    "from",        "to",          "row",         "module",
                      "variant", "variants",    "except",      "scale",       "chance",
                      "group",   "pivot",       "onlyDark",    "tip",         "jagged",
-                     "soft",    "pitch",       "z",           "material",    "fallback" },
+                     "soft",    "pitch",       "z",           "material",    "fallback",
+                     "height",  "lift" },
                 error))
             return false;
         Part p;
@@ -1069,6 +1070,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         p.section = isSection;
         p.pitch = e.value("pitch", p.pitch);
         p.z = e.value("z", p.z);
+        p.height = e.value("height", p.height);
+        p.lift = e.value("lift", p.lift);
         if (!field("tip", p.tip, Part::Field::Tip) ||
             !field("jagged", p.jagged, Part::Field::Jagged))
             return false;
@@ -1410,6 +1413,8 @@ void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, S
                     q.radius *= p.scale;
                     q.width *= p.scale;
                     q.length *= p.scale;
+                    q.height *= p.scale;
+                    q.lift *= p.scale;
                     q.rowCount = 1;
                     q.rowStep = { 0.0f, 0.0f };
                     q.alpha *= p.alpha;
@@ -1543,6 +1548,8 @@ Shape ExpandModules(const Shape& in, int seed)
                             q.radius *= p.scale;
                             q.width *= p.scale;
                             q.length *= p.scale;
+                            q.height *= p.scale;
+                            q.lift *= p.scale;
                             const float sx = mp.rowStep.x * p.scale,
                                         sy = mp.rowStep.y * p.scale * flip;
                             q.rowStep = { sx * ca - sy * sa, sx * sa + sy * ca };
@@ -1659,7 +1666,7 @@ uint64_t Fingerprint(const Shape& s)
         f.I(p.tintVar), f.F(p.chance), f.I(p.chanceVar), f.F(p.rowTurn), f.F(p.rowTaper);
         f.B(p.rowTaperStep), f.F(p.rowRing), f.F(p.rowSpread), f.V(p.pivotShift);
         f.B(p.hasPivot), f.V(p.pivot), f.B(p.rowCentred), f.B(p.section), f.F(p.pitch);
-        f.I(p.z), f.B(p.mirrorOnly);
+        f.I(p.z), f.B(p.mirrorOnly), f.F(p.height), f.F(p.lift);
     }
     f.I((int)s.vars.size());
     for (const Shape::Var& v : s.vars)
@@ -1858,6 +1865,8 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
                 piece.tint = p.tint;
                 piece.onlyDark = p.onlyDark;
                 piece.z = p.z;
+                piece.rise = p.height * size * scale;
+                piece.lift = p.lift * size * scale;
                 piece.tip = p.tip;
                 piece.jagged = p.jagged;
                 piece.jagSeed = (int)(Hash01(seed, salt + 337 + m * 7) * 1000000.0f);

@@ -20,6 +20,8 @@ uniform int   uMode;
 uniform float uHeading;   // radians
 uniform vec2  uClock;     // whole seconds (wrapped), fraction
 uniform float uMaxH;      // the tallest thing, world units
+uniform float uReach;     // the furthest from the centre, world units
+uniform vec3  uTilt;      // the camera's lean: tan, cos, sin; (0, 1, 0) is straight down
 
 // Scene pass.
 uniform vec2 uObj;        // the object's centre relative to the camera's target, world units
@@ -54,18 +56,25 @@ void main()
     vTint = aTint;
     vEdge = aEdge;
 
-    // Higher is nearer the viewer, and the depth test keeps the nearest.
-    float depth = 1.0 - 1.96 * clamp(aPos.z / max(uMaxH, 0.0001), 0.0, 1.0);
-
     if (uMode == 0)
     {
         vec2  w = (uObj + p) * uCam.x;
         float cr = cos(uCam.y), sr = sin(uCam.y);
         w = vec2(cr * w.x - sr * w.y, sr * w.x + cr * w.y) + uCam.zw;
+        // The camera leans toward the viewer's side: what is high is carried up the screen,
+        // and the ground stays exactly where the 2D world puts it (an oblique projection, so
+        // an object's footprint is the same at any tilt and picking needs no change).
+        w.y -= uTilt.x * aPos.z * uCam.x;
+        // Higher is nearer the viewer, and so is what lies further down the screen.
+        float down = sr * p.x + cr * p.y;
+        float t = (aPos.z * uTilt.y + (down + uReach) * uTilt.z) /
+                  max(uMaxH * uTilt.y + 2.0 * uReach * uTilt.z, 0.0001);
+        float depth = 1.0 - 1.96 * clamp(t, 0.0, 1.0);
         gl_Position = vec4(w.x / uViewport.x * 2.0 - 1.0, 1.0 - w.y / uViewport.y * 2.0, depth, 1.0);
     }
     else
     {
+        float depth = 1.0 - 1.96 * clamp(aPos.z / max(uMaxH, 0.0001), 0.0, 1.0);
         gl_Position = vec4(p / uHExtent, depth, 1.0);
     }
 }

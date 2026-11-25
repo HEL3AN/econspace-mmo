@@ -20,6 +20,12 @@ using Loop = std::vector<V2>;
 
 constexpr float TINY = 1e-4f;
 
+// "Inside the outline" for a wall, which has no outline to be anti-aliased by.
+constexpr float WALL_EDGE = 1.0e6f;
+
+// How far the top of a floating slab rises over its rim, in radii.
+constexpr float LIFT_CHAMFER = 0.008f;
+
 V2 Add(V2 a, V2 b)
 {
     return { a.x + b.x, a.y + b.y };
@@ -38,11 +44,11 @@ V2 Sub(V2 a, V2 b)
 // How tall a piece stands on what it lies on, in the object's radii. Bigger things are
 // thicker, up to a cap; a mast is thin and tall. The numbers are art: tuned by looking at
 // stations beside planets, and the same for every object, so nothing is tuned per archetype.
-constexpr float HEIGHT_SCALE = 2.0f;
+constexpr float HEIGHT_SCALE = 3.0f;
 
 float Rise(Role role, float sr)
 {
-    float k = 0.55f, lo = 0.006f, hi = 0.05f;
+    float k = 0.55f, lo = 0.008f, hi = 0.07f;
     switch (role)
     {
         case Role::Hull: break;
@@ -487,7 +493,7 @@ int Corners(float pixelRadius)
     return std::clamp((int)std::ceil(PI / std::max(a, 0.01f)), 8, 160);
 }
 
-MeshData BuildMesh(const std::vector<Piece>& composed, float R, float pixelRadius)
+MeshData BuildMesh(const std::vector<Piece>& composed, float R, float pixelRadius, bool chase)
 {
     MeshData m;
     Builder  b{ m };
@@ -501,18 +507,29 @@ MeshData BuildMesh(const std::vector<Piece>& composed, float R, float pixelRadiu
             Expand(p, pieces);
 
     // How high each stands: on the level its z says, or on whatever earlier pieces under its
-    // centre have made, whichever is higher, and then its own thickness.
-    std::vector<float> top(pieces.size(), 0.0f), edge(pieces.size(), 0.0f), rise(pieces.size());
+    // centre have made, whichever is higher, and then its own thickness. `foot` is where its
+    // wall starts: the top of what it stands on, or the ground.
+    std::vector<float> top(pieces.size(), 0.0f), edge(pieces.size(), 0.0f), rise(pieces.size()),
+        foot(pieces.size(), 0.0f);
     for (size_t j = 0; j < pieces.size(); j++)
     {
         const Piece& p = pieces[j];
-        rise[j] = Rise(p.role, ShadeRadius(p) / R) * R;
-        float e = Level(p.z) * R;
+        rise[j] = p.rise > 0.0f ? p.rise : Rise(p.role, ShadeRadius(p) / R) * R;
+        float under = 0.0f;
         for (size_t i = 0; i < j; i++)
             if (Inside(pieces[i], { p.pos.x, p.pos.y }))
-                e = std::max(e, top[i]);
-        edge[j] = e;
-        top[j] = e + rise[j];
+                under = std::max(under, top[i]);
+        foot[j] = under;
+        edge[j] = std::max(Level(p.z) * R, under);
+        top[j] = edge[j] + rise[j];
+        if (p.lift > 0.0f)
+        {
+            // A slab over empty ground: its wall hangs from `edge` down to the underside.
+            rise[j] = p.rise > 0.0f ? p.rise : 0.02f * R;
+            foot[j] = p.lift;
+            edge[j] = p.lift + rise[j];
+            top[j] = edge[j] + LIFT_CHAMFER * R;
+        }
     }
 
     for (size_t j = 0; j < pieces.size(); j++)
@@ -527,17 +544,25 @@ MeshData BuildMesh(const std::vector<Piece>& composed, float R, float pixelRadiu
             break;  // an object this dense is a smudge at any size a 16-bit index can hold
 
         const bool bigDisc = p.form == Form::Disc && p.radius > 0.3f * R;  // a floor, not a dome
-        const bool round = (p.form == Form::Disc && !bigDisc) || p.form == Form::Capsule ||
-                           p.form == Form::Ring || p.form == Form::Arc || p.role == Role::Light ||
-                           p.role == Role::Antenna;
-        // The bevel's width: a round form is round all the way in, a plate has a chamfer.
-        float width = round ? s.inradius * 0.999f : std::min(s.inradius * 0.5f, rise[j] * 1.6f);
+        // A part the data gave a height is a prism with a small chamfer, a pylon or a mast; the
+        // rule's own parts are domes and plates.
+        const bool lifted = p.lift > 0.0f;
+        const bool given = p.rise > 0.0f || lifted;
+        const bool round =
+            !given && ((p.form == Form::Disc && !bigDisc) || p.form == Form::Capsule ||
+                       p.form == Form::Ring || p.form == Form::Arc || p.role == Role::Light ||
+                       p.role == Role::Antenna);
+        // The bevel's width: a round form is round all the way in, a plate has a chamfer that
+        // is steep, so a wall reads as one when the object is tilted.
+        float width = round ? s.inradius * 0.999f
+                            : std::min(s.inradius * 0.5f, given ? 0.012f * R : rise[j] * 0.45f);
         width = std::max(width, TINY);
         // A dome is not taller than it is wide: it would be a spike.
-        float h = rise[j];
+        float h = lifted ? LIFT_CHAMFER * R : rise[j];
         if (round && p.form == Form::Disc)
             h = std::min(std::max(h, s.inradius * 0.5f), 0.12f * R);
-        h = std::min(h, 1.2f * s.inradius + 0.004f * R);
+        if (!given)
+            h = std::min(h, 1.2f * s.inradius + 0.004f * R);
         const int K = round ? steps + 1 : std::max(1, steps - 1);
 
         Attr at{};
@@ -545,7 +570,10 @@ MeshData BuildMesh(const std::vector<Piece>& composed, float R, float pixelRadiu
         at.alpha = p.alpha;
         at.spin = p.spin;
         at.blink = p.blink;
-        at.phase = p.blinkPhase;
+        // A row of lamps along the object's axis blinks as a sequence, so the light runs
+        // toward where the object leads.
+        at.phase =
+            chase ? std::fmod(std::fmod(-p.pos.x / R * 1.7f, 1.0f) + 1.0f, 1.0f) : p.blinkPhase;
         at.role = (float)(int)p.role + (p.onlyDark ? ROLE_NIGHT_ONLY : 0.0f);
         at.tint[0] = (float)p.tint.r / 255.0f;
         at.tint[1] = (float)p.tint.g / 255.0f;
@@ -662,6 +690,55 @@ MeshData BuildMesh(const std::vector<Piece>& composed, float R, float pixelRadiu
             const std::vector<unsigned short>& ids = oi.back();
             for (size_t i = 0; i < ids.size(); i++)
                 b.Tri(ids[i], ids[(i + 1) % ids.size()], c);
+        }
+
+        // The walls: from the outline down to what the piece stands on. Straight down from
+        // above they are edge-on and nothing; tilted, they are the object's sides.
+        const float wallTop = edge[j], wallFoot = foot[j];
+        if (wallTop - wallFoot > 1e-4f * R)
+        {
+            auto wall = [&](const Ring& r)
+            {
+                const size_t                n = r.p.size();
+                std::vector<unsigned short> up(n), down(n);
+                for (size_t i = 0; i < n; i++)
+                {
+                    const V2 o = r.out[i];
+                    up[i] = b.Vertex(r.p[i], wallTop, o.x, o.y, 0.0f, at, WALL_EDGE);
+                    down[i] = b.Vertex(r.p[i], wallFoot, o.x, o.y, 0.0f, at, WALL_EDGE);
+                }
+                const size_t last = s.closed ? n : n - 1;
+                for (size_t i = 0; i < last; i++)
+                {
+                    const size_t k = (i + 1) % n;
+                    b.Tri(up[i], up[k], down[i]);
+                    b.Tri(up[k], down[k], down[i]);
+                }
+            };
+            wall(outer[0]);
+            if (s.hole)
+            {
+                wall(inner[0]);
+                if (!s.closed)  // the ends of an arc
+                    for (const size_t i : { (size_t)0, outer[0].p.size() - 1 })
+                    {
+                        const V2 a = outer[0].p[i], c = inner[0].p[i];
+                        // Along the arc and away from its body.
+                        const V2             tang = Sub(outer[0].p[i == 0 ? 1 : i - 1], a);
+                        const float          tl = std::max(std::hypot(tang.x, tang.y), TINY);
+                        const V2             nn{ -tang.x / tl, -tang.y / tl };
+                        const unsigned short a0 =
+                            b.Vertex(a, wallTop, nn.x, nn.y, 0.0f, at, WALL_EDGE);
+                        const unsigned short a1 =
+                            b.Vertex(a, wallFoot, nn.x, nn.y, 0.0f, at, WALL_EDGE);
+                        const unsigned short c0 =
+                            b.Vertex(c, wallTop, nn.x, nn.y, 0.0f, at, WALL_EDGE);
+                        const unsigned short c1 =
+                            b.Vertex(c, wallFoot, nn.x, nn.y, 0.0f, at, WALL_EDGE);
+                        b.Tri(a0, c0, a1);
+                        b.Tri(c0, c1, a1);
+                    }
+            }
         }
         m.pieces++;
     }

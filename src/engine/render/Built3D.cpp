@@ -1,5 +1,6 @@
 #include "render/Built3D.h"
 
+#include "render/Built3DDetail.h"
 #include "render/GlState.h"
 #include "render/Scene.h"
 #include "render/Silhouette.h"
@@ -134,6 +135,10 @@ bool Renderer::Load(const std::string& dataDir)
         l.quality = u("uQuality");
         l.height = u("uHeight");
         l.dome = u("uDome");
+        l.reach = u("uReach");
+        l.tilt = u("uTilt");
+        l.view = u("uView");
+        l.exposure = u("uExposure");
     };
     locate(sceneShader_, sl_);
     locate(heightShader_, hl_);
@@ -236,8 +241,12 @@ Renderer::Mesh* Renderer::MeshFor(const Item& item, float zoom)
     pose.pixelsPerUnit = zoom;
     pose.time = 0.0;
     pose.thrusting = item.thrusting;
-    const std::vector<Piece> pieces = Compose(*item.shape, pose);
-    const MeshData           data = BuildMesh(pieces, item.size, item.size * zoom);
+    const std::vector<Piece> composed = Compose(*item.shape, pose);
+    const std::vector<Piece> pieces =
+        Embellish(composed, item.size, item.id,
+                  detail_ && item.kind != EntityKind::Gate ? DetailLevel(item.size * zoom) : 0);
+    const MeshData data =
+        BuildMesh(pieces, item.size, item.size * zoom, item.kind == EntityKind::Gate);
     if (data.pieces == 0 || data.index.empty())
         return nullptr;
 
@@ -291,7 +300,7 @@ bool Renderer::Draw(const Item& item, const Frame& f)
     const float            clockFrac = (float)(f.clock - whole);
 
     // The star, as a direction above the plane.
-    const float el = LIGHT_ELEVATION_DEG * DEG2RAD;
+    const float el = f.elevationDeg * DEG2RAD;
     Vector3     L = { 0.0f, 0.0f, 1.0f };
     if (f.hasLight)
         L = { f.light.dir.x * std::cos(el), f.light.dir.y * std::cos(el), std::sin(el) };
@@ -336,6 +345,8 @@ bool Renderer::Draw(const Item& item, const Frame& f)
         Set1(hl_.maxH, maxH);
         Set1(hl_.hExtent, extent);
         Set1(hl_.hFill, fill);
+        Set1(hl_.reach, m->reach);
+        Set3(hl_.tilt, 0.0f, 1.0f, 0.0f);
         rlEnableVertexArray(m->vao);
         rlDrawVertexArrayElements(0, m->indices, nullptr);
         rlDisableVertexArray();
@@ -356,9 +367,11 @@ bool Renderer::Draw(const Item& item, const Frame& f)
     const Vector2 c = GetWorldToScreen2D(item.pos, f.view);
     const float   rpx = extent * f.view.zoom + 2.0f;
     const int     bx = (int)std::max(0.0f, std::floor(c.x - rpx));
-    const int     by = (int)std::max(0.0f, std::floor(Hh - c.y - rpx));
-    const int     bw = (int)std::min(W - (float)bx, std::ceil(2.0f * rpx));
-    const int     bh = (int)std::min(Hh - (float)by, std::ceil(2.0f * rpx));
+    // Lifted by the lean: the box grows upward by the tallest thing's shift.
+    const float lift = std::tan(f.tiltDeg * DEG2RAD) * maxH * f.view.zoom;
+    const int   by = (int)std::max(0.0f, std::floor(Hh - c.y - rpx));
+    const int   bw = (int)std::min(W - (float)bx, std::ceil(2.0f * rpx));
+    const int   bh = (int)std::min(Hh - (float)by, std::ceil(2.0f * rpx + lift));
     if (bw > 0 && bh > 0)
         GlState::ClearDepth(bx, by, bw, bh);
 
@@ -376,6 +389,14 @@ bool Renderer::Draw(const Item& item, const Frame& f)
     Set2(sl_.viewport, W, Hh);
     Set1(sl_.hExtent, extent);
     Set1(sl_.hFill, fill);
+    // The lean: the footprint stays, heights go up the screen. The view vector is the screen's
+    // down in the object's frame, tipped toward the viewer.
+    const float tilt = f.tiltDeg * DEG2RAD;
+    const float rot = f.view.rotation * DEG2RAD;
+    Set1(sl_.reach, m->reach);
+    Set3(sl_.tilt, std::tan(tilt), std::cos(tilt), std::sin(tilt));
+    Set3(sl_.view, std::sin(tilt) * std::sin(rot), std::sin(tilt) * std::cos(rot), std::cos(tilt));
+    Set1(sl_.exposure, f.exposure);
     Set4(sl_.base, f.base.r / 255.0f, f.base.g / 255.0f, f.base.b / 255.0f, 1.0f);
     Set4(sl_.accent, f.accent.r / 255.0f, f.accent.g / 255.0f, f.accent.b / 255.0f, 1.0f);
     Set4(sl_.livery, f.livery[0], f.livery[1], f.livery[2], f.livery[3]);

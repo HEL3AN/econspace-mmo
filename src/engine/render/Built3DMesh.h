@@ -54,7 +54,11 @@ bool Meshable(const Piece& p);
 // origin, heading 0 and time 0 (the GPU turns it). `pixelRadius` is how big it is on screen:
 // the number of corners and bevel steps follow it, and a cache keyed on it rebuilds when it
 // changes by enough to matter.
-MeshData BuildMesh(const std::vector<Piece>& pieces, float objectSize, float pixelRadius);
+//
+// `chase` gives the blinking pieces a phase from where they lie along the object's +x axis
+// instead of from their own seeds: a gate's approach lights run toward its aperture.
+MeshData BuildMesh(const std::vector<Piece>& pieces, float objectSize, float pixelRadius,
+                   bool chase = false);
 
 // How round to make something `pixelRadius` pixels in radius, in corners.
 int Corners(float pixelRadius);

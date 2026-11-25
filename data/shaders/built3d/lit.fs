@@ -38,6 +38,8 @@ uniform float uRadius;        // the object's radius, world units
 uniform float uDamage;        // 1 whole
 uniform vec2  uQuality;       // shadow steps, occlusion on
 uniform float uDome;          // how domed the whole object reads, 0 none
+uniform vec3  uView;          // toward the viewer: (0, 0, 1) from straight above
+uniform float uExposure;      // the shoulder's white point
 
 out vec4 finalColor;
 
@@ -66,6 +68,11 @@ void main()
     vec3  N = normalize(vNormal + vec3(vLocal.xy / uRadius * uDome, 0.0));
     float h = vLocal.z;
     vec2  P = vLocal.xy;
+    // A wall stands on its own outline, where the height map already reads the top of the part:
+    // look from just outside it, or every wall would be in its own shadow and its own corner.
+    bool  wall = vNormal.z < 0.25;
+    if (wall)
+        P += normalize(vNormal.xy + vec2(0.00001)) * 0.012 * uHExtent;
     int   role = int(mod(vMotion.w, 16.0) + 0.5);
     bool  nightOnly = vMotion.w >= 16.0;
     bool  hasLight = uHasLight > 0.5;
@@ -76,7 +83,7 @@ void main()
     vec3  base = vTint.a > 0.0 ? vTint.rgb : uBase.rgb;
     vec3  albedo = base;
     float shine = 0.35, glossy = 14.0;
-    if (role == 1) { albedo = base * 0.55; shine = 0.12; }                                  // panel
+    if (role == 1) { albedo = base * 0.68; shine = 0.12; }                                  // panel
     else if (role == 2) { albedo = mix(base, vec3(1.0), 0.22); shine = 0.45; glossy = 40.0; } // trim
     else if (role == 4) { albedo = base * 0.75; shine = 0.5; glossy = 28.0; }               // antenna
     if (role == 2 && uLivery.z > 0.0)
@@ -148,7 +155,7 @@ void main()
     vec3  col = albedo * (amb + 0.78 * strength * ndl * shadow * lightCol);
 
     // Glints: the star in the bevels and on glossy parts, never in a shadow.
-    vec3  Hh = normalize(L + vec3(0.0, 0.0, 1.0));
+    vec3  Hh = normalize(L + uView);
     float spec = pow(max(dot(N, Hh), 0.0), glossy) * shine * strength * shadow;
     col += uLightTint * spec;
 
@@ -163,11 +170,28 @@ void main()
         }
         if (nightOnly)
             k *= 1.0 - clamp(ndl * strength * 3.0, 0.0, 1.0);
-        vec3 lamp = vTint.a > 0.0 ? vTint.rgb : base;
+        vec3 lamp = vTint.a > 0.0 ? vTint.rgb : mix(base, vec3(1.0, 0.8, 0.5), 0.55);
+        float solidity = vSeed.y;
+        if (vSeed.y < 0.95)
+        {
+            // A membrane or a glow (a gate's field): not a surface, so it moves. Two crossing
+            // ripples in the plane it lies in, brightest where it meets the ground and
+            // thinning upward, so a sheet standing between two towers reads as light held
+            // there and not as a coloured wall.
+            float t = uClock.x + uClock.y;
+            vec2  q = wall ? vec2(dot(vLocal.xy, vec2(-vNormal.y, vNormal.x)), h) / uRadius : vUv;
+            float w1 = sin(q.x * 24.0 + q.y * 7.0 + t * 1.1);
+            float w2 = sin(q.y * 19.0 - t * 1.6 + q.x * 5.0);
+            float shimmer = 0.78 + 0.14 * w1 + 0.10 * w2;
+            lamp *= shimmer * 1.9;
+            solidity *= 1.0 - 0.45 * clamp(h / (0.8 * uRadius), 0.0, 1.0);
+            // The edge of a membrane is brighter, as the rim of a bubble is.
+            k = max(k, 0.0);
+        }
         // A lamp is light, not a surface: translucent where its solidity is, so a gate's field
         // is a glow over what is beneath.
-        finalColor = vec4(lamp * 1.25 * (0.25 + 0.75 * uDamage),
-                          k * clamp(vEdge * uPixelsPerUnit + 0.5, 0.0, 1.0));
+        finalColor = vec4(lamp * 0.95 * (0.25 + 0.75 * uDamage),
+                          k * (solidity / max(vSeed.y, 0.001)) * clamp(vEdge * uPixelsPerUnit + 0.5, 0.0, 1.0));
         return;
     }
     else if (role == 0 && N.z > 0.9 && uStyle.w > 0.05 && cellPx > 6.0)
@@ -182,7 +206,28 @@ void main()
         col += warm * lit * win * night * uStyle.w * fade * 1.4;
     }
 
-    col = col / (1.0 + 0.30 * col) * 1.25;  // a soft shoulder, so a lit slab does not clip
+    else if (role == 0 && wall && uStyle.w > 0.05)
+    {
+        // Rows of windows along a wall: the same scatter of warm lights, on the side a tilted
+        // object shows.
+        vec2  tng = vec2(-vNormal.y, vNormal.x);
+        vec2  wuv = vec2(dot(vLocal.xy, tng) / uRadius, h / uRadius) / 0.028;
+        vec2  wid = floor(wuv);
+        vec2  wf = fract(wuv);
+        float wcell = 0.028 * uRadius * uPixelsPerUnit;
+        float night = 1.0 - clamp(ndl * strength * shadow * 3.0, 0.0, 1.0);
+        float lit = step(0.7, hash(wid * 1.3 + vSeed.x * 17.0));
+        vec2  w = abs(wf - 0.5);
+        float win = (1.0 - smoothstep(0.22, 0.34, w.x)) * (1.0 - smoothstep(0.16, 0.26, w.y));
+        vec3  warm = mix(vec3(1.0, 0.9, 0.7), vec3(0.85, 0.95, 1.0), clamp(1.0 - uStyle.z, 0.0, 1.0));
+        col += warm * lit * win * (0.35 + 0.65 * night) * uStyle.w * smoothstep(3.0, 6.0, wcell) * 1.6;
+        // A wall is never as lit as a roof: seams of plating between decks.
+        col *= 1.0 - 0.18 * (1.0 - smoothstep(0.0, 0.08, abs(wf.y - 0.0))) * smoothstep(3.0, 6.0, wcell);
+    }
+
+    // A soft shoulder, so a lit slab does not clip: filmic, with a white point.
+    col = col * uExposure;
+    col = col / (1.0 + col / 1.6);
 
     // Coverage from the distance to the outline, one pixel across: the part's own edge is
     // soft, with no multisampling and nothing to resolve.

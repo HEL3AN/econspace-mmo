@@ -757,6 +757,10 @@
         { "id": "ancient", "note": "Older than any culture: dark bronze, a gold line down every spine, worn smooth.",
           "base": [118, 110, 100], "accent": [214, 172, 92],
           "wear": 0.5, "grime": 0.3, "stripes": 2, "panels": 0.7,
-          "aspect": 4.0, "patchwork": 0.0, "warmth": 0.1, "windows": 0.0 }
+          "aspect": 4.0, "patchwork": 0.0, "warmth": 0.1, "windows": 0.0 },
+        { "id": "relay", "note": "A lane gate (#618 concepts): warm alloy like the stations it serves, an amber line, long plates, lit from within.",
+          "base": [236, 226, 210], "accent": [236, 170, 60],
+          "wear": 0.2, "grime": 0.2, "stripes": 1, "panels": 0.8,
+          "aspect": 3.4, "patchwork": 0.0, "warmth": 0.7, "windows": 0.0 }
     ]
 }

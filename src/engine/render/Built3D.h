@@ -38,7 +38,15 @@ enum class Quality
 // The angle of the star above the plane, degrees. A fact of the picture and not of the world
 // (the star is far away and flat in a 2D system): it decides how long a shadow is for a given
 // height, and so how tall the parts are allowed to read.
-constexpr float LIGHT_ELEVATION_DEG = 38.0f;
+constexpr float LIGHT_ELEVATION_DEG = 26.0f;
+
+// How far the camera leans toward the viewer's side, degrees (0 is straight down). Heights are
+// carried up the screen by tan(tilt) of themselves and the ground does not move, so a footprint
+// is where the 2D world says it is at every tilt.
+constexpr float TILT_DEG = 25.0f;
+
+// The shoulder's white point scale: what a lit pale hull comes to before it is rolled off.
+constexpr float EXPOSURE = 1.5f;
 
 // How much the whole object is domed in the lighting, so it has a lit side and a dark one:
 // the parts' normals tilt outward by this times how far from the centre they are, in radii.
@@ -54,6 +62,9 @@ struct Frame
     Lighting::Sample light;
     bool             hasLight = false;
     float            ambient = 0.38f;
+    float            tiltDeg = TILT_DEG;
+    float            elevationDeg = LIGHT_ELEVATION_DEG;
+    float            exposure = EXPOSURE;
     Color            base = WHITE;
     Color            accent = { 200, 160, 60, 255 };
     float            livery[4] = { 0.3f, 0.3f, 1.0f, 1.0f };
@@ -72,6 +83,8 @@ public:
     bool               Available() const { return available_; }
     const std::string& Problem() const { return problem_; }
 
+    // Whether the generated structure (Built3DDetail) is added to the composition.
+    void    SetDetail(bool on) { detail_ = on; }
     void    SetQuality(Quality q) { quality_ = q; }
     Quality GetQuality() const { return quality_; }
 
@@ -102,13 +115,14 @@ private:
     bool        available_ = false;
     std::string problem_;
     Quality     quality_ = Quality::Full;
+    bool        detail_ = true;
 
     unsigned int sceneShader_ = 0, heightShader_ = 0;
     // Uniform locations, per shader.
     struct Locs
     {
         int mode = -1, heading = -1, clock = -1, maxH = -1, obj = -1, cam = -1, viewport = -1,
-            hExtent = -1, hFill = -1;
+            hExtent = -1, hFill = -1, reach = -1, tilt = -1, view = -1, exposure = -1;
         int base = -1, accent = -1, livery = -1, style = -1, lightDir = -1, lightSurface = -1,
             lightTint = -1, ambient = -1, hasLight = -1, pixels = -1, radius = -1, damage = -1,
             quality = -1, height = -1, dome = -1;
