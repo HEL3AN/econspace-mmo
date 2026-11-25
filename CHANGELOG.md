@@ -15,6 +15,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 0.1 client cannot join and the next playtest starts on a fresh world.
 
 ### World, knowledge and territory
+- The world makes its own ore fields: every hour a live region may see an Impact (a stream of rock strikes a planet and leaves debris on its orbit) or a Collision (two rocks of a belt meet and shed rich fragments), decided from the seed and the clock, paid from the region's ore bank -- a share of what its stations and fleets use, 40% in a centre and 70% on the frontier -- and kept in the save. A new region begins with a day of them already in their stages of life; a large one is seen by everybody, a small one is a signature a scan finds; the news tells what happened, never how much (#617).
 - A field of ore can have a life: its cap rises, holds, thins and ends with its age, a pull is slower the thinner it is, ore the cap takes away unmined is lost, and the system's miners work it at the rate of the miner design -- the hold they carry between the field and the market -- never past the shelf's room. An admin places one with the console's `field`; the target panel shows what it holds now and when it disperses (#617).
 - A player's finished station (trade, mining, shipyard) has a mission board -- the holder's jobs and work of its own -- and counts against the region's cap on stations, as a faction's does (#438).
 - A job nobody takes is filled by the faction's own hauler or patrol after a while, at the same price to its stock (#345).

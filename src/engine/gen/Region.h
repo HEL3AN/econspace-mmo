@@ -32,7 +32,8 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    14;  // 14: a region's belts follow the end demand of its stations and fleets (#584);
+    15;  // 15: belts are sized to the part of the need that events do not bring (#617);
+         // 14: a region's belts follow the end demand of its stations and fleets (#584);
          // 13: Iron, Ice and Crystal at a capital's belts and in every system a native people has a
          // market in
          // (#566);
@@ -59,10 +60,19 @@ struct OreModel
     std::map<std::string, std::array<long long, 3>> station;
     // Each holding's: a system with a station in it keeps a fleet.
     std::array<long long, 3> holding = { 0, 0, 0 };
-    bool                     Active() const { return regrowPermille > 0; }
+    // The share of the need that events bring instead of belts (#617), in thousandths, for a
+    // centre and for a frontier region: the belts are sized to the rest. 0 -- no events.
+    long long eventCentrePermille = 0;
+    long long eventFrontierPermille = 0;
+    bool      Active() const { return regrowPermille > 0; }
 };
-void            SetOreModel(const OreModel& m);
-const OreModel& GetOreModel();
+// A region's end demand for the three ores in milli-units an hour, from its systems' documents:
+// what its stations use and a fleet for each holding. What SizeOreToNeed sizes belts against,
+// and what the events' ore bank accrues by (#617).
+std::array<long long, 3> OreNeed(const std::vector<const nlohmann::json*>& documents,
+                                 const OreModel&                           model);
+void                     SetOreModel(const OreModel& m);
+const OreModel&          GetOreModel();
 
 struct RegionParams
 {

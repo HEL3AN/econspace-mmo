@@ -122,7 +122,7 @@ cmake --build build-release
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
 ./build/bin/server/econserver.exe opstest           # init, a live server, console commands through `admin` (#400)
-./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | hole <system|pilot> [to] | holes | drift <region> | destroy <name> | pause | resume | allow/deny/ban/unban <name> | rename <system> <name|-> | access | reload | say <text> | mute <name> [min] | unmute <name>
+./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | hole <system|pilot> [to] | holes | field <system|pilot> <ore> <amount> <hours> | event <kind> <system|pilot> | drift <region> | destroy <name> | pause | resume | allow/deny/ban/unban <name> | rename <system> <name|-> | access | reload | say <text> | mute <name> [min] | unmute <name>
 ./build/bin/server/econserver.exe regenerate 14     # with the server stopped: reseal region 14 by today's rules, if no player built there
 ./build/bin/server/econserver.exe validate          # admin packs in data/packs/ and data/pins.json, checked and trial-woven (#342 S7)
 ./build/bin/server/econserver.exe validate tests/fixtures/packs/helios   # ...one pack, or a directory of them
@@ -418,6 +418,15 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   `StructureSchedule`. Ore the cap takes unmined is *dispersed* (a sink, `Market::Flow`); the
   coarse pass's crews take an absolute rate from the miner design (`Simulation::WorkFields`),
   not a share of what is left, and only while the shelf has room. `fleetbench` prints the flows.
+- **The world's events leave fields, from a bank, decided once** (#617, `Simulation_Events.cpp`,
+  kinds in `data/events.json`, rules in `world_rules.json` `events`). Per epoch and live region
+  `Gen::Key(seed, EVENT_KEY, epoch, slot)` says whether, what, where and how big; a *birth* is
+  saved in `world.json` `fields` until the clock reaches it, then the field is a static like any
+  other. A region may spend only its **ore bank** (a share of the need `Gen::OreNeed` counts, the
+  belts being sized to the rest), capped at `bankHours` of flow; an Impact is paid from it, a
+  Collision moves a belt's ore and makes none. A region that opens is pre-rolled with the same
+  keys. Both default to inert (no chance, no kinds), so a world of files has none. A rule change
+  does not touch a field alive: its curve and life are copied at birth.
 - **Anything that moves is `f(time, seed)`** (#136), never integrated per frame. A part
   whose angle accumulated would drift between clients and two players would see the same
   station turned differently; as written nothing about motion crosses the wire. The turn is

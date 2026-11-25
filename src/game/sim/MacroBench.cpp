@@ -26,6 +26,7 @@
 #include "sim/ProcessMemory.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
+#include "sim/EventKinds.h"
 #include "sim/WorldRules.h"
 #include "raylib.h"
 
@@ -457,7 +458,8 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
     if (!Factions::Load(dataDir + "factions.json") || !Goods::Load(dataDir + "goods.json") ||
         !Archetypes::Load(dataDir + "archetypes.json") ||
         !Blueprints::Load(dataDir + "blueprints.json") ||
-        !WorldRules::Load(dataDir + "world_rules.json"))
+        !WorldRules::Load(dataDir + "world_rules.json") ||
+        !FieldEvents::Load(dataDir + "events.json"))
     {
         fprintf(stderr, "FATAL: the data did not load\n");
         return 1;

@@ -263,6 +263,7 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
                     { "surveyed", growth_.surveyed } };
     SaveArchive(j);  // the regions that drifted away (S4)
     SaveHoles(j);    // the roaming holes the epochs decided (S9)
+    SaveFields(j);   // the ore banks and the fields the epochs decided (#617)
     SavePacks(j);    // where the admin's packs went (S7)
 }
 
@@ -270,6 +271,7 @@ void Simulation::LoadGrowth(const nlohmann::json& j)
 {
     LoadArchive(j);
     LoadHoles(j);
+    LoadFields(j);
     if (woven_.empty())  // a world opened without its header's packs (a test) keeps them
         ReadPacks(j, woven_);
     // A world from before S3 has none: its tide starts now, as a new world's does.
@@ -455,6 +457,8 @@ void Simulation::StepTide(double passSeconds)
     StepMouths();
     // ...and roaming holes opening and closing (S9), on the clock too.
     StepHoles();
+    // ...and the world's own events that leave a field of ore (#617), on the clock as well.
+    StepFields();
     for (int slot : openSlots_)  // every edge region has one from the first pass
         if (IsEdgeRegion(slot))
             TideOf(slot);

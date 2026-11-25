@@ -1,0 +1,31 @@
+{
+    "schema": 1,
+    "kinds": [
+        {
+            "id": "impact",
+            "name": "Impact",
+            "weight": 3,
+            "needs": "planet",
+            "ores": { "Iron": 5, "Crystal": 2 },
+            "share": [0.5, 1.0],
+            "hours": [48, 96],
+            "size": [900, 1500],
+            "orbit": { "radius": 2.5, "speed": 0.00002 },
+            "field": "Debris",
+            "archetypes": { "public": "field.motherlode", "signature": "field.rich" },
+            "line": "A stream of rock has struck {planet} of {system}; debris is spreading along its orbit."
+        },
+        {
+            "id": "collision",
+            "name": "Collision",
+            "weight": 4,
+            "needs": "belt",
+            "moves": 0.15,
+            "hours": [12, 24],
+            "size": [500, 900],
+            "field": "Fragments",
+            "archetypes": { "public": "field.motherlode", "signature": "field.rich" },
+            "line": "Two rocks of a belt in {system} have met; bright fragments are drifting off it."
+        }
+    ]
+}

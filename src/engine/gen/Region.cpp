@@ -1830,7 +1830,30 @@ FactionId RegisterNatives(const nlohmann::json& natives)
 // not enough, the belts of the short ore grow, by at most three times. Belts never shrink: what
 // is too much is the miners' idling, not the generator's to take away. Whole numbers, in order
 // of system id and belt, so that every compiler sizes the same belts.
-void SizeOreToNeed(Region& region)
+std::array<long long, 3> OreNeed(const std::vector<const json*>& documents, const OreModel& m)
+{
+    std::array<long long, 3> need = { 0, 0, 0 };
+    long long                holdings = 0;
+    for (const json* d : documents)
+    {
+        const json& doc = *d;
+        if (!doc.contains("stations") || !doc["stations"].is_array() || doc["stations"].empty())
+            continue;
+        holdings++;
+        for (const json& st : doc["stations"])
+        {
+            const auto it = m.station.find(st.value("role", std::string()));
+            if (it != m.station.end())
+                for (int k = 0; k < 3; k++)
+                    need[(size_t)k] += it->second[(size_t)k];
+        }
+    }
+    for (int k = 0; k < 3; k++)
+        need[(size_t)k] += holdings * m.holding[(size_t)k];
+    return need;
+}
+
+void SizeOreToNeed(Region& region, bool centre)
 {
     const OreModel& m = GetOreModel();
     if (!m.Active())
@@ -1843,28 +1866,17 @@ void SizeOreToNeed(Region& region)
                 return k;
         return -1;
     };
-    long long need[3] = { 0, 0, 0 };
-    long long holdings = 0;
+    std::vector<const json*> documents;
     for (const auto& kv : region.documents)
-    {
-        const json& doc = kv.second;
-        if (!doc.contains("stations") || !doc["stations"].is_array() || doc["stations"].empty())
-            continue;
-        holdings++;
-        for (const json& st : doc["stations"])
-        {
-            const auto it = m.station.find(st.value("role", std::string()));
-            if (it != m.station.end())
-                for (int k = 0; k < 3; k++)
-                    need[k] += it->second[(size_t)k];
-        }
-    }
-    for (int k = 0; k < 3; k++)
-        need[k] += holdings * m.holding[(size_t)k];
-    const long long per = 1000 * m.regrowPermille;
+        documents.push_back(&kv.second);
+    const std::array<long long, 3> need = OreNeed(documents, m);
+    // The belts carry what the events do not (#617): the share the region's events bring is
+    // theirs to make up, from the bank, and the belts are sized to the rest.
+    const long long events = centre ? m.eventCentrePermille : m.eventFrontierPermille;
+    const long long per = 1000 * m.regrowPermille * 1000;
     long long       want[3];
     for (int k = 0; k < 3; k++)
-        want[k] = (need[k] * m.marginPermille + per - 1) / per;
+        want[k] = (need[(size_t)k] * m.marginPermille * (1000 - events) + per - 1) / per;
 
     struct Belt
     {
@@ -2079,12 +2091,12 @@ Region GenerateRegion(const RegionParams& worldParams)
             GenerateSystem(params, n, nodes, region.links, centre ? nullptr : &home);
     }
     // A centre's stations are all there is, and this is where they are known.
-    SizeOreToNeed(region);
+    SizeOreToNeed(region, centre);
     if (centre)
         return region;  // settled long ago: whatever was rare here is in a museum
     PlaceFinds(params, nodes, region);
     PlaceNatives(params, nodes, region);
-    SizeOreToNeed(region);  // ...and the natives' (#566)
+    SizeOreToNeed(region, centre);  // ...and the natives' (#566)
     PlaceHidden(params, nodes, region);
 
     // The wormhole's mouth in the home system: at the edge, facing the region, out of the
