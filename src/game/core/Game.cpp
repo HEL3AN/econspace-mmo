@@ -163,6 +163,11 @@ void Game::Run()
     {
         Render::Perf::BeginFrame();
         float dt = GetFrameTime();
+        // The frame just drawn, for the governor of built objects' look (#618): it takes the look
+        // down a step if solids in view are what the frame cannot afford. Not while a picture
+        // or a measurement is being taken, which a slow machine would otherwise change.
+        shapeBackend_.SetGovernor(shotPath_.empty() && perfFrames_ < 0);
+        shapeBackend_.NoteFrame(dt);
         PlayScriptedClicks();
 
         // Pick up the current window size (it may have been resized with the mouse).
@@ -373,6 +378,7 @@ void Game::Run()
         // This machine's choice (Settings), else the look's own (#553).
         materials_.SetPaintBudget(PaintBudgetMP() * 1000000.0f);
         materials_.SetBuiltBudget(BuiltBudgetMP() * 1000000.0f);
+        shapeBackend_.SetBuiltLook(BuiltLookWanted());
         const bool flying = (mode_ == GameMode::Flying);
         // Docked, the station's hall and its windows are interface, not world, so they go
         // through the chain only if the player asked for the interface to be treated.

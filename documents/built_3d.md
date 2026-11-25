@@ -80,10 +80,53 @@ from the object's id and the source piece's index through an integer hash, so th
 on every client and compiler; the tests pin the piece counts for a seed. More is added as the
 object is bigger on screen (levels 0, 1, 2).
 
-## 4. Cost and the setting
+## 4. The setting, cost and the automatic drop
 
-See the PR that made this a setting (`Built objects` in Settings, graphics): frame cost per
-quality level, the default, and the automatic drop.
+**The setting** (`Settings`, Display, "Built objects"): `2D`, `Basic`, `Shadows`, `Full`, `High`,
+or `Default`, which is look.json's `builtLook`. It is this machine's choice, kept in
+`ui_settings.json` like the paint budgets and never sent anywhere. The editor has the same
+looks on F6, in the gallery panel, and as `worldeditor ... built N`. `ECON_BUILT3D=0|1|ships` and
+`ECON_BUILT3D_QUALITY=0..3` remain as developer overrides over everything (and switch the
+governor off).
+
+| look | what is worked out |
+|---|---|
+| 2D | the 2D path every object always had |
+| Basic | lit solids; no height pass at all |
+| Shadows | + cast shadows from the star (12 steps) |
+| Full | + occlusion where parts meet (20 steps) |
+| High | 32 steps |
+
+**Cost.** Release build, a desktop discrete GPU, the editor's trade hub card (one station, treatment
+off), GPU ms per frame in the world phase, averaged over 200 frames; the station is about 320 px
+across at zoom 1 and 640 px at zoom 2. The CPU side of the solid path is under a millisecond at
+every level (building a mesh happens once per object and size bucket).
+
+| look | zoom 1 | zoom 2 |
+|---|---|---|
+| 2D | 1.04 | 0.99 |
+| Basic | 0.11 | 0.14 |
+| Shadows | 0.14 | 0.34 |
+| Full | 0.15 | 0.40 |
+| High | 0.18 | 0.58 |
+
+The solid path is cheaper than the 2D path here because it replaces hundreds of per-part binds
+and draws with two draws per object; the levels differ by fragment work, which a weak GPU feels
+and this one does not. **Not measured on an integrated GPU** (the owner's laptop is an Intel
+UHD 620): the fragment side is about 12 fetches per covered pixel at Shadows and 36 at Full, so
+a station filling 400 by 400 px is a few million fetches. Hence the default is the **middle**
+look, `Shadows`, and not the best: it keeps what the owner liked (solids, a lean, mass, cast
+shadows) and leaves out the part that costs most. To cut further on such a machine: Basic, then
+2D.
+
+**The automatic drop** (`BuiltGovernor`, `BuiltLook.h`). A window of 120 frames with solids in
+view whose average frame time is over 26 ms (under about 38 frames a second) takes the look down
+one step, to 2D at the bottom; a hitch counts for at most 80 ms, so a load does not trip it; it
+never goes up by itself, and choosing a look in Settings starts it afresh. It watches the frame
+and not the solids, because per-section GPU timers are not on every driver and a slow frame with
+solids in view is the one a cheaper look can fix. It is off while a shot or a measurement is
+being taken. If the shaders do not compile or no float target exists, the renderer is
+unavailable and the 2D path draws as before, and Settings says so. Both cases are logged.
 
 ## 5. Known edges
 

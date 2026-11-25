@@ -153,6 +153,8 @@ public:
     // `budget MP`: the paint budget in place of look.json's, millions of pixels -- a shot of
     // what a desktop or a laptop setting draws (#516).
     void SetPaintBudget(float megapixels) { paintBudget_ = megapixels; }
+    // How built objects are drawn (#618, Render::BuiltLook): this run's choice, else look.json's.
+    void SetBuiltLook(int look) { builtLook_ = look; }
     void ShowGallerySockets() { gallerySockets_ = true; }
     void SetGalleryThrusting() { galleryThrusting_ = true; }
     // Every card at one scale, so sizes compare -- the panel's toggle, from the command line.
@@ -390,7 +392,12 @@ private:
     std::string galleryLivery_;  // empty: none, as an unowned object
     int         galleryFleet_ = 1;
     float       paintBudget_ = 0.0f;  // 0: look.json's
-    int         GalleryFleetColumns() const;
+    int         builtLook_ = -1;      // -1: look.json's
+    int         BuiltLookNow() const
+    {
+        return builtLook_ >= 0 ? builtLook_ : treatment_.Config().builtLook;
+    }
+    int GalleryFleetColumns() const;
     // Draw the sockets a type's sections offer, coloured by kind (K): how a kit's choices
     // are judged -- why a hatch is where it is.
     bool gallerySockets_ = false;

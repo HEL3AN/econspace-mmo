@@ -300,6 +300,11 @@ float           PaintBudgetSetting();
 void            SetPaintBudgetSetting(float mp);
 float           BuiltBudgetSetting();
 void            SetBuiltBudgetSetting(float mp);
+// How built objects are drawn (#618, render/BuiltLook.h): 0 the 2D path, 1 to 4 solids with more
+// and more of the light worked out. -1, the default, is the look's own (look.json's builtLook).
+// This machine's choice, saved here and never sent anywhere.
+int  BuiltLookSetting();
+void SetBuiltLookSetting(int look);
 // "Brackets in space" (#361): standing brackets on the ships in the world view, and the
 // marker on the player's own. On until the player turns them off -- they are how a ship
 // that is three pixels long is found at all.

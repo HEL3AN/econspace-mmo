@@ -45,6 +45,7 @@ static void PrintUsage(FILE* to)
         "      perf [frames N] [notreat]        print what N frames cost and exit\n"
         "      time T                           every frame at this moment of the clock\n"
         "      noshaders, nopaint               draw as a machine without shaders would\n"
+        "      built N                          built objects: 0 the 2D path, 1-4 solids (F6)\n"
         "      --data DIR                       the data folder\n"
         "\n"
         "--version prints the version. Examples: CLAUDE.md, \"Build and run\".\n",
@@ -222,6 +223,11 @@ int main(int argc, char** argv)
             notreat = true;
         else if (arg == "noshaders")  // every object as a driver with no shaders draws it
             apply.push_back([](Editor& e) { e.DisableMaterials(); });
+        else if (arg == "built" && i + 1 < argc)  // 0 the 2D path, 1..4 solids (BuiltLook.h)
+        {
+            const int look = std::atoi(argv[++i]);
+            apply.push_back([look](Editor& e) { e.SetBuiltLook(look); });
+        }
         else if (arg == "nopaint")  // the painted bodies' stand-ins, under `hull`
             apply.push_back([](Editor& e) { e.DisablePainting(); });
         else

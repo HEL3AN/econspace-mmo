@@ -74,6 +74,10 @@ struct TreatmentConfig
     // whole at reduced resolution past this. A budget of its own (owner, 2026-10-23): a station
     // seen close up is not softened by what a planet may cost, and the two are tuned apart.
     float builtBudget = 1.0f;
+    // How built objects are drawn when the player has not chosen (#618, BuiltLook.h): 0 the 2D
+    // path, 1 lit solids, 2 with shadows, 3 with occlusion, 4 high. The default is the middle one
+    // and not the best: it is what a laptop's GPU can carry, and the player's setting overrides.
+    int builtLook = 2;
 
     // In order. The order is a decision, not a detail: bloom before pixelation gives soft
     // fat pixels, after it gives hard pixel edges that glow. They are different games to

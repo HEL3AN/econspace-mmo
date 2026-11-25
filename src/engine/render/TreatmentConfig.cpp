@@ -1,6 +1,7 @@
 #include "render/TreatmentConfig.h"
 
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 
@@ -123,6 +124,8 @@ bool LoadTreatment(const std::string& path, TreatmentConfig& out, std::string& e
     cfg.builtBudget = cfg.paintBudget;
     if (j.contains("builtBudget") && j["builtBudget"].is_number())
         cfg.builtBudget = std::fmax(0.25f, j["builtBudget"].get<float>());
+    if (j.contains("builtLook") && j["builtLook"].is_number_integer())
+        cfg.builtLook = std::clamp(j["builtLook"].get<int>(), 0, 4);
 
     if (j.contains("chain") && j["chain"].is_array())
     {
@@ -171,6 +174,7 @@ bool SaveTreatment(const std::string& path, const TreatmentConfig& cfg, std::str
     j["treatHud"] = cfg.treatHud;
     j["paintBudget"] = cfg.paintBudget;
     j["builtBudget"] = cfg.builtBudget;
+    j["builtLook"] = cfg.builtLook;
     j["chain"] = ordered_json::array();
     for (const Pass& p : cfg.chain)
         j["chain"].push_back(ordered_json{ { "pass", PassName(p.kind) },

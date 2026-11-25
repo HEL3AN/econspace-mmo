@@ -577,3 +577,27 @@ TEST_CASE(
     Ui::SetPaintBudgetSetting(0.0f);
     Ui::SetBuiltBudgetSetting(0.0f);
 }
+
+TEST_CASE("how built objects are drawn is a machine's choice: -1 is the look's own (#618)")
+{
+    TempDir           dir;
+    const std::string path = dir.Path("ui_settings.json");
+    std::string       error;
+
+    Ui::SetBuiltLookSetting(-1);
+    REQUIRE(Ui::SaveUiSettings(path));
+    {
+        std::ifstream  in(path);
+        nlohmann::json j = nlohmann::json::parse(in);
+        CHECK_FALSE(j.contains("builtLook"));  // not choosing is not a choice to keep
+    }
+    Ui::SetBuiltLookSetting(0);  // the 2D path is a choice like another
+    REQUIRE(Ui::SaveUiSettings(path));
+    Ui::SetBuiltLookSetting(-1);
+    REQUIRE(Ui::LoadUiSettings(path, error));
+    CHECK(Ui::BuiltLookSetting() == 0);
+    Ui::SetBuiltLookSetting(99);  // kept inside the looks there are
+    CHECK(Ui::BuiltLookSetting() == 4);
+    Ui::SetBuiltLookSetting(-5);
+    CHECK(Ui::BuiltLookSetting() == -1);
+}

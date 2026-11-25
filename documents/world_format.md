@@ -1674,6 +1674,7 @@ chain of full-screen passes, each with two knobs.
 | `treatHud` | bool | whether the interface goes through the chain with the world |
 | `paintBudget` | number | millions of pixels a painted body (#426) may cover before it is painted at reduced resolution and scaled up; 1 if absent; the shipped look.json sets 0.5 for integrated GPUs such as the UHD 620 (owner, 2026-10-23); never below 0.25. Raise it on a strong GPU for sharper close-ups |
 | `builtBudget` | number | the same for a built thing (a station, a ship, an outpost, #516), which is painted whole at reduced resolution past it: its own budget, so a station seen close up is not softened by what a planet may cost; the value of `paintBudget` if absent; shipped at 0.5; never below 0.25 |
+| `builtLook` | integer | how built objects are drawn when the player has not chosen (#618, `built_3d.md`): 0 the 2D path, 1 lit solids, 2 with shadows, 3 with occlusion, 4 high; 2 if absent. The player's own choice in Settings overrides it |
 | `chain` | array | the passes, **in the order they run** |
 
 | Pass field | Type | Description |

@@ -272,6 +272,11 @@ void Editor::Run()
             (paintBudget_ > 0.0f ? paintBudget_ : treatment_.Config().paintBudget) * 1000000.0f);
         materials_.SetBuiltBudget(
             (paintBudget_ > 0.0f ? paintBudget_ : treatment_.Config().builtBudget) * 1000000.0f);
+        // The same setting as the game's, kept for the session: F6 steps through the looks.
+        if (IsKeyPressed(KEY_F6))
+            builtLook_ = (BuiltLookNow() + 1) % Render::BuiltLook::COUNT;
+        shapeBackend_.SetBuiltLook(BuiltLookNow());
+        shapeBackend_.SetGovernor(false);  // a picture or a card is not a frame budget
         screenWidth_ = GetScreenWidth();
         screenHeight_ = GetScreenHeight();
         camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };

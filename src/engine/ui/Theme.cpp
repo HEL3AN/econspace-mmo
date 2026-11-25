@@ -26,6 +26,7 @@ bool            g_goal = true;
 int             g_goalLearned = 0;
 float           g_paintBudget = 0.0f;  // 0: look.json's
 float           g_builtBudget = 0.0f;
+int             g_builtLook = -1;
 
 int Hex(char c)
 {
@@ -515,6 +516,8 @@ bool LoadUiSettings(const std::string& path, std::string& error)
         SetPaintBudgetSetting(j["paintBudget"].get<float>());
     if (j.contains("builtBudget") && j["builtBudget"].is_number())
         SetBuiltBudgetSetting(j["builtBudget"].get<float>());
+    if (j.contains("builtLook") && j["builtLook"].is_number_integer())
+        SetBuiltLookSetting(j["builtLook"].get<int>());
     if (j.contains("goal") && j["goal"].is_boolean())
         g_goal = j["goal"].get<bool>();
     if (j.contains("goalLearned") && j["goalLearned"].is_number_integer())
@@ -619,6 +622,16 @@ void SetBuiltBudgetSetting(float mp)
     g_builtBudget = BudgetChoice(mp);
 }
 
+int BuiltLookSetting()
+{
+    return g_builtLook;
+}
+
+void SetBuiltLookSetting(int look)
+{
+    g_builtLook = look < 0 ? -1 : std::min(look, 4);
+}
+
 bool BracketSetting()
 {
     return g_brackets;
@@ -673,6 +686,8 @@ bool SaveUiSettings(const std::string& path)
         j["paintBudget"] = g_paintBudget;
     if (g_builtBudget > 0.0f)
         j["builtBudget"] = g_builtBudget;
+    if (g_builtLook >= 0)
+        j["builtLook"] = g_builtLook;
     j["goal"] = g_goal;
     j["goalLearned"] = g_goalLearned;
     std::ofstream out(path);
