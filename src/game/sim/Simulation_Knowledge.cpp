@@ -403,7 +403,7 @@ WorldLoader::Universe Simulation::KnownUniverseFor(const ClientSession& s) const
     // and what it lets by, so a route planned on the map is the one the server will fly
     // (#432). Anchoring it makes it a gate; the index is sent again (TakeTopologyChanged).
     // By opening rather than by link: a mouth is rare and the links are the whole galaxy.
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
     {
         if (o.parent < 0 || o.state != "unstable")
             continue;

@@ -181,13 +181,13 @@ void Simulation::StepDrift()
     // Oldest visit first, then the lower slot: one region drifts away a period, and the slot
     // it frees is the tide's.
     RegionOpening* gone = nullptr;
-    for (RegionOpening& o : openings_)
+    for (RegionOpening& o : growth_.openings)
     {
         if (o.parent < 0 || o.state == "archived" || o.state == "returned" ||
             OpeningOf(o.slot) != &o)
             continue;
         bool parent = false;
-        for (const RegionOpening& c : openings_)
+        for (const RegionOpening& c : growth_.openings)
             parent = parent || (c.parent == o.slot && OpeningOf(c.slot) == &c);
         const double idle = time_ - o.lastVisit;
         // Nor does what an admin wove in, or what it is linked to (S7): a pack is permanent.
@@ -212,7 +212,7 @@ void Simulation::StepDrift()
 int Simulation::ArchiveRegionNow(int slot, std::string& why)
 {
     why.clear();
-    const int id = nextArchive_;
+    const int id = growth_.nextArchive;
     return ArchiveRegion(slot, why) ? id : -1;
 }
 
@@ -224,7 +224,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
         why = "region " + std::to_string(slot) + " is not an open frontier";
         return false;
     }
-    for (const RegionOpening& c : openings_)
+    for (const RegionOpening& c : growth_.openings)
         if (c.parent == slot && OpeningOf(c.slot) == &c)
         {
             why = "region " + std::to_string(c.slot) + " opened from it";
@@ -301,7 +301,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
                                 { "system", e.system },
                                 { "text", e.text } });
     const WorldLoader::SystemInfo* home = SystemInfoById(o->mouth);
-    const int                      id = nextArchive_++;
+    const int                      id = growth_.nextArchive++;
     const json     doc = { { "schema", ARCHIVE_SCHEMA },
                            { "seed", regionSeed_ },
                            { "id", id },
@@ -328,11 +328,11 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
         if (!Save::WriteFileAtomic(ArchivePath(sealDir_, id), doc.dump(1) + "\n", 0))
         {
             why = "its archive could not be written";
-            nextArchive_--;
+            growth_.nextArchive--;
             return false;
         }
     }
-    archives_[id] = std::move(a);
+    growth_.archives[id] = std::move(a);
 
     // Out of the galaxy: the way in, its systems and everything that knew of them.
     if (o->state != "drifted")
@@ -364,8 +364,8 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
         regionDocs_.erase(sid);
         wormholes_.erase(sid);
         systems_.erase(sid);
-        explored_.erase(sid);
-        surveyed_.erase(sid);
+        growth_.explored.erase(sid);
+        growth_.surveyed.erase(sid);
     }
     for (FactionId f : Factions::All())
     {
@@ -386,8 +386,8 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
     for (auto it = migrants_.begin(); it != migrants_.end();)
         it = in.count(it->second.from) != 0 || in.count(it->second.to) != 0 ? migrants_.erase(it)
                                                                             : std::next(it);
-    tides_.erase(slot);
-    playersSeen_.erase(slot);
+    growth_.tides.erase(slot);
+    growth_.playersSeen.erase(slot);
     openSlots_.erase(slot);
     natives_.erase(slot);  // the registry keeps them: the archive may bring them back
     o = LiveOpening(slot);
@@ -414,8 +414,8 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
 int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
                           const std::string& why)
 {
-    const auto a = archives_.find(id);
-    if (a == archives_.end() || openSlots_.count(slot) != 0 || dataDir_.empty())
+    const auto a = growth_.archives.find(id);
+    if (a == growth_.archives.end() || openSlots_.count(slot) != 0 || dataDir_.empty())
         return -1;
     const json  doc = json::parse(a->second.text, nullptr, false);
     Gen::Region old;
@@ -517,7 +517,7 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
                    { "destination", r.entryId } };
 
     // What had become of each system, decayed, under its new name.
-    returnState_.clear();
+    growth_.returnState.clear();
     std::vector<std::string> named;
     const json&              systems = doc.value("systems", json::object());
     for (auto it = systems.begin(); systems.is_object() && it != systems.end(); ++it)
@@ -533,7 +533,7 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
         if (!s.value("name", std::string()).empty())
             named.push_back(s.value("name", std::string()));
         s["version"] = a->second.version;  // what its changes mean (#498)
-        returnState_[text(it.key())] = s.dump();
+        growth_.returnState[text(it.key())] = s.dump();
     }
 
     returning_ = &r;
@@ -541,10 +541,10 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
     returning_ = nullptr;
     if (!attached)
     {
-        returnState_.clear();
+        growth_.returnState.clear();
         return -1;
     }
-    RegionOpening& o = openings_.back();
+    RegionOpening& o = growth_.openings.back();
     o.by = by;
     o.why = why;
     o.archive = id;
@@ -564,10 +564,10 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
         renamed.ids[ArchivedId(id, was)] = ids[was];
     }
     RenameCharts(std::move(renamed));
-    for (RegionOpening& e : openings_)
+    for (RegionOpening& e : growth_.openings)
         if (e.state == "archived" && e.archive == id)
             e.state = "returned";
-    archives_.erase(a);
+    growth_.archives.erase(a);
     if (!sealDir_.empty())
         std::remove(ArchivePath(sealDir_, id).c_str());
     TopologyChanged();
@@ -586,7 +586,7 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
 void Simulation::SaveArchive(json& j) const
 {
     json list = json::array();
-    for (const auto& kv : archives_)
+    for (const auto& kv : growth_.archives)
     {
         json e = { { "id", kv.second.id },
                    { "slot", kv.second.slot },
@@ -600,22 +600,22 @@ void Simulation::SaveArchive(json& j) const
     // How charts were renamed as regions went and came back (#431 slice 15): what an account
     // saved before a renaming is read through. An addition an older build ignores.
     json renames = json::array();
-    for (const ChartRename& r : chartRenames_)
+    for (const ChartRename& r : growth_.chartRenames)
         renames.push_back({ { "ids", r.ids }, { "back", r.back } });
-    j["archive"] = { { "next", nextArchive_ },
+    j["archive"] = { { "next", growth_.nextArchive },
                      { "regions", std::move(list) },
                      { "renames", std::move(renames) } };
 }
 
 void Simulation::LoadArchive(const json& j)
 {
-    archives_.clear();
-    chartRenames_.clear();
-    nextArchive_ = 1;
+    growth_.archives.clear();
+    growth_.chartRenames.clear();
+    growth_.nextArchive = 1;
     if (!j.contains("archive") || !j["archive"].is_object())
         return;
     const json& a = j["archive"];
-    nextArchive_ = std::max(1, a.value("next", 1));
+    growth_.nextArchive = std::max(1, a.value("next", 1));
     for (const json& e : a.value("renames", json::array()))
     {
         ChartRename r;
@@ -625,7 +625,7 @@ void Simulation::LoadArchive(const json& j)
                 if (it.value().is_string())
                     r.ids[it.key()] = it.value().get<std::string>();
         r.back = e.is_object() && e.value("back", false);
-        chartRenames_.push_back(std::move(r));  // even empty: an account counts them
+        growth_.chartRenames.push_back(std::move(r));  // even empty: an account counts them
     }
     for (const json& e : a.value("regions", json::array()))
     {
@@ -655,8 +655,8 @@ void Simulation::LoadArchive(const json& j)
         }
         r.text = check.dump();  // as it is kept in memory, whatever the file's layout
         ChartArchive(r);
-        nextArchive_ = std::max(nextArchive_, r.id + 1);
-        archives_[r.id] = std::move(r);
+        growth_.nextArchive = std::max(growth_.nextArchive, r.id + 1);
+        growth_.archives[r.id] = std::move(r);
     }
 }
 
@@ -678,8 +678,8 @@ bool Simulation::IsArchivedChart(const std::string& id) const
 {
     if (id.size() < 4 || id[0] != 'a' || id.find(':') == std::string::npos)
         return false;
-    const auto a = archives_.find(std::atoi(id.c_str() + 1));
-    if (a == archives_.end())
+    const auto a = growth_.archives.find(std::atoi(id.c_str() + 1));
+    if (a == growth_.archives.end())
         return false;
     for (const WorldLoader::SystemInfo& si : a->second.charts)
         if (si.id == id)
@@ -786,7 +786,7 @@ void Simulation::RenameCharts(ChartRename r)
         }
         kv.second = std::move(renamed);
     }
-    chartRenames_.push_back(std::move(r));
+    growth_.chartRenames.push_back(std::move(r));
     chartsChanged_ = true;  // the log is world state, written at once
     PublicChartsChanged();
 }

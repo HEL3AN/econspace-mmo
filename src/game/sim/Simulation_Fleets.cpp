@@ -392,7 +392,7 @@ void Simulation::StepStyles()
     // Every region's supply in one walk over the systems, not one walk per region.
     const WorldRules::Styles&          rules = WorldRules::StyleRules();
     std::map<int, std::vector<double>> supply;
-    for (const RegionOpening& o : openings_)
+    for (const RegionOpening& o : growth_.openings)
         if (o.state != "archived")
             supply[o.slot].assign((size_t)Goods::Count(), 0.0);
     for (const auto& kv : systems_)
