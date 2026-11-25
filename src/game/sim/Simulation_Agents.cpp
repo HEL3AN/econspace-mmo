@@ -9,6 +9,7 @@
 #include "core/Faction.h"
 #include "core/Orbits.h"
 #include "sim/ClientSession.h"
+#include "sim/SpatialGrid.h"
 
 #include "core/World.h"
 #include "entities/AsteroidField.h"
@@ -106,6 +107,69 @@ std::vector<NpcShip*> AliveShips(SystemState& st)
                 ships.push_back(n);
     return ships;
 }
+
+// Who an NPC can see (#350): the ships of a system and the pilots in it, each in a grid, asked
+// "who is within r". With the grid off it answers with everyone, which is the loop the grid
+// replaced; both come back ascending, so the caller's loop and its tie-breaks are the same.
+class Sight
+{
+public:
+    Sight(bool useGrid, float cell, const std::vector<NpcShip*>& ships,
+          const std::vector<Simulation::PlayerPresence>& players)
+        : grid_(useGrid)
+    {
+        // Small systems are cheaper walked than gridded: the same answer either way.
+        if (grid_ && ships.size() * (ships.size() + players.size()) < 4096)
+            grid_ = false;
+        if (!grid_)
+        {
+            allShips_.resize(ships.size());
+            for (size_t i = 0; i < ships.size(); i++)
+                allShips_[i] = (int)i;
+            allPlayers_.resize(players.size());
+            for (size_t i = 0; i < players.size(); i++)
+                allPlayers_[i] = (int)i;
+            return;
+        }
+        std::vector<Vector2> pts;
+        pts.reserve(ships.size());
+        for (const NpcShip* n : ships)
+            pts.push_back(n->GetPosition());
+        shipGrid_.Build(pts, cell);
+        pts.clear();
+        for (size_t i = 0; i < players.size(); i++)
+            if (players[i].ship != nullptr)
+            {
+                pts.push_back(players[i].ship->GetPosition());
+                playerOf_.push_back((int)i);
+            }
+        playerGrid_.Build(pts, cell);
+    }
+
+    // Indices into `ships` / `players`, ascending. Valid until the next call of the same kind.
+    const std::vector<int>& Ships(Vector2 at, float r)
+    {
+        if (!grid_)
+            return allShips_;
+        shipGrid_.Query(at, r, shipHits_);
+        return shipHits_;
+    }
+    const std::vector<int>& Players(Vector2 at, float r)
+    {
+        if (!grid_)
+            return allPlayers_;
+        playerGrid_.Query(at, r, playerHits_);
+        for (int& i : playerHits_)
+            i = playerOf_[(size_t)i];
+        return playerHits_;
+    }
+
+private:
+    bool             grid_;
+    SpatialGrid      shipGrid_, playerGrid_;
+    std::vector<int> playerOf_;
+    std::vector<int> allShips_, allPlayers_, shipHits_, playerHits_;
+};
 }  // namespace
 
 bool Simulation::NpcHostileToNpc(const SystemState& st, const NpcShip* a, const NpcShip* b) const
@@ -132,6 +196,7 @@ bool Simulation::NpcHostileToNpc(const SystemState& st, const NpcShip* a, const 
 void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& players)
 {
     std::vector<NpcShip*> ships = AliveShips(st);
+    Sight                 sight(targetGrid_, NPC_AGGRO_RANGE, ships, players);
     for (NpcShip* n : ships)
     {
         Vector2 npos = n->GetPosition();
@@ -141,8 +206,9 @@ void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& p
             float   bestD = NPC_AGGRO_RANGE;
             Vector2 bestPos{};
             bool    found = false;
-            for (const PlayerPresence& p : players)
+            for (int pi : sight.Players(npos, NPC_AGGRO_RANGE))
             {
+                const PlayerPresence& p = players[(size_t)pi];
                 if (p.ship == nullptr || p.session == nullptr || !NpcHunts(st, *p.session, *n))
                     continue;
                 float d = Dist(p.ship->GetPosition(), npos);
@@ -153,8 +219,9 @@ void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& p
                     found = true;
                 }
             }
-            for (NpcShip* o : ships)
+            for (int oi : sight.Ships(npos, NPC_AGGRO_RANGE))
             {
+                NpcShip* o = ships[(size_t)oi];
                 if (o == n || !NpcHostileToNpc(st, n, o))
                     continue;
                 float d = Dist(o->GetPosition(), npos);
@@ -179,8 +246,9 @@ void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& p
             float   td = NPC_THREAT_RANGE;
             Vector2 threat{};
             bool    threatened = false;
-            for (NpcShip* o : ships)
+            for (int oi : sight.Ships(npos, NPC_THREAT_RANGE))
             {
+                NpcShip* o = ships[(size_t)oi];
                 if (o == n || !o->IsCombatant() || !NpcHostileToNpc(st, o, n))
                     continue;
                 float d = Dist(o->GetPosition(), npos);
@@ -203,6 +271,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
                                std::vector<FireEvent>* fires)
 {
     std::vector<NpcShip*> ships = AliveShips(st);
+    Sight                 sight(targetGrid_, NPC_WEAPON_RANGE * 2.0f, ships, players);
     for (NpcShip* npc : ships)
     {
         if (!npc->IsAlive() || !npc->IsCombatant() || !npc->ReadyToFire())
@@ -226,13 +295,19 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             }
         };
 
-        for (const PlayerPresence& p : players)
+        for (int pi : sight.Players(npos, NPC_WEAPON_RANGE))
+        {
+            const PlayerPresence& p = players[(size_t)pi];
             if (p.ship != nullptr && p.session != nullptr && !p.hidden &&
                 NpcHunts(st, *p.session, *npc))
                 consider(p.ship, p.session, nullptr);
-        for (NpcShip* other : ships)
+        }
+        for (int oi : sight.Ships(npos, NPC_WEAPON_RANGE))
+        {
+            NpcShip* other = ships[(size_t)oi];
             if (other != npc && other->IsAlive() && NpcHostileToNpc(st, npc, other))
                 consider(other, nullptr, other);
+        }
 
         if (target == nullptr)
         {
