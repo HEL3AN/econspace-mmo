@@ -23,6 +23,7 @@
 #include "core/Version.h"
 #include "core/Faction.h"
 #include "core/Fitting.h"
+#include "core/Paint.h"
 #include "core/Route.h"
 #include "core/WorldLoader.h"
 #include "economy/Resource.h"
@@ -1512,27 +1513,57 @@ std::vector<Tool> BuildTools()
                      std::to_string((int)ship.back().hours) + " h to go";
           } });
 
-    tools.push_back(
-        { "set_livery",
-          "Paint your ships in a livery: a people's art palette named by culture, such as "
-          "'guild', 'syndicate' or 'clan', shown to everyone who sees your ship. 'default' is "
-          "plain plating. It is "
-          "looks only -- it says nothing about whose side you are on.",
-          Obj({ { "livery", Str("a livery id, or 'default'") } }, { "livery" }),
-          [](const Rpc::Json& args)
-          {
-              RequireLive();
-              Proto::Command c;
-              c.setLivery = args["livery"].get<std::string>();
-              const int   seq = g_session.LastEventSeq();
-              std::string why;
-              if (!Confirm(c, why))
-                  return "set_livery: " + why;
-              const std::string now = g_session.Snapshot().player.livery;
-              if (now != (c.setLivery == "default" ? std::string() : c.setLivery))
-                  return Refused("set_livery", seq, "the livery did not change");
-              return "set_livery: now " + (now.empty() ? std::string("plain") : now);
-          } });
+    static const std::string setLiveryHelp =
+        "Paint your ships: a people's art palette named by culture, such as 'guild', "
+        "'syndicate' or 'clan', optionally in colours of your own -- 'hull' and 'band' as "
+        "rrggbb, with 'pattern' (bands, spine, chevrons) and 'light' (cold, white, warm, "
+        "amber) -- shown to everyone who sees your ship. 'default' is plain plating. " +
+        Obs::LiveryRules() +
+        " It is looks only: it says nothing about whose side you are on, and the "
+        "answer says what was kept.";
+    tools.push_back({ "set_livery", setLiveryHelp.c_str(),
+                      Obj({ { "livery", Str("a livery id, or 'default'") },
+                            { "hull", Str("hull tint, rrggbb; with band") },
+                            { "band", Str("stripe colour, rrggbb; with hull") },
+                            { "pattern", Str("bands, spine or chevrons") },
+                            { "light", Str("cold, white, warm or amber") } },
+                          { "livery" }),
+                      [](const Rpc::Json& args)
+                      {
+                          RequireLive();
+                          auto word = [&](const char* key)
+                          {
+                              return args.contains(key) && args[key].is_string()
+                                         ? args[key].get<std::string>()
+                                         : std::string();
+                          };
+                          const std::string id = args["livery"].get<std::string>();
+                          std::string       why;
+                          Proto::Command    c;
+                          c.setLivery =
+                              id == "default"
+                                  ? id
+                                  : Obs::LiverySpec(id, word("hull"), word("band"), word("pattern"),
+                                                    word("light"),
+                                                    g_session.Snapshot().player.livery, why);
+                          if (!why.empty())
+                              return "set_livery: " + why;
+                          const int seq = g_session.LastEventSeq();
+                          if (!Confirm(c, why))
+                              return "set_livery: " + why;
+                          const std::string now = g_session.Snapshot().player.livery;
+                          if (now == (c.setLivery == "default" ? std::string() : c.setLivery))
+                              return "set_livery: now " + Obs::DescribeLivery(now);
+                          // A paint is snapped into the rules, so what was kept may differ from
+                          // what was asked: that is an answer, not a refusal. Nothing changing at
+                          // all is one.
+                          if (c.setLivery.find('/') != std::string::npos &&
+                              Paint::PaletteOf(now) == Paint::PaletteOf(c.setLivery) &&
+                              now.find('/') != std::string::npos)
+                              return "set_livery: now " + Obs::DescribeLivery(now) +
+                                     " (snapped into the rules)";
+                          return Refused("set_livery", seq, "the livery did not change");
+                      } });
 
     tools.push_back(
         { "move_goods",

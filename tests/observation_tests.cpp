@@ -329,3 +329,41 @@ TEST_CASE("the hangar quotes the price this player would be charged here (#109)"
     CHECK(Has(out, buf));
     CHECK(price < GetShipCatalog()[1].price);
 }
+
+TEST_CASE("the ship line says the livery, and a paint in words (#552)")
+{
+    Obs::View       v;
+    Proto::Snapshot s = BaseSnapshot();
+    v.snapshot = &s;
+    CHECK(Has(Obs::Describe(v, Obs::Detail::Brief), "livery plain"));
+
+    std::string       why;
+    const std::string spec =
+        Obs::LiverySpec("guild", "#c8b89a", "2f5fa6", "spine", "amber", "", why);
+    REQUIRE(why.empty());
+    s.player.livery = spec;
+    const std::string out = Obs::Describe(v, Obs::Detail::Brief);
+    CHECK(Has(out, "livery guild, painted: hull #"));
+    CHECK(Has(out, "stripes spine"));
+    CHECK(Has(out, "windows amber"));
+    CHECK(Obs::DescribeLivery("guild") == "guild");
+}
+
+TEST_CASE("a paint in words is understood, and a word that is not is said (#552)")
+{
+    std::string why;
+    CHECK(Obs::LiverySpec("clan", "", "", "", "", "", why) == "clan");
+    CHECK(Obs::LiverySpec("clan", "c8b89a", "", "", "", "", why).empty());
+    CHECK_FALSE(why.empty());
+    CHECK(Obs::LiverySpec("clan", "nothex", "2f5fa6", "", "", "", why).empty());
+    CHECK(Obs::LiverySpec("clan", "c8b89a", "2f5fa6", "flat", "", "", why).empty());
+    CHECK(Has(why, "pattern"));
+    CHECK(Obs::LiverySpec("clan", "c8b89a", "2f5fa6", "", "blinding", "", why).empty());
+    CHECK(Has(why, "light"));
+    // What the pilot already wears fills the words left out.
+    const std::string worn =
+        Obs::LiverySpec("clan", "c8b89a", "2f5fa6", "chevrons", "cold", "", why);
+    const std::string again = Obs::LiverySpec("clan", "808080", "c04020", "", "", worn, why);
+    CHECK(Has(Obs::DescribeLivery(again), "stripes chevrons"));
+    CHECK(Has(Obs::DescribeLivery(again), "windows cold"));
+}

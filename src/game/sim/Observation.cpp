@@ -2,6 +2,7 @@
 
 #include "core/Archetype.h"
 #include "core/Fitting.h"
+#include "core/Paint.h"
 #include "core/Faction.h"
 #include "economy/Market.h"
 #include "economy/Resource.h"
@@ -634,6 +635,113 @@ std::vector<SavedDesignRow> SavedDesigns(const View& view)
         out.push_back(std::move(r));
     }
     return out;
+}
+
+namespace
+{
+const char* const PATTERN_NAMES[] = { "", "bands", "spine", "chevrons" };
+const char* const LIGHT_NAMES[] = { "cold", "white", "warm", "amber" };
+
+std::string HexOf(Paint::Rgb c)
+{
+    return Fmt("#%02x%02x%02x", c[0], c[1], c[2]);
+}
+
+int IndexOfName(const char* const* names, int first, int last, const std::string& word)
+{
+    for (int i = first; i <= last; i++)
+        if (word == names[i] || word == std::to_string(i))
+            return i;
+    return -1;
+}
+}  // namespace
+
+std::string DescribeLivery(const std::string& spec)
+{
+    if (spec.empty())
+        return "plain";
+    std::string  palette;
+    bool         painted = false;
+    Paint::Paint p;
+    if (!Paint::Split(spec, palette, painted, p))
+        return "unreadable (" + spec + ")";
+    if (!painted)
+        return palette;
+    p = Paint::Snap(p);
+    return palette + ", painted: hull " + HexOf(Paint::RgbOf(Paint::Role::Base, p.base)) +
+           ", band " + HexOf(Paint::RgbOf(Paint::Role::Band, p.band)) + ", stripes " +
+           PATTERN_NAMES[p.pattern] + ", windows " + LIGHT_NAMES[p.light];
+}
+
+std::string LiveryRules()
+{
+    return "Paint is looks only. Colours are snapped to a curated grid: the hull tint is a quiet "
+           "metal tone (never loud), the band is bolder but must differ from the hull in "
+           "lightness (it is moved if it does not), and the stripes are never flat -- bands, "
+           "spine or chevrons. Windows: cold, white, warm or amber.";
+}
+
+std::string LiverySpec(const std::string& palette, const std::string& hull, const std::string& band,
+                       const std::string& pattern, const std::string& light,
+                       const std::string& current, std::string& why)
+{
+    why.clear();
+    if (hull.empty() && band.empty() && pattern.empty() && light.empty())
+        return palette;
+    if (hull.empty() != band.empty())
+    {
+        why = "give both hull and band as rrggbb, or neither";
+        return std::string();
+    }
+    if (hull.empty())
+    {
+        why = "pattern and light go with a hull and a band";
+        return std::string();
+    }
+    auto read = [&](const std::string& text, Paint::Role role, Paint::Cell& out)
+    {
+        const std::string h = !text.empty() && text[0] == '#' ? text.substr(1) : text;
+        if (h.size() != 6)
+            return false;
+        Paint::Rgb rgb{};
+        for (int i = 0; i < 3; i++)
+        {
+            char*             end = nullptr;
+            const std::string pair = h.substr(2 * i, 2);
+            const long        v = std::strtol(pair.c_str(), &end, 16);
+            if (end == nullptr || *end != '\0' || pair.find_first_of("+- ") != std::string::npos)
+                return false;
+            rgb[i] = (unsigned char)v;
+        }
+        out = Paint::Nearest(role, rgb);
+        return true;
+    };
+    Paint::Paint p;
+    std::string  curPalette;
+    bool         curPainted = false;
+    Paint::Paint cur;
+    if (Paint::Split(current, curPalette, curPainted, cur) && curPainted)
+    {
+        p.pattern = cur.pattern;
+        p.light = cur.light;
+    }
+    if (!read(hull, Paint::Role::Base, p.base) || !read(band, Paint::Role::Band, p.band))
+    {
+        why = "hull and band are six hex digits each, like c8b89a";
+        return std::string();
+    }
+    if (!pattern.empty() && (p.pattern = IndexOfName(PATTERN_NAMES, Paint::PATTERN_MIN,
+                                                     Paint::PATTERN_MAX, pattern)) < 0)
+    {
+        why = "pattern is bands, spine or chevrons";
+        return std::string();
+    }
+    if (!light.empty() && (p.light = IndexOfName(LIGHT_NAMES, 0, Paint::LIGHT_MAX, light)) < 0)
+    {
+        why = "light is cold, white, warm or amber";
+        return std::string();
+    }
+    return Paint::Format(palette, Paint::Snap(p));
 }
 
 std::string DescribeDesigns(const View& view)
@@ -1313,6 +1421,7 @@ std::string Describe(const View& view, Detail detail)
     out += Fmt("       %s  stabilizer %s  weapons %s  mining %s%s\n", mode,
                p.stabilizer ? "on" : "off", p.weaponOn ? "ARMED" : "off", p.mining ? "on" : "off",
                p.autopilot ? "  autopilot engaged" : "");
+    out += "       livery " + DescribeLivery(p.livery) + "\n";
     // Under the law (#431 slice 10), once there is anything to say.
     if (p.criminalLeft > 0.0)
     {

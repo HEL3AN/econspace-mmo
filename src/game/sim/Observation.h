@@ -128,6 +128,20 @@ std::vector<SavedDesignRow> SavedDesigns(const View& view);
 // What `designs` says.
 std::string DescribeDesigns(const View& view);
 
+// --- Livery and paint (#516, #552) --------------------------------------------------------
+// A livery spec in words: "plain", "guild", or "guild, painted: hull #rrggbb, band #rrggbb,
+// stripes bands, windows warm". What `observe` shows and what `set_livery` answers with.
+std::string DescribeLivery(const std::string& spec);
+// What `set_livery` says of the rules, so an agent knows what will be kept.
+std::string LiveryRules();
+// A spec from words: a palette id, and a paint when `hull` and `band` (`rrggbb`, with or
+// without '#') are given; `pattern` (bands, spine, chevrons) and `light` (cold, white, warm,
+// amber) default to what `current` wears, else bands and warm. Empty and `why` set on a word
+// that is not understood. The server still snaps the result into the rules.
+std::string LiverySpec(const std::string& palette, const std::string& hull, const std::string& band,
+                       const std::string& pattern, const std::string& light,
+                       const std::string& current, std::string& why);
+
 // --- Ship loss and insurance (#344) ------------------------------------------------------
 // What insuring an owned hull would come to here, before anything is sent: its value as it is
 // fitted (ShipValue at this system's ore prices), its cover now, the premium and what a policy
