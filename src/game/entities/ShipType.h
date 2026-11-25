@@ -75,6 +75,14 @@ inline int ShipKey(int hull, int copy)
     return hull + copy * SHIP_STRIDE;
 }
 
+// A ship key is an index into this process's catalog, so it means nothing outside it (#356):
+// saves and the wire name a ship by `ShipIdOf`, the hull's stock design id for the first of a
+// kind and `<design>#<n>` for the n-th more (n >= 1), and read it back with `ShipKeyFromId`.
+// Reordering or extending the hangar list therefore never retargets a saved or in-flight ship.
+std::string ShipIdOf(int key);
+// False for an id this catalog has no hull for.
+bool ShipKeyFromId(const std::string& id, int& key);
+
 // What a station charges for a ship, as a multiple of the catalog price, given the buyer's
 // standing with the station's owner. One function because three places need the same number
 // (#109): the server charges it, the hangar screen shows it, and an agent quotes it before

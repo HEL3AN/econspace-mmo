@@ -142,7 +142,12 @@ inline constexpr int WORLD_VERSION = 22;
 //    drops the ship, and a second ship of a hull it already has as nothing at all, then saves
 //    the account so. An older file's keys are hull indices, which is what a first ship's key
 //    is: it is read unchanged.
-inline constexpr int ACCOUNT_VERSION = 13;
+// 14: a ship is named by its id (#356), the hull's stock design -- `<design>` for the first of a
+//    kind and `<design>#<n>` for the n-th more -- in `ships`, `ship` and `insurance`, never by
+//    its place in the hangar list. A version 13 build would read no number there, find no hull it
+//    knows, hand the player the starter alone and save over every ship they had. An older file's
+//    keys are catalog indices and are read as before.
+inline constexpr int ACCOUNT_VERSION = 14;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 // corps.json, the players' corporations (#347). 1: the first.

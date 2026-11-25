@@ -15,7 +15,9 @@
 #include "sim/Simulation.h"
 #include "temp_dir.h"
 
+#include <fstream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 
 // Ships have places (#472 slice 8): the ship a pilot leaves stays where it was, with its own
@@ -239,6 +241,41 @@ TEST_CASE("Several ships of one hull: each its own key, hold, fit and policy, an
     CHECK(again.Owns(0));
     CHECK(again.Owns(ShipKey(0, 2)));
     CHECK(Save::ACCOUNT_VERSION >= 13);
+
+    // A ship is named by its id, never by its place in the hangar list (#356).
+    std::ifstream        in(path);
+    const nlohmann::json saved = nlohmann::json::parse(in);
+    REQUIRE(saved["ships"].size() == 2);
+    CHECK(saved["ships"][0]["hull"] == GetShipCatalog()[0].stats.design);
+    CHECK(saved["ships"][1]["hull"] == GetShipCatalog()[0].stats.design + "#2");
+    CHECK(saved["ship"] == GetShipCatalog()[0].stats.design);
+}
+
+TEST_CASE("A ship id round-trips through the catalog, and an old index save still reads (#356)")
+{
+    int key = -1;
+    REQUIRE(ShipKeyFromId(ShipIdOf(ShipKey(1, 0)), key));
+    CHECK(key == ShipKey(1, 0));
+    REQUIRE(ShipKeyFromId(ShipIdOf(ShipKey(1, 3)), key));
+    CHECK(key == ShipKey(1, 3));
+    CHECK_FALSE(ShipKeyFromId("no such design", key));
+    CHECK_FALSE(ShipKeyFromId(GetShipCatalog()[0].stats.design + "#0", key));
+    CHECK_FALSE(ShipKeyFromId(GetShipCatalog()[0].stats.design + "#x", key));
+
+    World             w;
+    const TempDir     tmp;
+    const std::string path = tmp.Path("hunter_old.json");
+    {
+        std::ofstream out(path);
+        out << R"({"version":13,"ships":[{"hull":0,"design":""},{"hull":1,"design":""}],"ship":1})";
+    }
+    ClientSession& s = w.sim.CreateSession(w.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                           GetShipCatalog()[0].stats);
+    s.accountName = "hunter";
+    REQUIRE(w.sim.LoadAccount(s, path) == Save::Result::Ok);
+    CHECK(s.Owns(0));
+    CHECK(s.Owns(1));
+    CHECK(s.currentShip == 1);
 }
 
 TEST_CASE("The snapshot names ships by key, and the hangar lists each one (#572)")
