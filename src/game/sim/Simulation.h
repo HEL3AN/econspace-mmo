@@ -1393,7 +1393,9 @@ public:
     // Rent fallen due, from the macro pass: paid, or owed and the hangar closed.
     void StepHangars();
     // A corporation's offices at NPC stations (#572, slice 12): rent due, locked when unpaid.
-    void                           StepOffices();
+    void StepOffices();
+    // An office whose station fell, a day ago (#606): its goods moved, or kept and tried again.
+    bool MoveFallenOffice(const std::string& corpId, const std::string& key);
     std::vector<Proto::OfficeView> PartyOffices(const std::string& corpId) const;
     // The verb `office` (name: the station; system; value: close), by a CEO or a director.
     Corps::Outcome ApplyOfficeAct(const std::string& account, const Corps::Act& act);

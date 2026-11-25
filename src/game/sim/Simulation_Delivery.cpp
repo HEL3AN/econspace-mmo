@@ -336,7 +336,24 @@ int Simulation::ReservedFor(const std::string& account, const std::string& syste
 void Simulation::HangarsLost(SystemState& st, const Entity& station)
 {
     const std::string key = HangarKey(st, station);
-    const auto        at = hangars_.find(key);
+    // A corporation's office there (#606) waits a day too, then moves (StepOffices).
+    {
+        std::vector<std::string> owners;
+        for (const auto& kv : corps_.All())
+            if (kv.second.offices.count(key) != 0)
+                owners.push_back(kv.first);
+        for (const std::string& id : owners)
+        {
+            Corps::Office o = *corps_.OfficeOf(id, key);
+            o.fell = std::max(time_, 1.0);
+            corps_.SetOffice(id, key, o);
+            TellParty(id, "The office at " + station.GetName() +
+                              " is gone with the station: " + "what it held will be moved in " +
+                              std::to_string((int)WorldRules::DeliveryRules().lostHours) +
+                              " h, for a share of its value from the treasury");
+        }
+    }
+    const auto at = hangars_.find(key);
     if (at == hangars_.end())
         return;
     const WorldRules::Deliveries& r = WorldRules::DeliveryRules();
@@ -364,6 +381,175 @@ void Simulation::HangarsLost(SystemState& st, const Entity& station)
         shipments_.push_back(std::move(sh));
     }
     hangars_.erase(at);
+}
+
+// An office whose station fell, a day after (#606, after #588's rule for a pilot's hangar): its
+// divisions go to the corporation's nearest other office, else its nearest structure with room,
+// else a new office at the nearest market of the fallen station's faction -- for the fee a
+// pilot's hangar pays, from the treasury. Nothing is deleted: when the fee cannot be paid or
+// nowhere has room, the goods stay where they are and it is tried again on the next pass.
+bool Simulation::MoveFallenOffice(const std::string& corpId, const std::string& key)
+{
+    const Corps::Office* had = corps_.OfficeOf(corpId, key);
+    if (had == nullptr)
+        return false;
+    Corps::Office     office = *had;
+    const std::string where = office.station + ", " + SystemName(office.system);
+    int               volume = 0;
+    double            value = 0.0;
+    const Market      prices;
+    for (const auto& d : office.goods)
+    {
+        volume += d.second.Used();
+        for (const auto& g : d.second.All())
+            value += g.second * prices.GetBasePrice(g.first);
+    }
+    if (volume == 0)
+    {
+        corps_.DropOffice(corpId, key);
+        TellParty(corpId, "The office at " + where + " was lost with the station; it held nothing");
+        return true;
+    }
+    const auto& rules = WorldRules::OfficeRules();
+    const auto  jumps = [&](const std::string& to) -> int
+    {
+        if (to == office.system)
+            return 0;
+        const auto path = PlanRoute(office.system, to);
+        return path.empty() ? -1 : (int)path.size() - 1;
+    };
+    const std::string owner = "corp:" + corpId;
+    const auto        better = [](int a, int b) { return a >= 0 && (b < 0 || a < b); };
+
+    // 1. Another office of the corporation's, the nearest with room.
+    std::string toOffice;
+    int         best = -1;
+    for (const auto& kv : corps_.Find(corpId)->offices)
+    {
+        if (kv.first == key || kv.second.fell > 0.0 || OfficeStation(kv.first) == nullptr)
+            continue;
+        int held = 0;
+        for (const auto& d : kv.second.goods)
+            held += d.second.Used();
+        const int j = jumps(kv.second.system);
+        if (held + volume <= rules.units && better(j, best))
+        {
+            best = j;
+            toOffice = kv.first;
+        }
+    }
+    // 2. Else a structure of its own with storage, the nearest with room.
+    Structure*  toStructure = nullptr;
+    std::string structureAt;
+    if (toOffice.empty())
+    {
+        best = -1;
+        for (auto& kv : systems_)
+        {
+            const int j = jumps(kv.first);
+            if (!better(j, best))
+                continue;
+            for (const auto& e : kv.second.entities)
+                if (e->GetKind() == EntityKind::Structure && e->GetOwner() == owner)
+                {
+                    auto& t = static_cast<Structure&>(*e);
+                    if (t.GetStorageCapacity() - t.GetStoredUsed() >= volume)
+                    {
+                        best = j;
+                        toStructure = &t;
+                        structureAt = kv.first;
+                        break;
+                    }
+                }
+        }
+    }
+    // 3. Else held at a station of the fallen one's faction, as an office there.
+    const Entity* toStation = nullptr;
+    std::string   newKey;
+    std::string   newSystem;
+    if (toOffice.empty() && toStructure == nullptr)
+    {
+        best = -1;
+        for (const auto& kv : systems_)
+        {
+            const int j = jumps(kv.first);
+            if (!better(j, best))
+                continue;
+            for (const auto& e : kv.second.entities)
+                if (e->GetKind() == EntityKind::Station && e->Has(Component::Market) &&
+                    InfluenceMap::Key(static_cast<const Station&>(*e).GetFaction()) ==
+                        office.holder &&
+                    corps_.Find(corpId)->offices.count(HangarKey(kv.second, *e)) == 0)
+                {
+                    best = j;
+                    toStation = e.get();
+                    newKey = HangarKey(kv.second, *e);
+                    newSystem = kv.first;
+                    break;
+                }
+        }
+        if (toStation == nullptr)
+        {
+            if (office.told != 3)
+            {
+                office.told = 3;
+                corps_.SetOffice(corpId, key, office);
+                TellParty(corpId,
+                          "What the office at " + where +
+                              " held cannot be moved yet: nowhere has room, and no station of "
+                              "its faction can hold it. It is kept, and tried again");
+            }
+            return false;
+        }
+    }
+    const double fee = value * WorldRules::DeliveryRules().lostFee;
+    std::string  why;
+    if (!PayRent(corpId, office.holder, fee, why))
+    {
+        if (office.told != 3)
+        {
+            office.told = 3;
+            corps_.SetOffice(corpId, key, office);
+            TellParty(corpId, "What the office at " + where +
+                                  " held waits to be moved: the fee of " + Cr(fee) +
+                                  " is not paid (" + why + ")");
+        }
+        return false;
+    }
+    std::string to;
+    if (toStation != nullptr)
+    {
+        Corps::Office fresh;
+        fresh.system = newSystem;
+        fresh.station = toStation->GetName();
+        fresh.holder = office.holder;
+        fresh.until = time_;  // its rent is due now: locked, goods out only, until it is paid
+        corps_.SetOffice(corpId, newKey, fresh);
+        toOffice = newKey;
+        to = "a new office at " + fresh.station + ", " + SystemName(fresh.system) +
+             " (locked until its rent is paid)";
+    }
+    else if (toStructure != nullptr)
+        to = toStructure->GetName() + ", " + SystemName(structureAt);
+    else
+    {
+        const Corps::Office* dest = corps_.OfficeOf(corpId, toOffice);
+        to = "the office at " + dest->station + ", " + SystemName(dest->system);
+    }
+    for (const auto& d : office.goods)
+    {
+        Inventory* into = toStructure != nullptr ? toStructure->Division(d.first)
+                                                 : corps_.OfficeGoods(corpId, toOffice, d.first);
+        if (into != nullptr)
+            for (const auto& g : d.second.All())
+                into->Add(g.first, g.second);
+    }
+    corps_.DropOffice(corpId, key);
+    corps_.Touch();
+    TellParty(corpId, "What the office at " + where + " held, " + std::to_string(volume) +
+                          " volume, has been moved to " + to + ": the fee of " + Cr(fee) +
+                          " is paid from the treasury");
+    return true;
 }
 
 void Simulation::StepShipments()

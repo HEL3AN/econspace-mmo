@@ -827,6 +827,9 @@ void Game::DrawOfficesHeld(Ui::Layout& L)
         L.Field(o.station + ", " + MapSystemName(o.system),
                 o.state == "paid" ? TextFormat("%d / %d, paid until %.1f d from now", o.held,
                                                o.units, (o.until - now) / 86400.0)
+                : o.state == "moving"
+                    ? TextFormat("%d / %d, STATION DESTROYED: goods move in %.1f h", o.held,
+                                 o.units, std::max(0.0, o.until - now) / 3600.0)
                 : o.state == "unpaid"
                     ? TextFormat("%d / %d, UNPAID: locks soon", o.held, o.units)
                     : TextFormat("%d / %d, LOCKED: goods out only", o.held, o.units),

@@ -1192,7 +1192,7 @@ struct OfficeView
     double      rent = 0.0;
     double      periodDays = 7.0;
     double      until = 0.0;     // paid to, world time
-    std::string state = "paid";  // paid, unpaid (grace) or locked
+    std::string state = "paid";  // paid, unpaid (grace), locked, or moving (station destroyed)
     int         held = 0;        // volume in its divisions...
     int         units = 0;       // ...of the room it has
 };

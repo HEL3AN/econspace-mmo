@@ -222,7 +222,10 @@ std::string CorpText(const Proto::CorpView& v)
         out += "Office at " + o.station + " (" + o.system + "): " +
                (o.state == "paid"     ? "paid"
                 : o.state == "unpaid" ? "UNPAID, locks soon"
-                                      : "LOCKED, goods out only") +
+                : o.state == "moving"
+                    ? "STATION DESTROYED, its goods are moved within a day to another "
+                      "office, structure or station, for a fee from the treasury"
+                    : "LOCKED, goods out only") +
                ", holds " + std::to_string(o.held) + " of " + std::to_string(o.units) +
                " volume; rent " + std::to_string((long long)o.rent) + " cr every " +
                std::to_string((int)o.periodDays) + " days\n";
