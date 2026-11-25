@@ -358,6 +358,15 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             return;
         }
         arrive = PLAYER_WEAPON_RANGE + (built ? size : 0.0f);
+        // Lock it on the way in (#619): an attack is approach, lock, fire. A slot that is
+        // full gives up its oldest lock to it -- the order is what the pilot asked for last.
+        if (s.FindLock(s.order.targetId) == nullptr)
+        {
+            if ((int)s.locks.size() >= s.ship->GetStats().locks && !s.locks.empty())
+                Unlock(s, s.locks.front().target);
+            LockTarget(s, s.order.targetId, true);
+        }
+        SetActiveLock(s, s.order.targetId);
     }
 
     float dist = DistTo(*s.ship, dest);
@@ -492,7 +501,7 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             s.weaponOn = true;
             Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
             PlayerCombatEvents ev;
-            if (StepPlayerFire(s, st, id, dt, &ev))
+            if (StepPlayerFire(s, st, s.HeldTarget() == id ? id : 0, dt, &ev))
                 s.orderShots.push_back({ ev.shotFrom, ev.shotTo, id, ev.victimSession });
             if (ev.killedPilot)
             {

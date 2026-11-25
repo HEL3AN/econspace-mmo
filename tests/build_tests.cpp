@@ -721,6 +721,7 @@ TEST_CASE("an attack order closes in and fires until the target is gone (#39)")
     for (int i = 0; i < 60 * 60 && ann.orderStatus == Orders::Status::Running; i++)
     {
         sim.StepPlayerOrder(ann, *sim.SystemOf(ann), 1.0f / 60.0f);
+        sim.StepPlayerLocks(ann, *sim.SystemOf(ann), 1.0f / 60.0f);  // as the host's tick does
         fired = fired || !ann.orderShots.empty();
         ann.orderShots.clear();
     }

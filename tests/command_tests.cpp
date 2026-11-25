@@ -259,15 +259,15 @@ TEST_CASE("docked, only an undock order can run; any other is refused")
     CHECK(f.s.HasRunningOrder());
 }
 
-TEST_CASE("a toggle command arms and disarms the weapon")
+TEST_CASE("the fire verb arms and disarms the guns, and a command does neither (#619)")
 {
-    Fixture        f;
-    Proto::Command c;
-    c.toggleWeapon = true;
+    Fixture f;
     CHECK_FALSE(f.s.weaponOn);
-    f.Apply(c);
+    f.Act(Proto::Act::Fire{ true });
     CHECK(f.s.weaponOn);
-    f.Apply(c);
+    f.Apply(Proto::Command{});
+    CHECK(f.s.weaponOn);
+    f.Act(Proto::Act::Fire{ false });
     CHECK_FALSE(f.s.weaponOn);
 }
 

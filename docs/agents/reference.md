@@ -465,11 +465,28 @@ Set the rules of engagement of an armed structure you built, from anywhere in it
 
 ### `attack`
 
-Close to weapon range of a ship -- an NPC's or another player's -- or a structure and fire until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits; a player's ship shot down is their loss, insurance and wreck as any. Shooting what a lawful faction owns, a player's structure in a system a lawful faction holds -- or a corporation that pays for police there -- or another player in such a system with security above zero is a crime: reputation and bounty with the law's faction, per hit and more for the kill, the police called, a CRIMINAL flag (about 15 minutes; anyone may then shoot you freely, police chase you, lawful docks refuse you) and a fall in your security status (observe's LAW line). At a low status police in high security engage on sight; it recovers with time and pirate kills. Pirates and pilots marked CRIMINAL in observe are free targets. Your own structures are dismantled, not attacked.
+Close to weapon range of a ship -- an NPC's or another player's -- or a structure, lock it on the way (the lock takes about two seconds on a frigate, less on something larger; observe's LOCKS line says how far it is) and fire at it until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits; a player's ship shot down is their loss, insurance and wreck as any. Shooting what a lawful faction owns, a player's structure in a system a lawful faction holds -- or a corporation that pays for police there -- or another player in such a system with security above zero is a crime: reputation and bounty with the law's faction, per hit and more for the kill, the police called, a CRIMINAL flag (about 15 minutes; anyone may then shoot you freely, police chase you, lawful docks refuse you) and a fall in your security status (observe's LAW line). At a low status police in high security engage on sight; it recovers with time and pirate kills. Pirates and pilots marked CRIMINAL in observe are free targets. Your own structures are dismantled, not attacked.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `target_id` | number | yes | ship or structure id from observe |
+
+### `lock`
+
+Commit to a target: lock a ship -- an NPC's or another player's -- or a structure that is not yours, within your lock range (observe's LOCKS line). A lock takes time, from half a second for something large to a few seconds for a small ship, holds one of your slots, and is shown to the one locked (their observe says LOCKED ON YOU); it is what the guns fire at, and nothing else is. The first lock is the active one; 'active' true makes this one the active lock of those you hold. A lock is lost if the target leaves, hides or stays out of range for a few seconds. Locking is never a crime; the first shot is. Refused, with the reason, if there is no such target, it is out of range, hidden or every slot is in use. observe shows lock progress.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `active` | boolean |  | make it the lock the guns address (default: only if you hold none) |
+| `target_id` | number | yes | ship or structure id from observe |
+
+### `unlock`
+
+Let go of a lock, freeing its slot; without target_id, every lock. Another held lock becomes the active one if it was.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `target_id` | number |  | a locked target's id (omit for all) |
 
 ### `build`
 

@@ -231,6 +231,10 @@ std::vector<Action> EveryAction()
         t.refund = "5 Iron";
         t.destinationName = "Vela";
         add(Actions::For(t, { 0.0f, 0.0f }));
+        t.locked = true;  // a lock held, but not the one the guns address, and then that one
+        add(Actions::For(t, { 0.0f, 0.0f }));
+        t.active = true;
+        add(Actions::For(t, { 0.0f, 0.0f }));
     }
     Blueprint beacon;
     beacon.id = "beacon";
@@ -271,7 +275,7 @@ TEST_CASE("Actions: one name per action, whichever list offers it (#365)")
         CHECK((a.label.size() == name.size() || a.label[name.size()] == ' '));
         seen.insert(a.verb);
     }
-    CHECK(seen.size() == 24);  // every verb was offered somewhere above
+    CHECK(seen.size() == 27);  // every verb was offered somewhere above
 
     // And no two verbs share a name: the name is what the player tells them apart by.
     std::set<std::string> names;
@@ -306,7 +310,7 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
                     Verb::FlyHere,    Verb::WarpHere,    Verb::Build,        Verb::Accept,
                     Verb::HandIn,     Verb::Dismantle,   Verb::Refit,        Verb::Defence,
                     Verb::SaveDesign, Verb::ApplyDesign, Verb::RenameDesign, Verb::DeleteDesign,
-                    Verb::Take })
+                    Verb::Take,       Verb::Lock,        Verb::Unlock,       Verb::SetActive })
     {
         const std::string tool = Actions::ToolFor(v);
         INFO("verb " << (int)v << " tool '" << tool << "'");

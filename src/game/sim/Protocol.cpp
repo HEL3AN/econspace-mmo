@@ -619,7 +619,6 @@ std::string EncodeCommand(const Command& c)
     flag("brake", c.brake);
     flag("tStab", c.toggleStabilizer);
     flag("tMine", c.toggleMining);
-    flag("tWeap", c.toggleWeapon);
     number("target", c.targetId, 0);
     number("navMode", c.navMode, 0);
     point("nav", c.navTarget);
@@ -1005,6 +1004,26 @@ struct ActionWriter
         if (a.rev != 0)
             j["rev"] = a.rev;
     }
+    void operator()(const Act::Lock& a) const
+    {
+        Verb("lock");
+        j["id"] = a.id;
+    }
+    void operator()(const Act::Unlock& a) const
+    {
+        Verb("unlock");
+        j["id"] = a.id;
+    }
+    void operator()(const Act::SetActive& a) const
+    {
+        Verb("active");
+        j["id"] = a.id;
+    }
+    void operator()(const Act::Fire& a) const
+    {
+        Verb("fire");
+        j["on"] = a.on;
+    }
 };
 }  // namespace
 
@@ -1211,7 +1230,6 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadBool(j, "brake", out.brake);
     ok = ok && ReadBool(j, "tStab", out.toggleStabilizer);
     ok = ok && ReadBool(j, "tMine", out.toggleMining);
-    ok = ok && ReadBool(j, "tWeap", out.toggleWeapon);
     ok = ok && ReadInt(j, "target", 0, 0, ID_MAX, out.targetId);
     ok = ok && ReadInt(j, "navMode", 0, 0, 5, out.navMode);
     ok = ok && ReadPoint(j, "nav", out.navTarget);
@@ -1438,6 +1456,30 @@ bool ReadAction(const json& j, Proto::Action& out)
              ReadInt(j, "rev", 0, 0, ID_MAX, a.rev);
         out = std::move(a);
     }
+    else if (verb == "lock")
+    {
+        Proto::Act::Lock a;
+        ok = ReadInt(j, "id", 0, 0, ID_MAX, a.id);
+        out = std::move(a);
+    }
+    else if (verb == "unlock")
+    {
+        Proto::Act::Unlock a;
+        ok = ReadInt(j, "id", 0, 0, ID_MAX, a.id);
+        out = std::move(a);
+    }
+    else if (verb == "active")
+    {
+        Proto::Act::SetActive a;
+        ok = ReadInt(j, "id", 0, 0, ID_MAX, a.id);
+        out = std::move(a);
+    }
+    else if (verb == "fire")
+    {
+        Proto::Act::Fire a;
+        ok = ReadBool(j, "on", a.on);
+        out = std::move(a);
+    }
     else
         return false;  // a verb this build does not know
     return ok;
@@ -1551,6 +1593,9 @@ EntityWire WireOf(const Proto::EntitySnapshot& e, float grid)
     const long long ar = Quantise(e.armourFrac, HULL_UNIT);
     if (ar != (long long)HULL_UNIT)
         j["ar"] = ar;
+    const long long sh = Quantise(e.shieldFrac, HULL_UNIT);
+    if (sh != (long long)HULL_UNIT)
+        j["sh"] = sh;
     if (e.ore != -1)
         j["o"] = e.ore;
     if (e.cargo >= 0 && e.cargoAmount > 0)
@@ -1592,6 +1637,7 @@ Proto::EntitySnapshot EntityOf(int id, const json& j)
     e.role = (int)IntOf(j, "r", -1);
     e.hullFrac = (float)((double)IntOf(j, "hp", (long long)HULL_UNIT) / HULL_UNIT);
     e.armourFrac = (float)((double)IntOf(j, "ar", (long long)HULL_UNIT) / HULL_UNIT);
+    e.shieldFrac = (float)((double)IntOf(j, "sh", (long long)HULL_UNIT) / HULL_UNIT);
     e.ore = (int)IntOf(j, "o", -1);
     const auto cg = j.find("cg");
     if (cg != j.end() && cg->is_array() && cg->size() == 2 && (*cg)[0].is_number_integer() &&
@@ -1681,6 +1727,27 @@ json PlayerJson(const Proto::PlayerView& p)
         j["loss"] = { { "seq", p.loss.seq },     { "hull", p.loss.hull }, { "sys", p.loss.system },
                       { "value", p.loss.value }, { "paid", p.loss.paid }, { "cargo", p.loss.cargo },
                       { "woke", p.loss.wokeAt } };
+    // Targeting (#619): only a ship that can lock says so, and what is locked or locking it.
+    if (p.lockMax > 0)
+    {
+        j["lockMax"] = p.lockMax;
+        j["lockR"] = Round2(p.lockRange);
+        if (!p.locks.empty())
+        {
+            json ls = json::array();
+            for (const Proto::LockView& l : p.locks)
+                ls.push_back(
+                    json::array({ l.id, Round2(l.progress), l.held ? 1 : 0, l.active ? 1 : 0 }));
+            j["locks"] = std::move(ls);
+        }
+        if (!p.lockedBy.empty())
+        {
+            json ls = json::array();
+            for (const Proto::LockedByView& l : p.lockedBy)
+                ls.push_back(json::array({ l.id, l.held ? 1 : 0 }));
+            j["lockedBy"] = std::move(ls);
+        }
+    }
     // Only where there is something to scan or a pass under way (#346).
     if (p.scan.until > 0.0 || !p.scan.sigs.empty())
     {
@@ -1847,6 +1914,25 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
         p.loss.cargo = loss->value("cargo", 0);
         p.loss.wokeAt = loss->value("woke", std::string());
     }
+    p.lockMax = Val(pj, "lockMax", 0);
+    p.lockRange = Val(pj, "lockR", 0.0f);
+    p.locks.clear();
+    p.lockedBy.clear();
+    if (const auto ls = pj.find("locks"); ls != pj.end() && ls->is_array())
+        for (const json& l : *ls)
+            if (l.is_array() && l.size() == 4 && l[0].is_number_integer())
+            {
+                Proto::LockView v;
+                v.id = l[0].get<int>();
+                v.progress = l[1].is_number() ? l[1].get<float>() : 0.0f;
+                v.held = l[2].is_number() && l[2].get<int>() != 0;
+                v.active = l[3].is_number() && l[3].get<int>() != 0;
+                p.locks.push_back(v);
+            }
+    if (const auto ls = pj.find("lockedBy"); ls != pj.end() && ls->is_array())
+        for (const json& l : *ls)
+            if (l.is_array() && l.size() == 2 && l[0].is_number_integer())
+                p.lockedBy.push_back({ l[0].get<int>(), l[1].is_number() && l[1].get<int>() != 0 });
     p.scan = Proto::ScanView{};
     const auto scan = pj.find("scan");
     if (scan != pj.end() && scan->is_object())
@@ -2366,10 +2452,10 @@ static bool SameWire(const EntitySnapshot& a, const EntitySnapshot& b)
 {
     return a.kind == b.kind && a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.heading == b.heading &&
            a.size == b.size && a.faction == b.faction && a.role == b.role &&
-           a.hullFrac == b.hullFrac && a.armourFrac == b.armourFrac && a.ore == b.ore &&
-           a.cargo == b.cargo && a.cargoAmount == b.cargoAmount && a.name == b.name &&
-           a.design == b.design && a.livery == b.livery && a.criminal == b.criminal &&
-           a.securityStatus == b.securityStatus;
+           a.hullFrac == b.hullFrac && a.armourFrac == b.armourFrac &&
+           a.shieldFrac == b.shieldFrac && a.ore == b.ore && a.cargo == b.cargo &&
+           a.cargoAmount == b.cargoAmount && a.name == b.name && a.design == b.design &&
+           a.livery == b.livery && a.criminal == b.criminal && a.securityStatus == b.securityStatus;
 }
 
 std::shared_ptr<const EntityWire> WireCache::Of(const EntitySnapshot& e, float grid)

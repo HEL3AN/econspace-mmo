@@ -558,6 +558,14 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                 // list, the instrument, never on the ship itself (#117).
                 if (row.entity->kind == Proto::EntityKind::PlayerShip && row.entity->criminal)
                     return Ui::Cell{ "criminal", t.standing.hostile };
+                // Locks (#619), in the list where relations are read: one on you, and yours.
+                if (const Proto::LockedByView* by = LockingMe(row.entity->id))
+                    return Ui::Cell{ by->held ? "LOCKED ON YOU" : "locking you",
+                                     t.standing.hostile };
+                if (const Proto::LockView* lk = MyLock(row.entity->id))
+                    return Ui::Cell{ lk->held ? (lk->active ? "LOCKED *" : "locked")
+                                              : TextFormat("lock %.0f%%", lk->progress * 100.0f),
+                                     t.colors.accent };
                 return Ui::Cell{ row.kind, t.colors.dim };
             default: return Ui::Cell{ Ui::Distance(row.distance), t.colors.dim };
         }
@@ -653,6 +661,24 @@ void Game::DrawTargetContent(const Ui::Frame& f)
         Box().Grow().ScrollY().Id("target").Gap(t.metrics.gap),
         [&]
         {
+            // The lock strip (#619): one chip per lock, the target's layers beside its name; a
+            // click makes it the one the guns address.
+            for (const Proto::LockView& lk : snapshot_.player.locks)
+            {
+                const Proto::EntitySnapshot* lt = nullptr;
+                for (const auto& es : snapshot_.entities)
+                    if (es.id == lk.id)
+                        lt = &es;
+                const std::string name = lt != nullptr ? Overview::LabelOf(*lt) : "(out of sight)";
+                const std::string state =
+                    lk.held ? (lt != nullptr ? std::string(TextFormat(
+                                                   "S%.0f A%.0f H%.0f", lt->shieldFrac * 100.0f,
+                                                   lt->armourFrac * 100.0f, lt->hullFrac * 100.0f))
+                                             : std::string("held"))
+                            : std::string(TextFormat("%.0f%%", lk.progress * 100.0f));
+                if (L.Button("lock" + std::to_string(lk.id), name + "  " + state, lk.active))
+                    SendAction(Proto::Act::SetActive{ lk.id });
+            }
             L.Text(Overview::LabelOf(*e), TextStyle::Title());
             L.Field("Distance", Ui::Distance(dist), t.colors.text);
 
@@ -687,6 +713,20 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
                 L.Bar(e->hullFrac, e->hullFrac > 0.3f ? t.colors.good : t.colors.bad);
             }
+            // A pilot's ship has shields over all of it (#619); an NPC's design has none.
+            if (e->kind == Proto::EntityKind::PlayerShip)
+            {
+                L.Field("Shield", TextFormat("%.0f%%", e->shieldFrac * 100.0f), t.colors.text);
+                L.Bar(e->shieldFrac, t.colors.accent);
+            }
+            // The lock, and who is locking it back (#619).
+            if (const Proto::LockView* lk = MyLock(e->id))
+                L.Field("Lock",
+                        lk->held ? (lk->active ? "held, guns on it" : "held")
+                                 : TextFormat("forming %.0f%%", lk->progress * 100.0f),
+                        t.colors.accent);
+            if (const Proto::LockedByView* by = LockingMe(e->id))
+                L.Field("Locking you", by->held ? "held" : "forming", t.standing.hostile);
             // A hauler's hold (#343), or what a wreck or a can still holds (#472).
             if (e->kind == Proto::EntityKind::Npc && e->cargo >= 0 && e->cargo < Goods::Count() &&
                 e->cargoAmount > 0)
@@ -1419,6 +1459,32 @@ void Game::DrawSpaceBrackets()
         // A hostile bracket is notched (#362): its colour is not the only thing that says so.
         if (hostile)
             Ui::DrawNotch(sp, r, Ui::Px(4.0f), Fade(Sensor::ColorOf(a), alpha));
+
+        // The pilot's own lock on it (#619): a ring that fills as the lock forms and is whole
+        // once held, heavier and with a pip when the guns address it. These are the viewer's
+        // marks, drawn from the viewer's state -- an instrument, not the object's colour (#117).
+        if (const Proto::LockView* lk = MyLock(e->GetId()))
+        {
+            const float ring = r + Ui::Px(5.0f);
+            const Color c = Fade(t.colors.accent, lk->held ? 0.95f : 0.7f);
+            DrawRing(sp, ring - (lk->active ? 2.0f : 1.0f) * thin, ring, -90.0f,
+                     -90.0f + 360.0f * std::clamp(lk->progress, 0.0f, 1.0f), 48, c);
+            if (lk->active)
+                DrawCircleV({ sp.x, sp.y - ring - Ui::Px(4.0f) }, Ui::Px(2.5f), c);
+        }
+        // ...and a ship locking this one: a pointer above its bracket, hollow while the lock
+        // forms and solid once held. The one fact a pilot must be told that nobody can see.
+        if (const Proto::LockedByView* by = LockingMe(e->GetId()))
+        {
+            const float   w = Ui::Px(5.0f), h = Ui::Px(7.0f);
+            const Vector2 tip{ sp.x, sp.y - r - Ui::Px(2.0f) };
+            const Color   c = Fade(t.standing.hostile, 0.95f);
+            const Vector2 l{ tip.x - w, tip.y - h }, rr{ tip.x + w, tip.y - h };
+            if (by->held)
+                DrawTriangle(tip, rr, l, c);
+            else
+                DrawTriangleLines(tip, rr, l, c);
+        }
     }
 
     // Your own ship, last, so it is on top: a bracket a little larger than the others, the

@@ -34,6 +34,8 @@ static int Usage(const char* exe)
                  "      --map      start with the galaxy map open (G/Esc closes it)\n"
                  "      --select   select the nearest thing shortly after joining\n"
                  "      --menu     ...and open its right-click menu\n"
+                 "      --select-ship, --lock F, --unlock F, --fire F\n"
+                 "                 the nearest ship selected; L, Shift+L and F on frame F\n"
                  "      --dock     fly to the nearest station and dock, shortly after joining\n"
                  "      --market GOOD\n"
                  "                 ...and put its market in front, on GOOD\n"
@@ -98,7 +100,7 @@ int main(int argc, char** argv)
     float             startZoom = 0.0f;  // 0: the default
     bool              warp = false;
     bool              map = false;
-    bool              select = false, menu = false;
+    bool              select = false, menu = false, selectShip = false;
     bool              dock = false;
     bool              fit = false;  // --fit: the hangar open on its Fit tab (#279)
     std::string       market;       // --market GOOD: the market in front, on that good (#343)
@@ -127,8 +129,9 @@ int main(int argc, char** argv)
         std::string text;
         int         frame;
     };
-    std::vector<Say> says;   // --say TEXT FRAME (#347)
-    std::vector<int> scans;  // --scan FRAME (#346)
+    std::vector<Say> says;                         // --say TEXT FRAME (#347)
+    std::vector<int> scans;                        // --scan FRAME (#346)
+    std::vector<int> locksAt, unlocksAt, firesAt;  // --lock, --unlock, --fire FRAME (#619)
     struct DragArg
     {
         Vector2 from, to;
@@ -151,6 +154,8 @@ int main(int argc, char** argv)
             select = true;
         else if (std::strcmp(argv[i], "--menu") == 0)
             select = menu = true;
+        else if (std::strcmp(argv[i], "--select-ship") == 0)
+            select = selectShip = true;
         else if (std::strcmp(argv[i], "--dock") == 0)
             dock = true;
         else if (std::strcmp(argv[i], "--fit") == 0)
@@ -213,6 +218,12 @@ int main(int argc, char** argv)
         }
         else if (std::strcmp(argv[i], "--scan") == 0 && i + 1 < argc)
             scans.push_back(std::atoi(argv[++i]));
+        else if (std::strcmp(argv[i], "--lock") == 0 && i + 1 < argc)
+            locksAt.push_back(std::atoi(argv[++i]));
+        else if (std::strcmp(argv[i], "--unlock") == 0 && i + 1 < argc)
+            unlocksAt.push_back(std::atoi(argv[++i]));
+        else if (std::strcmp(argv[i], "--fire") == 0 && i + 1 < argc)
+            firesAt.push_back(std::atoi(argv[++i]));
         else if (std::strcmp(argv[i], "--say") == 0 && i + 2 < argc)
         {
             says.push_back({ argv[i + 1], std::atoi(argv[i + 2]) });
@@ -288,7 +299,7 @@ int main(int argc, char** argv)
         if (map)
             game.StartOnMap();
         if (select)
-            game.StartWithSelection(menu);
+            game.StartWithSelection(menu, selectShip);
         if (dock)
             game.StartDocking();
         if (sensor)
@@ -311,6 +322,12 @@ int main(int argc, char** argv)
             game.AddScriptedDrag(d.from, d.to, d.frame, d.release);
         for (int f : scans)
             game.AddScriptedScan(f);
+        for (int f : locksAt)
+            game.AddScriptedLock(f);
+        for (int f : unlocksAt)
+            game.AddScriptedUnlock(f);
+        for (int f : firesAt)
+            game.AddScriptedFire(f);
         if (fit)
             game.StartOnFit();
         if (!market.empty())

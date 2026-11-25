@@ -92,14 +92,16 @@ bool ReadProvides(const json& j, Ships::Provides& p, std::string& err)
     // Only what a stat is derived from. Hull and damage arrived with the NPCs that read them
     // (#279 step 4); shields and sensors come with the stat that reads them -- accepted
     // before that, they would be numbers nothing uses.
-    if (!OnlyKnownKeys(
-            pj, { "thrust", "rcs", "cargo", "ore", "mining", "hull", "armour", "damage", "scan" },
-            err) ||
+    if (!OnlyKnownKeys(pj,
+                       { "thrust", "rcs", "cargo", "ore", "mining", "hull", "armour", "damage",
+                         "scan", "locks", "lockRange" },
+                       err) ||
         !ReadNumber(pj, "thrust", p.thrust, err) || !ReadNumber(pj, "rcs", p.rcs, err) ||
         !ReadNumber(pj, "cargo", p.cargo, err) || !ReadNumber(pj, "ore", p.ore, err) ||
         !ReadNumber(pj, "mining", p.mining, err) || !ReadNumber(pj, "hull", p.hull, err) ||
         !ReadNumber(pj, "armour", p.armour, err) || !ReadNumber(pj, "damage", p.damage, err) ||
-        !ReadNumber(pj, "scan", p.scan, err))
+        !ReadNumber(pj, "scan", p.scan, err) || !ReadNumber(pj, "locks", p.locks, err) ||
+        !ReadNumber(pj, "lockRange", p.lockRange, err))
     {
         err = "provides: " + err;
         return false;
@@ -425,6 +427,8 @@ void Add(Ships::Provides& sum, const Ships::Provides& p, float times = 1.0f)
     sum.hull += p.hull * times;
     sum.armour += p.armour * times;
     sum.damage += p.damage * times;
+    sum.locks += p.locks * times;
+    sum.lockRange += p.lockRange * times;
 }
 
 void Add(std::vector<int>& sum, const Ships::Cost& c, int times = 1)
@@ -995,6 +999,9 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.cruise = out.maxSpeed * r.cruise;
     out.combatHull = out.hull + out.armour + r.baseHull;
     out.volley = out.damage + r.baseGun;
+    out.locks = std::max(1, (int)(sum.locks + 0.5f));
+    out.lockRange = r.lockRange + sum.lockRange;
+    out.scanRes = r.scanRes;
     // What the volley is made of: each gun's damage in its family's types, the rest -- the
     // base gun -- untyped. And the shift of the hull line this design is a variant of.
     for (const FitLine& line : d.fit)
@@ -1473,7 +1480,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     if (!OnlyKnownKeys(rj,
                        { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
                          "buildSecondsPerPart", "plain", "cruise", "baseHull", "baseGun",
-                         "minEffect" },
+                         "minEffect", "lockRange", "lockBase", "lockRef", "lockMin", "lockMax",
+                         "lockGrace", "scanRes" },
                        error))
     {
         error = "rules: " + error;
@@ -1502,6 +1510,24 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     if (rj.contains("minEffect") && !ReadNumber(rj, "minEffect", c.minEffect, error))
     {
         error = "rules: " + error;
+        return false;
+    }
+    for (auto [key, field] : { std::pair<const char*, float*>{ "lockRange", &c.rules.lockRange },
+                               { "lockBase", &c.rules.lockBase },
+                               { "lockRef", &c.rules.lockRef },
+                               { "lockMin", &c.rules.lockMin },
+                               { "lockMax", &c.rules.lockMax },
+                               { "lockGrace", &c.rules.lockGrace },
+                               { "scanRes", &c.rules.scanRes } })
+        if (rj.contains(key) && !ReadNumber(rj, key, *field, error))
+        {
+            error = "rules: " + error;
+            return false;
+        }
+    if (c.rules.lockRef <= 0.0f || c.rules.scanRes <= 0.0f || c.rules.lockMin <= 0.0f ||
+        c.rules.lockMax < c.rules.lockMin)
+    {
+        error = "rules: the lock numbers must be positive, with lockMax at least lockMin";
         return false;
     }
     if (c.rules.rcsPerTurn <= 0.0f)

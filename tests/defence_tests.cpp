@@ -504,6 +504,8 @@ TEST_CASE("return fire also answers whoever shoots the owner's ship in its reach
     raider->SetId(990001);
     NpcShip* pirate = raider.get();
     st.entities.push_back(std::move(raider));
+    // Its lock on the owner's ship is formed already: what is tested is whom it fires at (#619).
+    pirate->TargetLock().Begin(owner.ship->GetId(), 0.0f);
     b.Defend();
     REQUIRE(b.fires.empty());
 

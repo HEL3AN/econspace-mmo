@@ -268,30 +268,42 @@ void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& p
 }
 
 void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
-                               std::vector<FireEvent>* fires)
+                               std::vector<FireEvent>* fires, float dt)
 {
+    const Ships::Rules&   lockRules = Archetypes::ShipCatalogue().rules;
     std::vector<NpcShip*> ships = AliveShips(st);
     Sight                 sight(targetGrid_, NPC_WEAPON_RANGE * 2.0f, ships, players);
     for (NpcShip* npc : ships)
     {
-        if (!npc->IsAlive() || !npc->IsCombatant() || !npc->ReadyToFire())
+        if (!npc->IsAlive() || !npc->IsCombatant())
             continue;
 
         Vector2              npos = npc->GetPosition();
-        float                bestD = NPC_WEAPON_RANGE;
+        const int            lockedId = npc->TargetLock().target;
+        float                bestKey = 0.0f;  // distance, with the target it has locked first
+        int                  targetId = 0;
+        float                targetSize = 0.0f;
         Combatant*           target = nullptr;
         const ClientSession* targetPlayer = nullptr;  // null means the target is an NPC
         NpcShip*             targetNpc = nullptr;
 
-        auto consider = [&](Combatant* c, const ClientSession* player, NpcShip* other)
+        // The nearest hostile in reach -- but the one it has already locked first, so two
+        // targets at about the same distance do not keep restarting the lock (#619).
+        auto consider =
+            [&](Combatant* c, const ClientSession* player, NpcShip* other, int id, float size)
         {
             float d = Dist(c->GetPosition(), npos);
-            if (d <= bestD)
+            if (d > NPC_WEAPON_RANGE)
+                return;
+            const float key = id == lockedId ? -1.0f : d;
+            if (target == nullptr || key <= bestKey)
             {
-                bestD = d;
+                bestKey = key;
                 target = c;
                 targetPlayer = player;
                 targetNpc = other;
+                targetId = id;
+                targetSize = size;
             }
         };
 
@@ -300,14 +312,32 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             const PlayerPresence& p = players[(size_t)pi];
             if (p.ship != nullptr && p.session != nullptr && !p.hidden &&
                 NpcHunts(st, *p.session, *npc))
-                consider(p.ship, p.session, nullptr);
+                consider(p.ship, p.session, nullptr, p.session->ship->GetId(),
+                         p.session->ship->GetSize());
         }
         for (int oi : sight.Ships(npos, NPC_WEAPON_RANGE))
         {
             NpcShip* other = ships[(size_t)oi];
             if (other != npc && other->IsAlive() && NpcHostileToNpc(st, npc, other))
-                consider(other, nullptr, other);
+                consider(other, nullptr, other, other->GetId(), other->GetSize());
         }
+
+        // A lock before a shot (#619): the same timer a pilot's ship runs, by the same time
+        // for the same signature. With nothing in reach it lets go; a besieger's beam at an
+        // outpost below is the siege's arithmetic and needs none.
+        if (target == nullptr)
+            npc->TargetLock().Clear();
+        else
+        {
+            Ships::Lock& lock = npc->TargetLock();
+            if (lock.target != targetId)
+                lock.Begin(targetId, Ships::LockTime(lockRules, targetSize, lockRules.scanRes));
+            lock.Step(dt, true, lockRules.lockGrace);
+            if (!lock.held)
+                continue;  // the target knows it is being locked; it is not shot at yet
+        }
+        if (!npc->ReadyToFire())
+            continue;
 
         if (target == nullptr)
         {
@@ -1092,7 +1122,7 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
     for (auto& e : st.entities)  // movement
         e->Update(dt);
 
-    StepNpcCombat(st, players, fires);
+    StepNpcCombat(st, players, fires, dt);
     StepStationDefence(st, players, fires, dt);
 
     // Cleanup of the fallen. A hauler leaves what it carried in its wreck (#343), and any ship

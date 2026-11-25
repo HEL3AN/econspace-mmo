@@ -362,7 +362,10 @@ void HostStepWorld(Simulation& sim, float dt, Simulation::FireMap& fires)
         // order and then sends nothing, so if the order did not drive its own ticks the
         // ship would simply sit there.
         if (SystemState* st = sim.SystemOf(s))
+        {
             sim.StepPlayerOrder(s, *st, dt);
+            sim.StepPlayerLocks(s, *st, dt);  // after it: an order's lock is begun this tick
+        }
         for (const ClientSession::Shot& shot : s.orderShots)
         {
             FireEvent fe;

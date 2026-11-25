@@ -221,6 +221,15 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         else if (s.convoy == Obs::ConvoyPart::Escort)
             extra += "  your convoy's escort";
     }
+    // The lock between this ship and the pilot (#619), whichever way it points.
+    std::string lockTag;
+    for (const Proto::LockView& l : p.locks)
+        if (l.id == e.id)
+            lockTag += l.held ? (l.active ? "  LOCKED(active)" : "  LOCKED")
+                              : Fmt("  locking %d%%", (int)(l.progress * 100.0f));
+    for (const Proto::LockedByView& l : p.lockedBy)
+        if (l.id == e.id)
+            lockTag += l.held ? "  LOCKED ON YOU" : "  locking you";
     if (e.kind == Proto::EntityKind::PlayerShip)
     {
         // Another player (#4). Worth saying plainly: an agent that reads "pilot" as
@@ -228,13 +237,16 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         // decides things for themselves.
         if (name.empty())
             name = "another pilot";
-        extra = Fmt("  player  hull %d%%", (int)(e.hullFrac * 100.0f));
+        extra = Fmt("  player  shield %d%%  hull %d%%", (int)(e.shieldFrac * 100.0f),
+                    (int)(e.hullFrac * 100.0f));
         // What the law says of them (#431 slice 10): a criminal is free to shoot.
         if (e.criminal)
             extra += "  CRIMINAL";
         if (e.securityStatus != 0.0f)
             extra += Fmt("  status %+.1f", e.securityStatus);
     }
+
+    extra += lockTag;
 
     // An NPC ship by its design, which says how it is fitted (#464 slice 7).
     if (name.empty() && e.kind == Proto::EntityKind::Npc && !e.design.empty())

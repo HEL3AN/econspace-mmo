@@ -31,15 +31,17 @@ namespace Ships
 // What a part contributes. Each is summed over the ship; a part may contribute nothing.
 struct Provides
 {
-    float thrust = 0.0f;  // main drive force; over mass it is the acceleration
-    float rcs = 0.0f;     // attitude force; over mass it is the stabiliser's pull and the turn
-    float cargo = 0.0f;   // hold, in units of cargo
-    float ore = 0.0f;     // more hold, for mined goods only (#572, slice 12)
-    float mining = 0.0f;  // ore per second
-    float scan = 0.0f;    // what it adds to a scanner pass: power is times (1 + scan) (#346)
-    float hull = 0.0f;    // structure points: what a hit takes away before the ship is lost
-    float armour = 0.0f;  // a layer of its own over the hull (#464, slice 8)
-    float damage = 0.0f;  // what one volley of its guns takes off a ship
+    float thrust = 0.0f;     // main drive force; over mass it is the acceleration
+    float rcs = 0.0f;        // attitude force; over mass it is the stabiliser's pull and the turn
+    float cargo = 0.0f;      // hold, in units of cargo
+    float ore = 0.0f;        // more hold, for mined goods only (#572, slice 12)
+    float mining = 0.0f;     // ore per second
+    float scan = 0.0f;       // what it adds to a scanner pass: power is times (1 + scan) (#346)
+    float hull = 0.0f;       // structure points: what a hit takes away before the ship is lost
+    float armour = 0.0f;     // a layer of its own over the hull (#464, slice 8)
+    float damage = 0.0f;     // what one volley of its guns takes off a ship
+    float locks = 0.0f;      // how many targets it can hold locked at once (#619)
+    float lockRange = 0.0f;  // what it adds to the rules' lock range (#619)
 };
 
 // Damage types and layers (#464, slice 8; documents/npc_fits_living_world.md section 10). Every
@@ -160,6 +162,16 @@ struct Rules
     // (owner, 2026-10-22, #186), so what differs between the two is the fit.
     float baseHull = 0.0f;
     float baseGun = 0.0f;
+    // A lock (#619, documents/combat_and_flight.md 3.1): how far a ship reaches for one, how long
+    // one takes and how it is lost. Read by `Ships::LockTime` and the one lock step, for a
+    // pilot's ship and an NPC's alike.
+    float lockRange = 20000.0f;  // sensor reach of every hull, plus what its parts add
+    float lockBase = 2.0f;       // seconds to lock a target of `lockRef` signature at scanRes 1
+    float lockRef = 16.0f;       // the signature (a ship's size) a frigate has: the reference
+    float lockMin = 0.5f;        // the quickest a lock forms, and the slowest
+    float lockMax = 20.0f;
+    float lockGrace = 3.0f;  // seconds out of reach or sight a held lock lasts
+    float scanRes = 1.0f;    // how fast a ship's sensors resolve a target
 };
 
 // A hull a station sells to players (#279 step 5). An account owns hulls by their place in
@@ -295,9 +307,14 @@ struct Stats
     float      armour = 0.0f;
     TypeValues mix{};
     LayerTable resist = NeutralTable();
-    Cost       cost;       // every part's, summed, in ResourceType order
-    int        parts = 0;  // frame, sections and every fitted module counted once each
-    float      buildSeconds = 0.0f;
+    // Targeting (#619): the locks a ship holds at once, how far it reaches for one and how
+    // fast its sensors resolve a target.
+    int   locks = 1;
+    float lockRange = 0.0f;
+    float scanRes = 1.0f;
+    Cost  cost;       // every part's, summed, in ResourceType order
+    int   parts = 0;  // frame, sections and every fitted module counted once each
+    float buildSeconds = 0.0f;
 };
 
 // Reads a catalogue. Every design in it is validated, so a catalogue that loads holds only

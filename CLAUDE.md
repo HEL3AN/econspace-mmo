@@ -388,6 +388,17 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   ships meet, never what a gun does. A pirate too strong or too weak for a new pilot is a
   change to its fit in `data/ships.json`, never a multiplier. A station is not a design: its
   guns are its archetype's `defensive.damage` a second.
+- **A gun fires at a lock, and a lock is the one commitment** (#619, `documents/combat_and_flight.md`
+  3.1, slice 1). Selecting is free and arms nothing (`Command::targetId` is only what the server tells
+  the pilot of in full); `Act::Lock`/`Unlock`/`SetActive`/`Fire` are verbs, applied by
+  `Simulation::ApplyAction`, and `StepPlayerFire` is given `ClientSession::HeldTarget()` -- the
+  active lock once it is held -- by every caller. A lock takes `Ships::LockTime` (the target's size,
+  the sensors' `scanRes`, numbers in `ships.json` `rules`), holds one of `Stats::locks` slots, is
+  lost out of `lockRange` past a grace, and is shown to the one locked (`PlayerView::lockedBy`, a
+  marker on the instruments, never on the object). NPCs run the same `Ships::Lock` timer in
+  `StepNpcCombat`; a test that has an NPC shoot must give it a formed lock
+  (`npc.TargetLock().Begin(id, 0)`) or step it for the lock time. The host steps a pilot's locks
+  once a world tick (`StepPlayerLocks`) after the order, so a test of an `Attack` order calls it too.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a

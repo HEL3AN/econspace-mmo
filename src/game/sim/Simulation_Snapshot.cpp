@@ -86,6 +86,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
                 es.armourFrac =
                     n->GetMaxArmour() > 0.0f ? n->GetArmour() / n->GetMaxArmour() : 1.0f;
+                // (an NPC has no shields: one combat model, but shields are a player's alone)
                 if (n->GetCargoAmount() > 0)  // a hauler's hold (#343)
                 {
                     es.cargo = n->GetCargo().Index();
@@ -187,6 +188,12 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.stabilizer = s.ship->IsStabilizerOn();
         p.mining = s.ship->IsMiningOn();
         p.weaponOn = s.weaponOn;
+        // Targeting (#619): the locks, the active one flagged, and who is locking this ship.
+        p.lockMax = s.ship->GetStats().locks;
+        p.lockRange = s.ship->GetStats().lockRange;
+        for (const Ships::Lock& l : s.locks)
+            p.locks.push_back({ l.target, l.Progress(), l.held, l.target == s.activeLock });
+        p.lockedBy = LockedByOf(s, it->second);
         p.orderKind = (int)s.order.kind;
         p.orderStatus = (int)s.orderStatus;
         p.orderId = s.orderId;
@@ -348,6 +355,9 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         es.armourFrac = other.ship->GetMaxArmour() > 0.0f
                             ? other.ship->GetArmour() / other.ship->GetMaxArmour()
                             : 1.0f;
+        es.shieldFrac = other.ship->GetMaxShields() > 0.0f
+                            ? other.ship->GetShields() / other.ship->GetMaxShields()
+                            : 1.0f;
         // What the law says of them, for every pilot's instruments (#431 slice 10, #117).
         es.criminal = other.account.IsCriminal();
         es.securityStatus = other.account.GetSecurityStatus();
@@ -368,6 +378,8 @@ std::set<int> Simulation::InterestOf(const ClientSession& s) const
         ids.insert(s.order.targetId);
     if (s.dockedStationId != 0)
         ids.insert(s.dockedStationId);
+    for (const Ships::Lock& l : s.locks)  // a lock is read in full, wherever it is (#619)
+        ids.insert(l.target);
     // Promoting an id only changes how well a thing the snapshot carries is described: a ship
     // in cover is not in the snapshot at all, so selecting it does not bring it back (#341).
     return ids;

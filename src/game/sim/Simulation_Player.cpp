@@ -257,6 +257,8 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     s.ship->SetMiningOn(false);
     s.ship->Stop();
     s.weaponOn = false;
+    s.locks.clear();  // a new ship holds nothing locked (#619)
+    s.activeLock = 0;
     s.missions.ClearOffers();
 
     // Awake at home, docked, in whatever system that is.

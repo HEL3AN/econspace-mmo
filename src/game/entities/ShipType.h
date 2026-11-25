@@ -25,6 +25,9 @@ struct ShipStats
     Ships::TypeValues mix{};          // what its volley is made of, by damage type
     Ships::LayerTable resist = Ships::NeutralTable();  // its hull line's shift on the layers
     float             damage = 0.0f;                   // what one shot of its guns takes off
+    int               locks = 1;                       // targets it holds locked at once (#619)
+    float             lockRange = 20000.0f;            // how far it reaches for a lock
+    float             scanRes = 1.0f;                  // how fast its sensors resolve a target
     std::string       design;  // what it is and what it looks like, in data/ships.json
 };
 
