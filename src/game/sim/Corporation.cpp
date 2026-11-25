@@ -482,7 +482,21 @@ Outcome Registry::Leave(const std::string& account)
     o.corp = id;
     if (c.members.size() == 1)
     {
-        // The last one out closes it: its name and ticker are free again.
+        // The last one out closes it: its name and ticker are free again -- but never over
+        // goods in its offices (#606): they belong to its members, and one verb should not
+        // make them vanish. The CEO takes them out first.
+        std::string holding;
+        for (const auto& of : c.offices)
+        {
+            int held = 0;
+            for (const auto& d : of.second.goods)
+                held += d.second.Used();
+            if (held > 0)
+                holding += (holding.empty() ? "" : ", ") + of.second.station + " (" +
+                           std::to_string(held) + " volume)";
+        }
+        if (!holding.empty())
+            return Refuse("it cannot be disbanded while its offices hold goods: empty " + holding);
         o.told = "You left " + Tag(c) + ", and with nobody left in it, it is disbanded";
         corps_.erase(id);
         Index();
@@ -1189,6 +1203,8 @@ json Registry::ToJson() const
                                      { "station", o.second.station },
                                      { "until", o.second.until },
                                      { "told", o.second.told },
+                                     { "holder", o.second.holder },
+                                     { "fell", o.second.fell },
                                      { "goods", stock } };
             }
             cj["offices"] = offices;
@@ -1432,6 +1448,8 @@ bool Registry::FromJson(const json& j, std::string& why)
                     of.station = text(*o, "station");
                     of.until = until->get<double>();
                     of.told = (int)whole(*o, "told");
+                    of.holder = text(*o, "holder");
+                    of.fell = o->value("fell", 0.0);
                     const auto goods = o->find("goods");
                     if (goods != o->end() && goods->is_object())
                         for (auto d = goods->begin(); d != goods->end(); ++d)

@@ -13,6 +13,7 @@
 #include "sim/InventoryList.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
+#include "economy/Market.h"
 #include "sim/WorldRules.h"
 
 #include <memory>
@@ -143,4 +144,127 @@ TEST_CASE("Offices: only a CEO or a director rents one, and only at a station wi
     CHECK_FALSE(o.sim.ApplyOfficeAct("nobody", a).Ok());  // in no corporation
     a.name = "No Such Station";
     CHECK_FALSE(o.sim.ApplyOfficeAct("boss", a).Ok());
+}
+
+// --- When its station falls, or the corporation is disbanded (#606) ---
+
+namespace
+{
+int OfficeIron(const Corps::Corp& c, const std::string& key)
+{
+    const auto it = c.offices.find(key);
+    int        n = 0;
+    if (it != c.offices.end())
+        for (const auto& d : it->second.goods)
+            n += d.second.Amount(Good::Iron());
+    return n;
+}
+
+int AllIron(const Corps::Corp& c)
+{
+    int n = 0;
+    for (const auto& kv : c.offices)
+        n += OfficeIron(c, kv.first);
+    return n;
+}
+
+void AddStation(Office& o, int id, const std::string& name)
+{
+    auto station = std::make_unique<Station>(Vector2{ 500.0f, 0.0f }, 60.0f, name,
+                                             Fac::TradersGuild(), StationRole::TradeHub);
+    station->SetId(id);
+    o.st->entities.push_back(std::move(station));
+}
+}  // namespace
+
+TEST_CASE("Offices: when its station falls, the goods move to another office, for a fee")
+{
+    Office o;
+    AddStation(o, 990002, "Annex");
+    REQUIRE(o.Act().Ok());
+    Corps::Act a;
+    a.verb = "office";
+    a.name = "Annex";
+    REQUIRE(o.sim.ApplyOfficeAct("boss", a).Ok());
+    REQUIRE(o.s->ship->AddCargo(Good::Iron(), 30));
+    REQUIRE(o.sim.MoveGoods(*o.s, "hold", "storage", Good::Iron().Index(), 30) == 30);
+    REQUIRE(AllIron(o.Corp()) == 30);
+    const double treasury = o.Corp().treasury;
+
+    REQUIRE(o.sim.RemoveStatic(o.st->id, 990001));
+    o.sim.StepOffices();
+    CHECK(o.Corp().offices.size() == 2);  // a day first: nothing moves yet
+    CHECK(AllIron(o.Corp()) == 30);
+
+    const auto& r = WorldRules::DeliveryRules();
+    o.sim.SetTime(o.sim.Time() + r.lostHours * 3600.0 + 1.0);
+    o.sim.StepOffices();
+    REQUIRE(o.Corp().offices.size() == 1);
+    CHECK(OfficeIron(o.Corp(), o.Corp().offices.begin()->first) == 30);  // conserved
+    CHECK(o.Corp().offices.begin()->second.station == "Annex");
+    const double value = 30 * Market().GetBasePrice(Good::Iron());
+    CHECK(treasury - o.Corp().treasury == doctest::Approx(value * r.lostFee));
+}
+
+TEST_CASE("Offices: with no other office, the goods are held at a station of its faction")
+{
+    Office o;
+    AddStation(o, 990002, "Annex");
+    REQUIRE(o.Act().Ok());
+    REQUIRE(o.s->ship->AddCargo(Good::Iron(), 40));
+    REQUIRE(o.sim.MoveGoods(*o.s, "hold", "storage", Good::Iron().Index(), 40) == 40);
+    REQUIRE(o.sim.RemoveStatic(o.st->id, 990001));
+    o.sim.SetTime(o.sim.Time() + WorldRules::DeliveryRules().lostHours * 3600.0 + 1.0);
+    o.sim.StepOffices();
+    REQUIRE(o.Corp().offices.size() == 1);
+    const auto& moved = *o.Corp().offices.begin();
+    CHECK(moved.second.station != "Depot");  // some other station of the same faction
+    CHECK(moved.second.holder == InfluenceMap::Key(Fac::TradersGuild()));
+    CHECK(AllIron(o.Corp()) == 40);
+    CHECK(o.sim.OfficeLocked(moved.second) == false);  // rent due now, within the grace day
+    CHECK(moved.second.until <= o.sim.Time());
+
+    // It is paid, or it locks after the grace day: the goods are never taken.
+    o.sim.Corporations().Debit(o.corp, o.Corp().treasury);
+    o.sim.SetTime(o.sim.Time() + WorldRules::OfficeRules().graceHours * 3600.0 + 1.0);
+    o.sim.StepOffices();
+    CHECK(o.sim.OfficeLocked(o.Corp().offices.begin()->second));
+    CHECK(AllIron(o.Corp()) == 40);
+}
+
+TEST_CASE("Offices: a fee the treasury cannot pay keeps the goods where they are")
+{
+    Office o;
+    AddStation(o, 990002, "Annex");
+    REQUIRE(o.Act().Ok());
+    REQUIRE(o.s->ship->AddCargo(Good::Iron(), 40));
+    REQUIRE(o.sim.MoveGoods(*o.s, "hold", "storage", Good::Iron().Index(), 40) == 40);
+    REQUIRE(o.sim.RemoveStatic(o.st->id, 990001));
+    o.sim.Corporations().Debit(o.corp, o.Corp().treasury);
+    o.sim.SetTime(o.sim.Time() + WorldRules::DeliveryRules().lostHours * 3600.0 + 1.0);
+    o.sim.StepOffices();
+    CHECK(AllIron(o.Corp()) == 40);
+    CHECK(o.Corp().offices.begin()->second.station == "Depot");
+    o.sim.Corporations().Credit(o.corp, 5000.0);
+    o.sim.StepOffices();
+    CHECK(AllIron(o.Corp()) == 40);
+    CHECK(o.Corp().offices.begin()->second.station != "Depot");
+}
+
+TEST_CASE("Offices: a corporation cannot be disbanded while an office holds goods")
+{
+    Office o;
+    REQUIRE(o.Act().Ok());
+    REQUIRE(o.s->ship->AddCargo(Good::Iron(), 10));
+    REQUIRE(o.sim.MoveGoods(*o.s, "hold", "storage", Good::Iron().Index(), 10) == 10);
+    const Corps::Outcome refused = o.sim.Corporations().Leave("boss");
+    CHECK_FALSE(refused.Ok());
+    CHECK(refused.error.find("Depot") != std::string::npos);
+    CHECK(o.sim.Corporations().Find(o.corp) != nullptr);
+    CHECK(AllIron(o.Corp()) == 10);
+
+    // Emptied, it goes with the corporation as before.
+    REQUIRE(o.sim.MoveGoods(*o.s, "storage", "hold", Good::Iron().Index(), 10) == 10);
+    CHECK(o.sim.Corporations().Leave("boss").Ok());
+    CHECK(o.sim.Corporations().Find(o.corp) == nullptr);
 }

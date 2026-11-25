@@ -577,6 +577,7 @@ Corps::Outcome Simulation::ApplyOfficeAct(const std::string& account, const Corp
     o.system = st->id;
     o.station = station->GetName();
     o.until = time_ + rules.periodDays * DAY;
+    o.holder = InfluenceMap::Key(faction);
     corps_.SetOffice(corp, key, o);
     Corps::Outcome out;
     out.corp = corp;
@@ -597,11 +598,20 @@ void Simulation::StepOffices()
             all.emplace_back(kv.first, o.first);
     for (const auto& co : all)
     {
+        const Corps::Office* fallen = corps_.OfficeOf(co.first, co.second);
+        if (fallen != nullptr && fallen->fell > 0.0)
+        {
+            // Its station is gone (#606): after the lost-goods delay, its goods move.
+            if (time_ >= fallen->fell + WorldRules::DeliveryRules().lostHours * 3600.0)
+                MoveFallenOffice(co.first, co.second);
+            continue;
+        }
         Corps::Office* had = corps_.OfficeOf(co.first, co.second);
         const Entity*  station = OfficeStation(co.second);
         if (had == nullptr || station == nullptr || time_ < had->until)
             continue;
-        Corps::Office   o = *had;
+        Corps::Office o = *had;
+        o.holder = InfluenceMap::Key(static_cast<const Station&>(*station).GetFaction());
         const FactionId f = static_cast<const Station&>(*station).GetFaction();
         std::string     why;
         if (PayRent(co.first, InfluenceMap::Key(f), rules.rent, why))
@@ -641,7 +651,12 @@ std::vector<Proto::OfficeView> Simulation::PartyOffices(const std::string& corpI
         v.rent = rules.rent;
         v.periodDays = rules.periodDays;
         v.until = kv.second.until;
-        v.state = OfficeLocked(kv.second) ? "locked" : time_ >= kv.second.until ? "unpaid" : "paid";
+        v.state = kv.second.fell > 0.0       ? "moving"
+                  : OfficeLocked(kv.second)  ? "locked"
+                  : time_ >= kv.second.until ? "unpaid"
+                                             : "paid";
+        if (kv.second.fell > 0.0)  // its station is gone: `until` is when its goods move
+            v.until = kv.second.fell + WorldRules::DeliveryRules().lostHours * 3600.0;
         for (const auto& d : kv.second.goods)
             v.held += d.second.Used();
         v.units = rules.units;

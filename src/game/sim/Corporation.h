@@ -112,6 +112,13 @@ struct Office
     double      until = 0.0;  // paid to (world time)
     int         told = 0;     // what the corporation has been told: 1 unpaid, 2 locked
     std::map<std::string, Inventory> goods;  // by division id
+    // Whose station it is ("f:<id>", noted while the station stands), so that goods left at one
+    // that falls can be held at another of the same faction.
+    std::string holder;
+    // The world time its station was destroyed, 0 while it stands (#606): a day later, for a fee
+    // from the treasury, the goods are moved to another office, a structure with storage, or a
+    // new office at a station of the same faction, and this one is closed.
+    double fell = 0.0;
 };
 
 // A patrol a corporation keeps in a system (#431 C1, slice 12): AI ships of one design that
