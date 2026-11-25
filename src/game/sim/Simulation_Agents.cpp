@@ -825,7 +825,7 @@ int Simulation::CallNextDoor(SystemState& st, const ClientSession& by, FactionId
     if (lent.empty())
         return 0;
     Plan p;
-    p.id = nextPlanId_++;
+    p.id = director_.Plans().NewId();
     p.kind = Plan::Kind::Response;
     p.faction = law;
     p.from = lent.front().from;
@@ -836,8 +836,8 @@ int Simulation::CallNextDoor(SystemState& st, const ClientSession& by, FactionId
     p.force = (float)sent;
     p.lent = lent;
     p.pursued = by.accountName;
-    plans_[p.id] = p;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Put(p);
+    director_.Plans().Schedule(p);
     return sent;
 }
 
@@ -907,7 +907,7 @@ int Simulation::AnswerHere(SystemState& st, ClientSession& by, FactionId law,
         std::max(0, (int)std::floor(presence - SiegeForceIn(st.id, law) - (float)flying + 1e-4f));
     int         launch = std::min(band.launch, spare);
     const float price = (float)r.launchCost * OutpostCost();
-    float&      stock = minds_[law].stock;
+    float&      stock = director_.Mind(law).stock;
     while (launch < band.launch && price > 0.0f && stock >= price)
     {
         stock -= price;
@@ -1014,7 +1014,7 @@ void Simulation::FieldResponse(SystemState& st, Plan& p)
 void Simulation::StepResponses()
 {
     std::vector<int> over;
-    for (auto& kv : plans_)
+    for (auto& kv : director_.Plans().All())
     {
         Plan& p = kv.second;
         if (p.kind != Plan::Kind::Response)
@@ -1054,11 +1054,11 @@ void Simulation::StepResponses()
     }
     for (int id : over)
     {
-        const auto it = plans_.find(id);
-        if (it == plans_.end())
+        const auto it = director_.Plans().All().find(id);
+        if (it == director_.Plans().All().end())
             continue;
         RecallResponse(it->second);
-        plans_.erase(it);  // its due entry finds nothing
+        director_.Plans().All().erase(it);  // its due entry finds nothing
     }
 }
 

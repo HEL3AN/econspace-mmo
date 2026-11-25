@@ -1217,12 +1217,12 @@ void Simulation::AnchorLost(SystemState& st, const std::string& owner, const std
     if (Outposts::FactionOf(owner, f))
     {
         whose = f;
-        minds_[f].lostAt[st.id] = time_;
-        for (auto p = plans_.begin(); p != plans_.end(); ++p)
+        director_.Mind(f).lostAt[st.id] = time_;
+        for (auto p = director_.Plans().All().begin(); p != director_.Plans().All().end(); ++p)
             if (p->second.kind == Plan::Kind::Anchor && p->second.target == st.id &&
                 p->second.site == key)
             {
-                plans_.erase(p);  // said here; its due entry finds nothing
+                director_.Plans().All().erase(p);  // said here; its due entry finds nothing
                 break;
             }
     }
@@ -1275,7 +1275,7 @@ bool Simulation::LayAnchorSite(Plan& p)
     const std::string where = SystemName(p.target);
     auto              back = [&](const std::string& why)
     {
-        minds_[f].stock += AnchorCost();
+        director_.Mind(f).stock += AnchorCost();
         Record("anchor", f, p.target,
                FactionName(f) + "'s Anchor convoy turned back from " + where + ": " + why);
         return false;
@@ -1316,7 +1316,7 @@ bool Simulation::LayAnchorSite(Plan& p)
         return back("no room beside the gate");
     p.site = StaticKey(o->mouth, id);
     p.dueAt = time_ + bp->buildSeconds;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Schedule(p);
     Announce("anchor", f, o->mouth,
              FactionName(f) + " began an Anchor at the mouth in " + SystemName(o->mouth) +
                  ": done in " + Hours(bp->buildSeconds) + ", if the mouth lasts");
@@ -1337,7 +1337,7 @@ void Simulation::ResolveAnchor(const Plan& p)
     {
         Plan later = p;
         later.dueAt = std::max(site->GetCompletesAt(), time_);
-        plans_[later.id] = later;
-        due_.insert({ later.dueAt, later.id });
+        director_.Plans().Put(later);
+        director_.Plans().Schedule(later);
     }
 }

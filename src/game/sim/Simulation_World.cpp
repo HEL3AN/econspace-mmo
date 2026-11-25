@@ -304,7 +304,8 @@ void Simulation::Cool(SystemState& st)
     st.policeDueAt = 0.0;
     st.policeFor = 0;
     st.populated = false;
-    for (auto& kv : plans_)  // a siege's warships went with the rest, and a convoy's ships
+    for (auto& kv :
+         director_.Plans().All())  // a siege's warships went with the rest, and a convoy's ships
     {
         if (kv.second.target == st.id && !kv.second.OnTheWay())
             kv.second.fielded = 0;
@@ -1191,7 +1192,7 @@ nlohmann::json Simulation::WorldJson() const
     // What each faction knows, what it has under way, and the history so far (#295).
     // Knowledge is written only once there is some: a world saved before its first macro
     // pass seeds it on load, as an older save does.
-    if (mindsSeeded_)
+    if (director_.Seeded())
     {
         json minds = json::object();
         for (FactionId f : Factions::All())
@@ -1200,7 +1201,7 @@ nlohmann::json Simulation::WorldJson() const
             // Not what it sees for itself -- its holdings and where its ships are: the
             // faction looks at those again before it next decides anything, and in a
             // region the pirates have overrun they are most of the file.
-            for (const auto& kv : minds_[f].intel)
+            for (const auto& kv : director_.Mind(f).intel)
             {
                 const auto st = systems_.find(kv.first);
                 if (st != systems_.end() &&
@@ -1210,20 +1211,20 @@ nlohmann::json Simulation::WorldJson() const
                 intel[kv.first] = IntelJson(kv.second);
             }
             minds[Factions::Id(f)] = { { "intel", std::move(intel) },
-                                       { "stock", minds_[f].stock },
-                                       { "unsupplied", minds_[f].unsupplied },
-                                       { "lostAt", minds_[f].lostAt } };
+                                       { "stock", director_.Mind(f).stock },
+                                       { "unsupplied", director_.Mind(f).unsupplied },
+                                       { "lostAt", director_.Mind(f).lostAt } };
             // Word of a mouth it is still going by (#342 S6), by the region's slot.
-            if (!minds_[f].expeditions.empty())
+            if (!director_.Mind(f).expeditions.empty())
             {
                 json heard = json::object();
-                for (const auto& e : minds_[f].expeditions)
+                for (const auto& e : director_.Mind(f).expeditions)
                     heard[std::to_string(e.first)] = e.second;
                 minds[Factions::Id(f)]["expeditions"] = std::move(heard);
             }
             // What pilots sold it of hidden things (#431 slice 16).
-            if (!minds_[f].finds.empty())
-                minds[Factions::Id(f)]["finds"] = minds_[f].finds;
+            if (!director_.Mind(f).finds.empty())
+                minds[Factions::Id(f)]["finds"] = director_.Mind(f).finds;
         }
         j["factions"] = std::move(minds);
     }
@@ -1231,8 +1232,8 @@ nlohmann::json Simulation::WorldJson() const
     // Police answering a crime (#431 slice 9) are a hot system's, and a restart begins with
     // every system cold: each is written as what it would end in -- its police going home,
     // each holding its share, a Return each -- under ids the world has not handed out yet.
-    int nextPlan = nextPlanId_;
-    for (const auto& kv : plans_)
+    int nextPlan = director_.Plans().NextId();
+    for (const auto& kv : director_.Plans().All())
     {
         const Plan& p = kv.second;
         if (p.kind != Plan::Kind::Response)
@@ -1251,7 +1252,7 @@ nlohmann::json Simulation::WorldJson() const
                                   { "dueAt", time_ + l.hops * WorldRules::LawRules().hop },
                                   { "force", p.force * l.force / lent } });
     }
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
     {
         const Plan& p = kv.second;
         if (p.kind == Plan::Kind::Response)
@@ -1372,15 +1373,15 @@ nlohmann::json Simulation::WorldJson() const
     // nothing. An older file has none, and its factions start with empty treasuries.
     json treasuries = json::object();
     for (FactionId f : Factions::All())
-        if (minds_[f].treasury > 0.0)
-            treasuries[Factions::Id(f)] = std::round(minds_[f].treasury * 100.0) / 100.0;
+        if (director_.Mind(f).treasury > 0.0)
+            treasuries[Factions::Id(f)] = std::round(director_.Mind(f).treasury * 100.0) / 100.0;
     if (!treasuries.empty())
         j["treasuries"] = std::move(treasuries);
     // The markets' open contracts (#343): what each owner set aside is in them, not in its
     // treasury, so it would be lost if they were not here.
     SaveContracts(j);
     json history = json::array();
-    for (const ChronicleEntry& e : chronicle_)
+    for (const ChronicleEntry& e : director_.History().Entries())
         history.push_back({ { "seq", e.seq },
                             { "time", e.time },
                             { "kind", e.kind },
@@ -1388,7 +1389,7 @@ nlohmann::json Simulation::WorldJson() const
                             { "system", e.system },
                             { "text", e.text } });
     j["chronicle"] = std::move(history);
-    j["chronicleSeq"] = chronicleSeq_;
+    j["chronicleSeq"] = director_.History().Seq();
 
     // What players changed (#38). Stored as changes rather than as the systems themselves:
     // the region is remade from its seed (#140) and the hand-written systems from data, so
@@ -1569,7 +1570,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
     // what they hold and what is next door, the first time they are stepped.
     if (j.contains("factions") && j["factions"].is_object())
     {
-        mindsSeeded_ = true;
+        director_.SetSeeded(true);
         for (auto it = j["factions"].begin(); it != j["factions"].end(); ++it)
         {
             FactionId f;
@@ -1578,26 +1579,27 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             const json& intel = it.value().value("intel", json::object());
             for (auto k = intel.begin(); intel.is_object() && k != intel.end(); ++k)
                 if (HasSystem(k.key()) && k.value().is_object())
-                    minds_[f].intel[k.key()] = IntelFrom(k.value());
+                    director_.Mind(f).intel[k.key()] = IntelFrom(k.value());
             // A version 5 world has no stock: its factions begin saving from nothing.
             const json& stock = it.value().value("stock", json(0.0));
-            minds_[f].stock = stock.is_number() ? std::max(0.0f, stock.get<float>()) : 0.0f;
+            director_.Mind(f).stock = stock.is_number() ? std::max(0.0f, stock.get<float>()) : 0.0f;
             const json& cut = it.value().value("unsupplied", json::array());
             for (const json& k : cut)
                 if (k.is_string())
-                    minds_[f].unsupplied.insert(k.get<std::string>());
+                    director_.Mind(f).unsupplied.insert(k.get<std::string>());
             const json& lost = it.value().value("lostAt", json::object());
             for (auto l = lost.begin(); lost.is_object() && l != lost.end(); ++l)
                 if (HasSystem(l.key()) && l.value().is_number())
-                    minds_[f].lostAt[l.key()] = l.value().get<double>();
+                    director_.Mind(f).lostAt[l.key()] = l.value().get<double>();
             const json& sold = it.value().value("finds", json::array());
             for (const json& k : sold)
                 if (k.is_string())
-                    minds_[f].finds.insert(k.get<std::string>());
+                    director_.Mind(f).finds.insert(k.get<std::string>());
             const json& heard = it.value().value("expeditions", json::object());
             for (auto e = heard.begin(); heard.is_object() && e != heard.end(); ++e)
                 if (e.value().is_number())
-                    minds_[f].expeditions[std::atoi(e.key().c_str())] = e.value().get<double>();
+                    director_.Mind(f).expeditions[std::atoi(e.key().c_str())] =
+                        e.value().get<double>();
         }
     }
     if (j.contains("plans") && j["plans"].is_array())
@@ -1730,21 +1732,21 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             const bool sited = p.kind == Plan::Kind::Settle || p.kind == Plan::Kind::Siege ||
                                (p.kind == Plan::Kind::Anchor && p.arrived) ||
                                p.kind == Plan::Kind::Upgrade;
-            if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target) ||
+            if (p.id <= 0 || director_.Plans().All().count(p.id) != 0 || !HasSystem(p.target) ||
                 (sited && p.site.empty()) ||
                 (p.kind == Plan::Kind::Upgrade && Blueprints::Find(p.blueprint) == nullptr))
                 continue;
-            plans_[p.id] = p;
+            director_.Plans().Put(p);
             if (!p.OnTheWay())  // a convoy is stepped, not due
-                due_.insert({ p.dueAt, p.id });
+                director_.Plans().Schedule(p);
         }
-    nextPlanId_ = std::max(1, j.value("nextPlan", 1));
+    director_.Plans().SetNextId(std::max(1, j.value("nextPlan", 1)));
     if (j.contains("treasuries") && j["treasuries"].is_object())
         for (auto it = j["treasuries"].begin(); it != j["treasuries"].end(); ++it)
         {
             FactionId f;
             if (FactionByName(json(it.key()), f) && it.value().is_number())
-                minds_[f].treasury = std::max(0.0, it.value().get<double>());
+                director_.Mind(f).treasury = std::max(0.0, it.value().get<double>());
         }
     ReadContracts(j);
     if (j.contains("migrants") && j["migrants"].is_array())
@@ -1793,8 +1795,9 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             if (HasSystem(o.system) && o.n > 0.0f && !o.design.empty())
                 fleetOrders_.push_back(o);
         }
-    for (const auto& kv : plans_)
-        nextPlanId_ = std::max(nextPlanId_, kv.first + 1);
+    for (const auto& kv : director_.Plans().All())
+        director_.Plans().ReserveId(kv.first + 1);
+    std::vector<ChronicleEntry> history;
     if (j.contains("chronicle") && j["chronicle"].is_array())
         for (const json& ej : j["chronicle"])
         {
@@ -1809,11 +1812,9 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 e.faction = f;
             e.system = ej.value("system", std::string());
             e.text = ej.value("text", std::string());
-            chronicle_.push_back(std::move(e));
+            history.push_back(std::move(e));
         }
-    chronicleSeq_ = j.value("chronicleSeq", 0LL);
-    for (const ChronicleEntry& e : chronicle_)
-        chronicleSeq_ = std::max(chronicleSeq_, e.seq);
+    director_.History().Restore(std::move(history), j.value("chronicleSeq", 0LL));
     LoadGrowth(j);
 
     // Before version 3 nothing a player changed was kept, so an older save has nothing to
@@ -1860,15 +1861,9 @@ void Simulation::Reset()
     attacks_.clear();
     absent_.clear();
     agentIdCounter_ = 0;
-    minds_.Clear();
-    mindsSeeded_ = false;
-    plans_.clear();
+    director_.Clear();
     migrants_.clear();
     arrivals_.clear();
-    due_.clear();
-    nextPlanId_ = 1;
-    chronicle_.clear();
-    chronicleSeq_ = 0;
     // The tide is the save's; the log and the sealed regions are the galaxy's (OpenGalaxy).
     tides_.clear();
     explored_.clear();

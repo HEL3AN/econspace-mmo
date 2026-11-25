@@ -858,26 +858,27 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     // A faction's outpost (#295): the history says who lost what, and how. A site lost is a
     // settlement that will not happen; a finished one lost shakes the claim it anchored.
     const std::string where = SystemName(systemId);
-    minds_[f].lostAt[systemId] = time_;  // remembered when it thinks of building here again
+    director_.Mind(f).lostAt[systemId] = time_;  // remembered when it thinks of building here again
     if (wasSite)
     {
         Record("lost", f, systemId,
                FactionName(f) + " lost the outpost it was building in " + where);
-        for (auto p = plans_.begin(); p != plans_.end(); ++p)
+        for (auto p = director_.Plans().All().begin(); p != director_.Plans().All().end(); ++p)
             if (p->second.kind == Plan::Kind::Settle && p->second.target == systemId &&
                 p->second.site == key)
             {
-                plans_.erase(p);  // said here; its due entry finds nothing
+                director_.Plans().All().erase(p);  // said here; its due entry finds nothing
                 break;
             }
         return true;
     }
     // An upgrade under way is over with it; nothing is left to grow.
-    for (auto p = plans_.begin(); upgrading && p != plans_.end(); ++p)
+    for (auto p = director_.Plans().All().begin(); upgrading && p != director_.Plans().All().end();
+         ++p)
         if (p->second.kind == Plan::Kind::Upgrade && p->second.target == systemId &&
             p->second.site == key)
         {
-            plans_.erase(p);  // its due entry finds nothing
+            director_.Plans().All().erase(p);  // its due entry finds nothing
             break;
         }
     const std::string noun = upgrading ? std::string("outpost") : Outposts::Noun(builds);
@@ -897,7 +898,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
             Announce("lost", f, systemId, FactionName(f) + " lost its " + noun + " in " + where);
             break;
     }
-    minds_[f].unsupplied.erase(systemId + "/" + key);
+    director_.Mind(f).unsupplied.erase(systemId + "/" + key);
     ShakeClaim(*SystemById(systemId), f);
     return true;
 }

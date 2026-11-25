@@ -294,7 +294,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
                             { "chartedBy", st->agg.chartedBy },
                             { "changes", ChangesOf(*st) } };
     json history = json::array();
-    for (const ChronicleEntry& e : chronicle_)
+    for (const ChronicleEntry& e : director_.History().Entries())
         if (in.count(e.system) != 0)
             history.push_back({ { "time", e.time },
                                 { "kind", e.kind },
@@ -369,7 +369,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
     }
     for (FactionId f : Factions::All())
     {
-        FactionMind& m = minds_[f];
+        FactionMind& m = director_.Mind(f);
         for (const std::string& sid : ids)
         {
             m.intel.erase(sid);
@@ -379,9 +379,10 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
             it = in.count(it->substr(0, it->find('/'))) != 0 ? m.unsupplied.erase(it)
                                                              : std::next(it);
     }
-    for (auto it = plans_.begin(); it != plans_.end();)
-        it = in.count(it->second.target) != 0 || in.count(it->second.from) != 0 ? plans_.erase(it)
-                                                                                : std::next(it);
+    for (auto it = director_.Plans().All().begin(); it != director_.Plans().All().end();)
+        it = in.count(it->second.target) != 0 || in.count(it->second.from) != 0
+                 ? director_.Plans().All().erase(it)
+                 : std::next(it);
     for (auto it = migrants_.begin(); it != migrants_.end();)
         it = in.count(it->second.from) != 0 || in.count(it->second.to) != 0 ? migrants_.erase(it)
                                                                             : std::next(it);

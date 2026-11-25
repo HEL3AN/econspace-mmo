@@ -65,7 +65,7 @@ Simulation::DeliveryQuote Simulation::QuoteDelivery(const std::string& from, con
             q.why = "the route crosses a system nobody knows";
             return q;
         }
-        for (const auto& p : plans_)
+        for (const auto& p : director_.Plans().All())
             if (p.second.kind == Plan::Kind::Siege && p.second.target == id)
             {
                 q.why = "the route crosses " + SystemName(id) + ", where a siege is under way";

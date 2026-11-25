@@ -201,10 +201,10 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
     const std::map<std::string, int> near = JumpsFrom(*this, here->id, r.reach);
     const float repMul = MissionRewardMultiplier(Factions::TierOf(s.account.GetReputation(f)));
     // What the faction can still pay for, in credits: a board shows nothing it could not.
-    double purse = (double)minds_[f].stock * r.creditsPerStock;
+    double purse = (double)director_.Mind(f).stock * r.creditsPerStock;
 
     std::vector<std::pair<int, Mission>> found;  // by how far, then by plan
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
     {
         const Plan& p = kv.second;
         const auto  at = near.find(p.target);
@@ -379,8 +379,8 @@ bool Simulation::PlanJobReadyNow(const ClientSession& s, const Mission& m) const
     // With the goods aboard in the site's system: beside the site in flight, or docked at any
     // station there -- a pilot expects to drop cargo off at the station, and the faction
     // lighters it out (#429).
-    const auto       it = plans_.find(m.planId);
-    const Structure* site = it != plans_.end() ? JobSite(it->second) : nullptr;
+    const auto       it = director_.Plans().All().find(m.planId);
+    const Structure* site = it != director_.Plans().All().end() ? JobSite(it->second) : nullptr;
     if (site == nullptr || !s.ship->IsAlive() || s.systemId != m.systemId ||
         s.ship->GetCargoAmount(m.resource) < m.targetCount)
         return false;
@@ -395,8 +395,8 @@ int Simulation::JobSiteId(const ClientSession& s, const Mission& m) const
 {
     if (m.type != MissionType::Supply || s.systemId != m.systemId)
         return 0;
-    const auto       it = plans_.find(m.planId);
-    const Structure* site = it != plans_.end() ? JobSite(it->second) : nullptr;
+    const auto       it = director_.Plans().All().find(m.planId);
+    const Structure* site = it != director_.Plans().All().end() ? JobSite(it->second) : nullptr;
     return site != nullptr ? site->GetId() : 0;
 }
 
@@ -405,8 +405,8 @@ void Simulation::ConvoyView(const ClientSession& s, const Mission& m, Proto::Mis
     if (m.type != MissionType::Escort)
         return;
     v.rode = m.rode;
-    const auto it = plans_.find(m.planId);
-    if (it == plans_.end() || !it->second.OnTheWay())
+    const auto it = director_.Plans().All().find(m.planId);
+    if (it == director_.Plans().All().end() || !it->second.OnTheWay())
         return;
     const Plan&       p = it->second;
     const std::string at = p.ConvoyAt();
@@ -443,8 +443,8 @@ std::string Simulation::JobSiteName(const Mission& m) const
 {
     if (m.type != MissionType::Supply)
         return std::string();
-    const auto       it = plans_.find(m.planId);
-    const Structure* site = it != plans_.end() ? JobSite(it->second) : nullptr;
+    const auto       it = director_.Plans().All().find(m.planId);
+    const Structure* site = it != director_.Plans().All().end() ? JobSite(it->second) : nullptr;
     return site != nullptr ? site->GetName() : std::string();
 }
 
@@ -462,10 +462,10 @@ void Simulation::SpeedSite(Plan& p)
     t->StartBuilding(t->GetStartedAt(), std::max(done, time_ + 1.0e-3));
     ScheduleStructure(st->id, *t);
     MarkStaticChanged(*st, t->GetId());
-    if (due_.erase({ p.dueAt, p.id }) > 0)
+    if (director_.Plans().Unschedule(p) > 0)
     {
         p.dueAt = std::min(p.dueAt, t->GetCompletesAt());
-        due_.insert({ p.dueAt, p.id });
+        director_.Plans().Schedule(p);
     }
 }
 
@@ -483,7 +483,7 @@ bool Simulation::CompleteJob(ClientSession& s, int index)
     {
         const std::string site = JobSiteName(m);
         s.ship->RemoveCargo(m.resource, m.targetCount);
-        Plan& p = plans_[m.planId];
+        Plan& p = director_.Plans()[m.planId];
         p.supplied++;
         SpeedSite(p);
         s.account.AddMoney(m.rewardMoney);
@@ -512,7 +512,7 @@ void Simulation::PayJob(const Mission& m)
 {
     // The faction pays out of the stock its plans are paid from: what it gives a pilot it does
     // not spend on its own expansion.
-    float& stock = minds_[m.faction].stock;
+    float& stock = director_.Mind(m.faction).stock;
     stock = std::max(0.0f, stock - (float)(m.rewardMoney / WorldRules::JobRules().creditsPerStock));
 }
 
@@ -567,8 +567,8 @@ void Simulation::CreditJobKill(ClientSession& s, const NpcShip& killed)
     {
         if (!IsSiegeJob(m.type) || m.progress >= m.targetCount)
             continue;
-        const auto it = plans_.find(m.planId);
-        if (it == plans_.end() || it->second.target != s.systemId)
+        const auto it = director_.Plans().All().find(m.planId);
+        if (it == director_.Plans().All().end() || it->second.target != s.systemId)
             continue;
         // A besieger: a warship of the besieging faction -- what Simulation_Sieges counts as
         // the siege's. A defender (#407): a ship of the besieged faction's garrison, its police
@@ -641,14 +641,14 @@ void Simulation::JobNews(const ClientSession& s, const Mission& m, bool done)
 void Simulation::SurveyTaken(const Mission& m)
 {
     // The faction's own scouts wait for the pilot until their time is up.
-    const auto it = plans_.find(m.planId);
-    if (it == plans_.end() || it->second.kind != Plan::Kind::Survey ||
+    const auto it = director_.Plans().All().find(m.planId);
+    if (it == director_.Plans().All().end() || it->second.kind != Plan::Kind::Survey ||
         it->second.dueAt >= m.deadline)
         return;
     Plan& p = it->second;
-    due_.erase({ p.dueAt, p.id });
+    director_.Plans().Unschedule(p);
     p.dueAt = m.deadline;
-    due_.insert({ p.dueAt, p.id });
+    director_.Plans().Schedule(p);
 }
 
 void Simulation::SurveyReport(ClientSession& s, const std::string& systemId)
@@ -657,16 +657,16 @@ void Simulation::SurveyReport(ClientSession& s, const std::string& systemId)
     {
         if (m.type != MissionType::Survey || m.systemId != systemId || m.progress >= m.targetCount)
             continue;
-        const auto it = plans_.find(m.planId);
-        if (it == plans_.end())
+        const auto it = director_.Plans().All().find(m.planId);
+        if (it == director_.Plans().All().end())
             continue;  // StepJobs closes it
         m.progress = m.targetCount;
         // The report is the faction's survey, resolved now: its intel, its chart, the region's
         // tide, as they would have been when its scouts came.
         Plan& p = it->second;
-        due_.erase({ p.dueAt, p.id });
+        director_.Plans().Unschedule(p);
         p.dueAt = time_;
-        due_.insert({ p.dueAt, p.id });
+        director_.Plans().Schedule(p);
         s.RecordEvent(Ev::Kind::Notice, "Job ready -- " + m.title +
                                             ": the scan is in; hand it in, anywhere, to be paid");
     }
@@ -679,8 +679,9 @@ void Simulation::CreditRaid(ClientSession& s, const std::string& systemId,
     {
         if (m.type != MissionType::Raid || m.progress >= m.targetCount)
             continue;
-        const auto it = plans_.find(m.planId);
-        if (it == plans_.end() || it->second.target != systemId || it->second.site != siteKey)
+        const auto it = director_.Plans().All().find(m.planId);
+        if (it == director_.Plans().All().end() || it->second.target != systemId ||
+            it->second.site != siteKey)
             continue;
         m.progress = m.targetCount;
         s.RecordEvent(Ev::Kind::Notice, "Job ready -- " + m.title +
@@ -739,7 +740,7 @@ void Simulation::StepNpcJobs()
     if (r.npcAfter <= 0.0)
         return;
     std::vector<int> ids;
-    for (const auto& kv : plans_)
+    for (const auto& kv : director_.Plans().All())
         ids.push_back(kv.first);
     // A pilot who has taken a plan's job has it: the faction's people wait for them.
     auto taken = [&](int planId, MissionType type)
@@ -751,14 +752,14 @@ void Simulation::StepNpcJobs()
     };
     for (int id : ids)
     {
-        const auto it = plans_.find(id);
-        if (it == plans_.end())
+        const auto it = director_.Plans().All().find(id);
+        if (it == director_.Plans().All().end())
             continue;
         Plan&            p = it->second;
         const Structure* site = JobSite(p);
         if (site == nullptr)
             continue;
-        FactionMind& mind = minds_[p.faction];
+        FactionMind& mind = director_.Mind(p.faction);
         ResourceType good{};
         int          most = 0;
         if (Factions::IsLawful(p.faction) || p.kind != Plan::Kind::Settle)
@@ -798,10 +799,10 @@ void Simulation::StepNpcJobs()
             if (held == nullptr || !held->agg.claimed ||
                 !Factions::IsLawful(held->agg.controller) ||
                 !AtOdds(held->agg.controller, p.faction) ||
-                minds_[held->agg.controller].stock < (float)units)
+                director_.Mind(held->agg.controller).stock < (float)units)
                 continue;
             const FactionId poster = held->agg.controller;
-            minds_[poster].stock -= (float)units;
+            director_.Mind(poster).stock -= (float)units;
             SystemState* st = SystemById(p.target);
             Structure*   base = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
             if (base == nullptr)
@@ -829,8 +830,8 @@ void Simulation::StepJobs()
             Mission& m = active[(size_t)i];
             if (!IsPlanJob(m.type) || m.progress >= m.targetCount)
                 continue;  // not a plan's, or done and waiting to be handed in
-            const auto  it = plans_.find(m.planId);
-            const Plan* p = it != plans_.end() ? &it->second : nullptr;
+            const auto  it = director_.Plans().All().find(m.planId);
+            const Plan* p = it != director_.Plans().All().end() ? &it->second : nullptr;
             if (m.type == MissionType::Escort)
             {
                 if (p == nullptr || p->setbacks != m.stage)

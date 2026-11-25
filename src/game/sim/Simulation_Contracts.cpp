@@ -88,7 +88,7 @@ void Simulation::PayFee(const SystemState& st, double fee)
         return;
     const MarketHolder h = MarketStation(st);
     if (h.stationId != 0)
-        minds_[h.faction].treasury += fee;
+        director_.Mind(h.faction).treasury += fee;
 }
 
 const Entity* Simulation::ContractStation(const Contract& c) const
@@ -172,7 +172,7 @@ void Simulation::PostContracts()
         }
         std::stable_sort(shortOf.begin(), shortOf.end(),
                          [](const auto& a, const auto& b) { return a.first > b.first; });
-        double& treasury = minds_[h.faction].treasury;
+        double& treasury = director_.Mind(h.faction).treasury;
         for (const auto& sg : shortOf)
         {
             if (open[st.id] >= r.perMarket)
@@ -212,7 +212,8 @@ void Simulation::EndContract(int id)
     const auto it = contracts_.find(id);
     if (it == contracts_.end())
         return;
-    minds_[it->second.faction].treasury += it->second.reward;  // not earned: the owner's again
+    director_.Mind(it->second.faction).treasury +=
+        it->second.reward;  // not earned: the owner's again
     contracts_.erase(it);
 }
 
