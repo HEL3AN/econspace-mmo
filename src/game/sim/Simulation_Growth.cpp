@@ -400,6 +400,10 @@ int Simulation::BeginYard(FactionId f, const std::string& systemId)
     p.blueprint = bp->id;
     p.startedAt = time_;
     p.dueAt = time_ + bp->buildSeconds;
+    // The site is laid where it is held, so there is no convoy to wait for: without this the
+    // convoy step took the plan for one that could not set out and dropped it a pass later, the
+    // region wanted a yard again, and one system got five (#584).
+    p.arrived = true;
     plans_[p.id] = p;
     due_.insert({ p.dueAt, p.id });
     Record("upgrade", f, systemId,
