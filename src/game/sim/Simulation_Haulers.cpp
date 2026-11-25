@@ -4,10 +4,10 @@
 // pulled towards a target by trade nobody flies any more. Once in every `haulEvery` seconds, a
 // system with a market and a trader to send looks next door for the good whose bid there beats
 // the ask here -- the fee both ways included -- by the haul margin, and a trader sets out with
-// as much of it as still pays, `haulCargo` at most. A trader that leaves for any other reason
-// (migration) carries what pays on its way too. Every unit moves both prices, so a hauler
-// narrows a gap and never closes it: what is left between neighbours is the margin, and further
-// apart it compounds.
+// as much of it as still pays, `haulCargo` of room at most (volume, not units). A trader that
+// leaves for any other reason (migration) carries what pays on its way too. Every unit moves both
+// prices, so a hauler narrows a gap and never closes it: what is left between neighbours is the
+// margin, and further apart it compounds.
 //
 // Conserved, as ships are (#295): the goods leave the market when the hauler sets out, are on
 // the trip -- counted nowhere -- while it travels, and arrive with it. Where nobody is, that is
@@ -65,7 +65,10 @@ Simulation::Haul Simulation::BestHaul(const SystemState& from, const std::string
         return best;
     for (ResourceType g : AllResourceTypes())
     {
-        const int n = HaulAmount(from.market, dest->market, g, (int)k.haulCargo);
+        // A hauler's hold is room, as a player's is (#472, #572): `haulCargo` of volume, so as
+        // many units as fit by the good's volume.
+        const int n =
+            HaulAmount(from.market, dest->market, g, (int)(k.haulCargo / (double)Goods::Volume(g)));
         if (n <= 0)
             continue;
         // What the trip makes, the fee both ways included: the good that makes the most goes,

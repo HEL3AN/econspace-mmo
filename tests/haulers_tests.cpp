@@ -104,8 +104,10 @@ TEST_CASE("haulers carry a surplus next door, and no unit is made or lost on the
     CHECK(Everywhere(sim, medicine) == doctest::Approx(before).epsilon(1e-6));
     CHECK(glut.market.Stock(medicine) < glut.market.Target(medicine) * 6.0);
     CHECK(sim.SystemById(to)->market.Stock(medicine) > there);
-    // ...and a gap is narrowed, never closed: next door still pays more than the glut asks.
-    CHECK(sim.SystemById(to)->market.Mid(medicine) > glut.market.Mid(medicine));
+    // ...and a gap is narrowed, never turned round: next door pays no less than the glut asks
+    // (a hauler's hold is volume now, #572: Medicine is 1 a unit, so a trip is 300 of it and the
+    // two markets come to meet within the hour).
+    CHECK(sim.SystemById(to)->market.Mid(medicine) >= glut.market.Mid(medicine));
 }
 
 TEST_CASE("a hauler shot down leaves its cargo in its wreck, for whoever searches it (#343)")

@@ -43,8 +43,8 @@ struct Rules
     Rules()
     {
         WorldRules::Contracts c;
-        c.minAmount = 5;
-        c.maxAmount = 10;
+        c.minAmount = 50;  // volume, as a hold counts it (#572)
+        c.maxAmount = 100;
         WorldRules::SetContractRules(c);
         WorldRules::SetJobRules(WorldRules::Jobs{});
     }
@@ -183,8 +183,9 @@ TEST_CASE("a short market posts a contract between selling and buying there, if 
     const Contract* c = ContractFor(sim, sc.system, food);
     REQUIRE(c != nullptr);
     CHECK(c->faction == sc.owner);
-    CHECK(c->amount >= 5);
-    CHECK(c->amount <= 10);
+    // (Food is 5 a unit, and the rules above ask 50 to 100 of room)
+    CHECK(c->amount >= 10);
+    CHECK(c->amount <= 20);
     CHECK(c->deadline > sim.Time());
     // The price is set aside.
     CHECK(sim.MindOf(sc.owner).treasury == doctest::Approx(1.0e6 - c->reward));
