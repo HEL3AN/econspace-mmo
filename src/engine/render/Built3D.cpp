@@ -243,8 +243,7 @@ Renderer::Mesh* Renderer::MeshFor(const Item& item, float zoom)
     pose.thrusting = item.thrusting;
     const std::vector<Piece> composed = Compose(*item.shape, pose);
     const std::vector<Piece> pieces =
-        Embellish(composed, item.size, item.id,
-                  detail_ && item.kind != EntityKind::Gate ? DetailLevel(item.size * zoom) : 0);
+        Embellish(composed, item.size, item.id, detail_ ? DetailLevel(item.size * zoom) : 0);
     const MeshData data =
         BuildMesh(pieces, item.size, item.size * zoom, item.kind == EntityKind::Gate);
     if (data.pieces == 0 || data.index.empty())

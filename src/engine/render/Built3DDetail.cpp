@@ -301,7 +301,7 @@ void RingRule(const Piece& p, float R, int level, Rng& rng, float hubR,
             spokes.push_back(s0 + 360.0f * (float)k / (float)n);
     }
     const float r0 = hubR * 0.8f, r1 = rOut - w * 0.8f;
-    if (r1 > r0 + 0.1f * R)
+    if (hubR > 0.0f && r1 > r0 + 0.1f * R)
         for (const float sa : spokes)
         {
             const float a = sa * DEG2RAD;
@@ -364,7 +364,16 @@ std::vector<Piece> Embellish(const std::vector<Piece>& composed, float R, int se
             d > 0.2f * R && p.role != Role::Light)
             arms.push_back(std::fmod(Deg(std::atan2(p.pos.y, p.pos.x)) + 360.0f, 360.0f));
     }
-    if (hubR <= 0.0f)
+    // A ring round a field (a gate's, drawn by a material of its own) is open in the middle on
+    // purpose: nothing is hung across it. -1 says so.
+    bool centreOpen = false;
+    for (const Piece& p : composed)
+        if (p.soft && !p.material.empty() && !p.fallback && p.radius > 0.3f * R &&
+            std::hypot(p.pos.x, p.pos.y) < 0.3f * R)
+            centreOpen = true;
+    if (centreOpen)
+        hubR = -1.0f;
+    else if (hubR <= 0.0f)
         hubR = 0.25f * R;
 
     std::vector<Piece> out = composed;
@@ -380,7 +389,7 @@ std::vector<Piece> Embellish(const std::vector<Piece>& composed, float R, int se
             case Form::Capsule:
             case Form::Bar:
                 if (p.length >= 2.2f * p.width && p.length > 0.18f * R && p.width > 0.02f * R &&
-                    p.role != Role::Panel)
+                    p.role != Role::Panel && p.lift <= 0.0f)
                     Member(p, R, level, rng, out);
                 break;
             case Form::Polygon:

@@ -404,6 +404,7 @@ bool ShapeBackend::DrawBuilt3D(const Item& item, const Lighting::Sample& light, 
     {
         case EntityKind::Station:
         case EntityKind::Structure:
+        case EntityKind::Gate:
         case EntityKind::Derelict: break;
         case EntityKind::Npc:
         case EntityKind::PlayerShip:
@@ -508,12 +509,17 @@ void ShapeBackend::Draw(const Item& described)
         {
             // What a solid cannot be is drawn by the 2D path: what lies under the object (a
             // swirl on the ground a gate is built around) before it, the rest over it.
+            // A gate faces where it leads: out from the system's centre, toward its neighbour
+            // (the generator lays a gate out on the bearing of the system it joins).
+            Item faced = item;
+            if (item.kind == EntityKind::Gate && item.heading == 0.0f)
+                faced.heading = std::atan2(item.pos.y, item.pos.x);
             solidsDrawn_ = true;
             underPass_ = true;
-            DrawComposition(item, item.color, light);
+            DrawComposition(faced, faced.color, light);
             underPass_ = false;
-            DrawBuilt3D(item, light, false);
-            DrawComposition(item, item.color, light);
+            DrawBuilt3D(faced, light, false);
+            DrawComposition(faced, faced.color, light);
             solidsDrawn_ = false;
             return;
         }

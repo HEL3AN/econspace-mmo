@@ -135,3 +135,35 @@ a mesh at 60000 vertices. Damage (lost parts, scorch) and livery stripes are not
 2D surface shader; the spin and blink clock wraps at 7200 s (exact for spins that are multiples
 of 0.05 deg/s). Heights and the star's elevation are art constants (`Rise`, `Level`,
 `LIGHT_ELEVATION_DEG`); a player's design is capped in height.
+
+## 6. Gates, pass 3 (draft, not merged)
+
+Owner (2026-11-26): the gates' direction is liked; one more pass. The wormhole swirl inside an
+Anchor gate reads as a clash of styles; gates, the Anchor gate included, need a field of their own.
+
+**The tunnel.** The jump gate is B's tunnel of hoops with A's tower mass at the entrance and C's
+lit core at the exit: a gatehouse (two stepped towers and a heavy lintel with an amber line), four
+hoops each smaller and lower than the last, roof rails joining them so the tunnel reads as one long
+frame, a hold line along the lane's edge, emitter posts and a small crown at the far end, and an
+approach on the ground (chevrons and a funnel of blinking lamps) on the entrance side. The hoops are
+thin frames and not planks: with the axis across the screen a hoop's plane is edge-on to the
+camera whatever the tilt, and a thick lintel then reads as a wall; a thin one reads as a frame in
+perspective. A gate's axis follows the bearing of the system it leads to, as before.
+
+**The field** (`gatefield`, `data/shaders/materials/gatefield.fs`, materials `gatefield` and
+`gatefield.anchor`). A soft disc of a material, like a wormhole, and with the same fallback glow
+(#120): energy held in a lane along the gate's axis. Hard-edged (a natural phenomenon fades, this
+stops at a bright rail), straight filaments running with the lane toward the core, a band across
+the lane at every hoop flaring in sequence with a few arcs between the lamps (what ties the field
+to the hardware), and a hot lens at the exit that breathes and sends out a ripple. Amber-white, f(time,
+seed), loops dividing the clock wrap, nothing read from the frame. The hoops stand where the
+material's `rungs` say. The Anchor gate's field is the same shader round: a lens with its core at
+the middle, held by four heavy clamps with claws reaching over it, and `tame` lets a faint
+violet through at its very edge, the natural mouth it holds.
+
+**Generator rules it needed.** A member that floats (`lift`) gets no truss under it, and a ring round
+a field (a soft part with a material at the centre) gets no spokes across it.
+
+The mock-ups are written by `tools/gen_gate_concepts.py` (`gate.d.jump`, `gate.d.anchor`, and the
+earlier a, b, c) and are not in the shipped data; an approved one replaces `gate.jump`, and
+`DressCrossing` gets an `anchored` archetype of its own.
