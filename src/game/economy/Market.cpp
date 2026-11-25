@@ -61,6 +61,17 @@ void Market::SetMarkets(int markets, const MarketRates* rates)
     fresh_ = false;
 }
 
+bool Market::Pays(const Recipe& r) const
+{
+    const double fee = Goods::Rules().fee;
+    double       made = 0.0, used = 0.0;
+    for (const auto& out : r.out)
+        made += out.second * Mid(out.first) * (1.0 - fee);
+    for (const auto& in : r.in)
+        used += in.second * Mid(in.first) * (1.0 + fee);
+    return made >= used;
+}
+
 double Market::PriceAt(ResourceType type, double stock) const
 {
     const MarketRules& k = Goods::Rules();
@@ -164,6 +175,12 @@ void Market::Step(const MarketRates& rates, double hours)
     // first while it lasts, the same way on every run.
     for (const Recipe& r : rates.recipes)
     {
+        // Production follows profit (#566): a recipe runs only while what it makes is worth
+        // more at this market than what it is made of, the fee both ways included. A yard whose
+        // modules nobody buys -- the shelf at its cap, the price on the floor -- stops turning
+        // Iron into them and leaves the Iron where it is.
+        if (!Pays(r))
+            continue;
         double cycles = r.rate * hours;
         for (const auto& in : r.in)
             if ((size_t)in.first.Index() < n)

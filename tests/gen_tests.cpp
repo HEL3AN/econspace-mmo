@@ -97,7 +97,7 @@ TEST_CASE("the rules have not changed without saying so")
     // Natives name their systems from the cultures in factions.json (#431 slice 3): the
     // shipped file is part of what these hashes hold.
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
-    CHECK(Gen::GENERATOR_VERSION == 12);
+    CHECK(Gen::GENERATOR_VERSION == 13);
     // The skeleton has a version of its own (#342 S3): regions are sealed when they open and a
     // change to their rules leaves a live world alone, but the skeleton is always remade, so a
     // change to it is a change to every world -- bump Gen::SKELETON_VERSION with this hash.
@@ -105,8 +105,8 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
     MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
     CHECK(skeleton == 3947093538462403513ull);
-    const uint64_t GOLDEN[] = { 14967538230027455343ull, 13601127138528730021ull,
-                                10590983283579350898ull };
+    const uint64_t GOLDEN[] = { 1076609828545080046ull, 18161380091881429577ull,
+                                7639317408501677024ull };
     for (int slot = 0; slot < 3; slot++)
     {
         CAPTURE(slot);
@@ -1401,4 +1401,34 @@ TEST_CASE("the editor writes a pin for every seed, beside a seed's own (#290)")
     byIndex["document"]["planets"] =
         nlohmann::json::array({ { { "replaces", 0 }, { "remove", true } } });
     CHECK(Gen::ReplacesByIndex(byIndex));
+}
+
+TEST_CASE("Iron is mined wherever a people has a market: every native system and every capital "
+          "(#566)")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    auto hasIron = [](const nlohmann::json& sys)
+    {
+        if (!sys.contains("asteroidFields"))
+            return false;
+        for (const nlohmann::json& b : sys["asteroidFields"])
+            if (b.value("resource", std::string()) == "Iron")
+                return true;
+        return false;
+    };
+    int natives = 0;
+    for (uint64_t seed = 1; seed <= 40; seed++)
+    {
+        CAPTURE(seed);
+        const Gen::Region r = Gen::GenerateRegion(Params(seed, 1));
+        if (r.natives.empty())
+            continue;
+        for (const nlohmann::json& id : r.natives["systems"])
+        {
+            CAPTURE(id.get<std::string>());
+            CHECK(hasIron(r.documents.at(id.get<std::string>())));
+            natives++;
+        }
+    }
+    CHECK(natives > 0);
 }

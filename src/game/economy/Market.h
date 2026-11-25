@@ -62,7 +62,9 @@ public:
     void Step(const MarketRates& rates, double hours);
 
 private:
-    void   Fit();  // sized to the registry
+    void Fit();  // sized to the registry
+    // Whether a recipe's output is worth more here than its input, fee included (#566).
+    bool   Pays(const Recipe& r) const;
     double PriceAt(ResourceType type, double stock) const;
 
     std::vector<double> stock_;

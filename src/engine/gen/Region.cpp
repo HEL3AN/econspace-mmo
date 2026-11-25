@@ -768,6 +768,10 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             const char* res = roll < 15 + 12 * n.depth ? "Crystal" : (roll < 60 ? "Iron" : "Ice");
             if (character == Character::Frozen)
                 res = roll < 75 ? "Ice" : "Crystal";
+            // Iron is the common structural ore, and the capital of a civilisation, which has
+            // a market, has some at its own belts (#566).
+            if (centre && n.depth == 1 && i == 0)
+                res = "Iron";
             const int size = rng.Range(50, 75) * 100;
             json belt = { { "name", n.designation + " Belt " + std::string(1, (char)('A' + i)) },
                           { "size", size },
@@ -1465,6 +1469,37 @@ void PlaceNatives(const RegionParams& params, const std::vector<Node>& nodes, Re
         if (pick < 0)
             break;
         hosts.push_back(nodes[(size_t)pick].id);
+    }
+
+    // Iron, the common structural ore, in every system a people has a market in (#566): a ship
+    // is mostly Iron, and a people who could not mine any could not build one.
+    {
+        Rng ore(Key(params.seed, NATIVES, 3));
+        for (const std::string& h : hosts)
+        {
+            json& sys = region.documents[h];
+            if (!sys.contains("asteroidFields") || !sys["asteroidFields"].is_array())
+                sys["asteroidFields"] = json::array();
+            bool iron = false;
+            for (const json& b : sys["asteroidFields"])
+                iron = iron || b.value("resource", std::string()) == "Iron";
+            if (iron)
+                continue;
+            if (!sys["asteroidFields"].empty())
+            {
+                sys["asteroidFields"][0]["resource"] = "Iron";
+                continue;
+            }
+            std::string designation = h;
+            for (const Node& n : nodes)
+                if (n.id == h)
+                    designation = n.designation;
+            PlaceFind(ore, sys, "asteroidFields", 260000.0, 840000.0,
+                      { { "name", designation + " Belt A" },
+                        { "size", ore.Range(50, 75) * 100 },
+                        { "resource", "Iron" },
+                        { "ore", ore.Range(200, 400) } });
+        }
     }
 
     const StationKind* kinds = KindsOf(theme);

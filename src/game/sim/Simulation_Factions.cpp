@@ -761,7 +761,7 @@ void Simulation::Think(FactionId f)
         !weak && (int)settling.size() < works && cost > 0.0f && mind.stock >= cost + reserve;
     // One siege at a time, paid for like a settlement (slice 5).
     const Blueprints::Siege& siege = Blueprints::SiegeRules();
-    bool canSiege = !weak && !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
+    const bool canSiege = !weak && !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
     // A yard where a market is held and the region has none to refit at (#566): a need, not a
     // taste, so it is seen to before the turn weighs anything else -- any faction's, a native
     // people's and a gang's too where it holds a market, from whatever it holds, a generated
@@ -799,10 +799,7 @@ void Simulation::Think(FactionId f)
         }
     }
     if (savingForYard)
-    {
-        canSettle = false;
-        canSiege = false;
-    }
+        canSettle = false;  // a war does not wait for a yard, new outposts and upgrades do
     // ...and what each of its own warships would take off the wall a second.
     const float dps = WarshipDps(f);
     // What the ships a siege is expected to lose cost it (#568): the share of the force it
