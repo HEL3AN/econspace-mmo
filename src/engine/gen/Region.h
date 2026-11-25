@@ -6,6 +6,7 @@
 #include "core/Faction.h"
 #include "gen/Galaxy.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -31,7 +32,8 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    13;  // 13: Iron, Ice and Crystal at a capital's belts and in every system a native people has a
+    14;  // 14: a region's belts follow the end demand of its stations and fleets (#584);
+         // 13: Iron, Ice and Crystal at a capital's belts and in every system a native people has a
          // market in
          // (#566);
          // 12: derelict caches, hidden until scanned (#346);
@@ -41,6 +43,26 @@ inline constexpr int GENERATOR_VERSION =
          // 8: every frontier region has natives, with stations and markets (#342 S5);
          // 7: civilisation centres, and a frontier as rich and lawless as it is far from one
          // (#342 S2); 6: keys and ids by skeleton slot (#342); 5: the leviathan dwarfs a station
+
+// What a region's belts are sized against (#584): its stations' and holdings' end demand --
+// what they use up, and what their fleets lose -- run back through the recipes to ore, in
+// milli-units an hour, by the three ores a ship is made of (Iron, Ice, Crystal). Whole numbers
+// all the way, so that the same data sizes the same belts on every compiler. Built by the
+// simulation from goods.json, ships.json and the rules, and set before regions are generated;
+// empty (the default) leaves belts as they were rolled.
+struct OreModel
+{
+    // What a belt gives an hour, a thousandth of its ore (beltRegrow).
+    long long regrowPermille = 0;
+    long long marginPermille = 1000;  // the yield asked for, over the need
+    // A station's role as the region documents say it ("TradeHub"), to its end demand.
+    std::map<std::string, std::array<long long, 3>> station;
+    // Each holding's: a system with a station in it keeps a fleet.
+    std::array<long long, 3> holding = { 0, 0, 0 };
+    bool                     Active() const { return regrowPermille > 0; }
+};
+void            SetOreModel(const OreModel& m);
+const OreModel& GetOreModel();
 
 struct RegionParams
 {

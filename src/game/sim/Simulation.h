@@ -41,6 +41,7 @@ namespace Gen
 {
 struct Region;
 struct RegionParams;
+struct OreModel;
 struct Pack;
 }  // namespace Gen
 enum class NpcRole;
@@ -744,6 +745,10 @@ public:
     // what a purchase takes off the market's shelf (BuyShips). Everything else a ship is made
     // of, its frame, sections and other parts, is PartsCost: raw goods, off the same shelf.
     static Ships::Cost GunCost(const std::string& design);
+    // What the generator sizes belts for (#584): the stations' and a holding's end demand, run
+    // back through the recipes to Iron, Ice and Crystal. From goods.json, ships.json and the
+    // rules; empty while any of them is missing.
+    static Gen::OreModel OreModelFromData();
     const Ships::Cost& PartsCost(const std::string& design) const;
     // The module goods a ship of `design` carries as guns, and so what its wreck may hold:
     // `share` of each, the fraction left over decided by `key`, never by a draw (#566).

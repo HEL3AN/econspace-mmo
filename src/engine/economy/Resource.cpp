@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <utility>
 
@@ -464,6 +465,54 @@ double QuoteBuyOn(double base, double target, double stock, int amount)
 const MarketRules& Rules()
 {
     return g_registry.rules;
+}
+
+std::vector<std::string> IndustryIds()
+{
+    std::vector<std::string> out;
+    for (const auto& kv : g_registry.industries)
+        out.push_back(kv.first);
+    return out;
+}
+
+std::vector<double> OreFor(const std::vector<std::pair<ResourceType, double>>& demand)
+{
+    std::vector<double>                            ore((size_t)Count(), 0.0);
+    std::function<void(ResourceType, double, int)> want =
+        [&](ResourceType g, double amount, int depth)
+    {
+        if (!(amount > 0.0) || depth > 8 || g.Index() < 0 || g.Index() >= Count())
+            return;
+        const GoodDef& d = g_registry.goods[(size_t)g.Index()];
+        if (d.mined)
+        {
+            ore[(size_t)g.Index()] += amount;
+            return;
+        }
+        if (d.IsModule())
+        {
+            for (const auto& p : d.parts)
+                want(p.first, p.second * amount, depth + 1);
+            return;
+        }
+        for (const auto& kv : g_registry.planets)
+            for (const auto& y : kv.second)
+                if (y.first.Index() == g.Index())
+                    return;
+        for (const auto& kv : g_registry.industries)
+            for (const Recipe& r : kv.second.recipes)
+                for (const auto& o : r.out)
+                    if (o.first.Index() == g.Index() && o.second > 0.0)
+                    {
+                        const double cycles = amount / o.second;
+                        for (const auto& in : r.in)
+                            want(in.first, in.second * cycles, depth + 1);
+                        return;
+                    }
+    };
+    for (const auto& dm : demand)
+        want(dm.first, dm.second, 0);
+    return ore;
 }
 
 const Industry* IndustryOf(const std::string& archetypeId)

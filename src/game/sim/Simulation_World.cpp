@@ -9,7 +9,9 @@
 #include "sim/Observation.h"
 #include "sim/SaveFile.h"
 
+#include "core/Archetype.h"
 #include "core/Route.h"
+#include "core/ShipDesign.h"
 #include "core/Blueprint.h"
 #include "core/Orbits.h"
 #include "core/World.h"
@@ -29,6 +31,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -342,9 +345,75 @@ void ApplyPinsFile(Gen::Region& region, const std::string& path, uint64_t seed)
 }
 }  // namespace
 
+Gen::OreModel Simulation::OreModelFromData()
+{
+    Gen::OreModel          m;
+    const MarketRules&     k = Goods::Rules();
+    const WorldRules::Ore& rules = WorldRules::OreRules();
+    ResourceType           ores[3];
+    static const char*     NAMES[3] = { "Iron", "Ice", "Crystal" };
+    if (!(k.beltRegrow > 0.0) || !(rules.margin >= 1.0))
+        return m;
+    for (int i = 0; i < 3; i++)
+        if (!Goods::Find(NAMES[i], ores[i]))
+            return m;
+    auto milli = [&](const std::vector<double>& ore)
+    {
+        std::array<long long, 3> out = { 0, 0, 0 };
+        for (int i = 0; i < 3; i++)
+            out[(size_t)i] = std::llround(ore[(size_t)ores[i].Index()] * 1000.0);
+        return out;
+    };
+    m.regrowPermille = std::llround(k.beltRegrow * 1000.0);
+    m.marginPermille = std::llround(rules.margin * 1000.0);
+    if (m.regrowPermille <= 0)
+        return Gen::OreModel();
+    // A station's role, as a region document says it, from the kind of station it is.
+    const std::string prefix = "station.";
+    for (const std::string& id : Goods::IndustryIds())
+    {
+        if (id.compare(0, prefix.size(), prefix) != 0)
+            continue;
+        std::string role;
+        bool        up = true;
+        for (char c : id.substr(prefix.size()))
+        {
+            if (c == '_')
+            {
+                up = true;
+                continue;
+            }
+            role += up ? (char)std::toupper((unsigned char)c) : c;
+            up = false;
+        }
+        if (const Industry* ind = Goods::IndustryOf(id))
+            m.station[role] = milli(Goods::OreFor(ind->uses));
+    }
+    // A holding's fleet: what a lawful major's warships lose an hour, made again.
+    const std::vector<std::string> majors = Factions::MajorIds();
+    FactionId                      f;
+    if (rules.fleetTurnover > 0.0 && !majors.empty() && Factions::Find(majors.front(), f))
+    {
+        const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+        const Ships::Design*    d = c.FindDesign(c.Pick(majors.front(), "warship", 0));
+        Ships::Stats            s;
+        std::string             why;
+        if (d != nullptr && Ships::Derive(c, *d, s, why))
+        {
+            std::vector<std::pair<ResourceType, double>> bill;
+            const double lost = (double)Factions::TemperamentOf(f).capacity * rules.fleetTurnover;
+            for (const auto& [good, n] : s.cost)
+                bill.emplace_back(good, (double)n * lost);
+            m.holding = milli(Goods::OreFor(bill));
+        }
+    }
+    return m;
+}
+
 bool Simulation::ParamsFor(int slot, const std::string& homeId, const std::string& systemsDir,
                            Gen::RegionParams& params, nlohmann::json& homeDoc) const
 {
+    Gen::SetOreModel(OreModelFromData());  // every region is sized against the data as it is now
     const bool laidOut = !skeleton_.slots.empty();
     // What the slot is -- its distance from a centre decides its law and its riches (S2).
     params = laidOut ? Gen::SlotParams(skeleton_, slot) : Gen::RegionParams{};
