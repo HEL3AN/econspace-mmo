@@ -403,6 +403,10 @@ public:
     // not light up under the cursor and is never clicked: there, saying what cannot be done.
     bool Button(std::string_view id, std::string_view label, bool highlighted = false,
                 bool enabled = true);
+    // A square of colour to pick, `selected` ringed. One that is not `enabled` is drawn faded and
+    // never clicked (#552: a band too close to the hull in lightness). True on the click.
+    bool Swatch(std::string_view id, uint32_t index, Color color, bool selected,
+                bool enabled = true);
     // A small on/off indicator: filled when on.
     void Chip(std::string_view label, bool on, Color onColor);
     // One line of a form: its label in a column of its own on the left (metrics.formLabel
