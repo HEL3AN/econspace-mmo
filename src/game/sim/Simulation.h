@@ -1649,6 +1649,15 @@ public:
     // F1: credits to the account, if dev commands are on. False, and nothing given, if not.
     bool GrantDebugMoney(ClientSession& s);
 
+    // What an input's shots look like to the clients in each system, by system id.
+    using FireMap = std::map<std::string, std::vector<FireEvent>>;
+    // One client input = ONE player tick (#354): the verbs it carries, then movement, jump,
+    // loot, fire and mining. The client predicts one StepPlayerShip per input, so the server
+    // must step the same way or the acknowledged numbers and the step count diverge and the
+    // ship jerks. A sale or purchase adds its acknowledgement to `acks`, a shot its beam to
+    // `fires`. Returns true if the session changed system, so its layout must be sent again.
+    bool ApplyCommand(ClientSession& s, const Proto::Command& c, float dt,
+                      std::vector<Proto::TradeAck>& acks, FireMap& fires);
     // Server step of a player ship: applies the movement axes/toggles from the command,
     // the piloting bonus, and updates the physics. Combat/mining — via separate methods.
     void StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus, float dt);

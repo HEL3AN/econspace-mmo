@@ -360,6 +360,7 @@ add_library(simcore STATIC
     src/game/sim/Simulation_Delivery.cpp  # the NPC delivery service: quotes and freight (#472)
     src/game/sim/Simulation_Knowledge.cpp # who knows which systems: public, own, corporation (#431)
     src/game/sim/Simulation_Scan.cpp      # signatures and the ship's scanner (#346)
+    src/game/sim/Simulation_Commands.cpp  # the server's verb table: one Command, one tick (#354)
     src/game/sim/WorldRules.cpp           # data/world_rules.json: how the world grows (#342 S3)
     src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
     src/game/sim/AccessList.cpp           # the allowlist and the bans (#400)
@@ -406,6 +407,7 @@ set_target_properties(econspace PROPERTIES
 # agent (econagent) connects to, plus the tools around a world (`econserver --help`).
 add_executable(econserver
     src/game/sim/main_headless.cpp
+    src/game/sim/SelfTests.cpp            # hosttest, accttest, worldtest, ordertest, opstest (#354)
     src/game/sim/MacroBench.cpp           # econserver macrobench: the galaxy's cost by size (#295)
     src/game/sim/ProcessMemory.cpp        # resident memory, for the benchmark (#295)
 )
@@ -593,6 +595,7 @@ add_executable(tests
     tests/patrol_tests.cpp         # a corporation's own AI patrols (#431 slice 12)
     tests/fleet_tests.cpp          # what each side in a system flies, design by design (#464)
     tests/style_tests.cpp          # what a region's NPCs fly, from its markets (#464)
+    tests/command_tests.cpp        # the server's verb table: Simulation::ApplyCommand (#354)
     tests/buying_tests.cpp         # holdings buy their ships, and money limits how many (#464)
     tests/damage_tests.cpp         # damage types and layers: no gun is pointless (#464)
     tests/outpost_tests.cpp        # outposts placed by purpose, and what each looks like (#318)
