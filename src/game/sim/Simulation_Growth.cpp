@@ -355,8 +355,8 @@ int Simulation::BeginYard(FactionId f, const std::string& systemId)
     const Blueprint* bp = Blueprints::Find(Outposts::SHIPYARD_BLUEPRINT);
     const float      cost = BlueprintCost(Outposts::SHIPYARD_BLUEPRINT);
     FactionMind&     mind = minds_[f];
-    if (st == nullptr || bp == nullptr || cost <= 0.0f || mind.stock < cost ||
-        !st->agg.claimed || st->agg.controller != f || st->profile.markets <= 0 ||
+    if (st == nullptr || bp == nullptr || cost <= 0.0f || mind.stock < cost || !st->agg.claimed ||
+        st->agg.controller != f || st->profile.markets <= 0 ||
         !RegionWantsYard(Gen::SlotOf(systemId)) ||
         StationsIn(Gen::SlotOf(systemId)) >= WorldRules::GrowthRules().stationsPerRegion)
         return 0;
@@ -367,8 +367,8 @@ int Simulation::BeginYard(FactionId f, const std::string& systemId)
     const OutpostSpot spot = FindOutpostSpot(f, Outposts::Purpose::Open, systemId, systemId);
     if (!spot.found)
         return 0;
-    auto site = std::make_unique<Structure>(spot.at, 0.0f, FactionName(f) + " " + bp->name,
-                                            bp->archetype);
+    auto site =
+        std::make_unique<Structure>(spot.at, 0.0f, FactionName(f) + " " + bp->name, bp->archetype);
     site->SetBlueprint(bp->id);
     if (spot.orbit)
         site->SetOrbit(*spot.orbit);

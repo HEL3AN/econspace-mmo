@@ -1179,7 +1179,7 @@ TEST_CASE("a faction grows a shipyard by need: after a station, none within reac
 TEST_CASE("any faction that holds a market in a region with no yard grows one, once (#566)")
 {
     LoadRegistries();
-    Rules r;
+    Rules      r;
     Simulation sim;
     Make(sim, 7);
     // A held market, in a region made to have no yard.

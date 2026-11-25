@@ -467,8 +467,19 @@ rejected.
 - **Performance.** Goods grow from 10 to 21, and the market `Step` and the haul search are
   per good per system, so a macrobench before and after goes in the build PR (Release build).
   The haul search skips empty module stocks, which is most of them.
-- **After this**: NPC factions' fleet buying (#464 slice 4) should take hulls and modules from
-  these markets instead of spending money alone; filed as its own issue.
+- **NPC fleets buy from the shelves** (#566, built after this slice). A holding buys a ship's
+  frame, sections and parts as raw goods and its guns as module goods, each good at the
+  nearest market within `marketReach` that has it on the shelf at a price that is not dear,
+  paying that market's ask and fee. The farthest source decides how long the ships take to
+  come home (`FleetOrder`, saved, counted nowhere on the road). The shelf, not the treasury,
+  is what limits how many. A hull is not a good: its parts are. NPC wrecks hold their guns at
+  `wrecks.moduleShare`, since the guns left a shelf to be bought.
+  - A yard is wanted wherever a faction holds a market in a region with none: the same gates
+    as a yard grown from an outpost (a station, enough passing or mined, none within reach,
+    room in the region's budget), any faction, a native people included. Being a need it comes
+    before anything else the faction would spend on, and it saves for it.
+  - A system keeps half of its traders (`market.haulKeep`): a hauler goes only if the system
+    is left with that share, so a yard others buy from is not emptied of its traders.
 
 ## What we build overall
 

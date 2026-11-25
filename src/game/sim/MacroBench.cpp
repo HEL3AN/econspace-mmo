@@ -9,6 +9,7 @@
 // what the world cost before cold systems (#295).
 
 #include "sim/MacroBench.h"
+#include "sim/FactionMind.h"
 
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
@@ -511,11 +512,20 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                     ended(sieges.voided);
             }
         };
+        long long yardsSeen = 0;
         for (int pass = 0; pass <= passes; pass++)
         {
             if (pass > 0)
                 sim.MaintainWorld(2.0f);
             tallySieges();
+            // Shipyards begun and opened, as they are written (#566): the chronicle forgets.
+            for (const ChronicleEntry& e : sim.Chronicle())
+                if (e.seq > yardsSeen)
+                {
+                    yardsSeen = e.seq;
+                    if (e.text.find("shipyard") != std::string::npos)
+                        printf("YARD hour %.1f: %s\n", e.time / 3600.0, e.text.c_str());
+                }
             // A war everywhere at once: every holding left with a third of its ships.
             if (pass == shock)
             {
@@ -673,6 +683,19 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                                         }
                                         ring = std::move(next);
                                     }
+                                    {
+                                        const FactionMind& mind = sim.MindOf(f);
+                                        const Temperament& tm = Factions::TemperamentOf(f);
+                                        const float        risk = Intelligence::LossRisk(
+                                            mind.lostAt, kv.first, sim.Time());
+                                        printf(
+                                            " [yard gates: stock %.0f, wants-yard %d, wanted %d, "
+                                            "loss risk %.2f, appetite %.2f, traffic+ore %.2f]",
+                                            (double)mind.stock,
+                                            sim.RegionWantsYard(Gen::SlotOf(kv.first)) ? 1 : 0,
+                                            sim.ShipyardWanted(kv.first) ? 1 : 0, (double)risk,
+                                            (double)tm.appetite, (double)(tm.traffic + tm.ore));
+                                    }
                                     printf(" [nearest yard %d jumps; region has a yard: %s; "
                                            "prosperity %.2f, belts %d, stations in region %d]",
                                            jumps, regionYard ? "yes" : "no",
@@ -687,11 +710,6 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                 }
             }
         }
-        // When each faction's shipyards were begun and opened (#566).
-        for (const ChronicleEntry& e : sim.Chronicle())
-            if (e.text.find("shipyard") != std::string::npos ||
-                e.text.find("Yards") != std::string::npos)
-                printf("YARD hour %.1f: %s\n", e.time / 3600.0, e.text.c_str());
         printf("\nSieges: %d sent, %d laid, %d destroyed an outpost, %d gave up, %d driven off, "
                "%d void; %d still running; %d relieved\n",
                sieges.sent, sieges.laid, sieges.destroyed, sieges.gaveUp, sieges.repelled,

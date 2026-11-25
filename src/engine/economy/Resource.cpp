@@ -250,7 +250,8 @@ bool Parse(const json& data, Registry& r, std::string& why)
         if (!m.is_object() ||
             !OnlyKnownKeys(m,
                            { "fee", "spread", "elasticity", "floor", "ceiling", "beltMined",
-                             "beltRegrow", "haulEvery", "haulCargo", "haulMargin", "moduleMargin", "haulKeep" },
+                             "beltRegrow", "haulEvery", "haulCargo", "haulMargin", "moduleMargin",
+                             "haulKeep" },
                            why) ||
             !Number(m, "fee", k.fee, why) || !Number(m, "spread", k.spread, why) ||
             !Number(m, "elasticity", k.elasticity, why) || !Number(m, "floor", k.floor, why) ||
