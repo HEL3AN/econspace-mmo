@@ -31,5 +31,20 @@ void Restore(const Scissor& s)
     rlScissor(s.box[0], s.box[1], s.box[2], s.box[3]);
 }
 
+void Viewport(int box[4])
+{
+    glGetIntegerv(GL_VIEWPORT, box);
+}
+
+void ClearDepth(int x, int y, int w, int h)
+{
+    const Scissor before = Current();
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x, y, w, h);
+    glDepthMask(GL_TRUE);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    Restore(before);
+}
+
 }  // namespace GlState
 }  // namespace Render

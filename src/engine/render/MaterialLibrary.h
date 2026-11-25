@@ -31,6 +31,10 @@ public:
 
     bool Available() const { return !shaders_.empty(); }
 
+    // The data folder the shaders were read from: what the other shader sets (Built3D) read
+    // theirs beside.
+    const std::string& DataDir() const { return dataDir_; }
+
     // Whether this material has a shader here, which decides whether a body is painted by
     // it or drawn as its stand-in composition (#426).
     bool Has(const std::string& id) const { return shaders_.count(id) > 0; }
@@ -90,6 +94,7 @@ private:
     // Which material last set its constants on each program (#516): materials of one shader
     // share it, so its constants are set again only when the material changes.
     std::map<unsigned int, const Material*> constantsOn_;
+    std::string                             dataDir_;
     std::vector<std::string>                problems_;
     bool                                    active_ = false;
     bool                                    disabled_ = false;

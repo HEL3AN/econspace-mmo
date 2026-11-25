@@ -134,6 +134,7 @@ const char* SectionName(Section s)
         case Section::Compose: return "compose";
         case Section::Soft: return "soft";
         case Section::Surface: return "surface";
+        case Section::Solid: return "solid";
         case Section::Solve: return "solve";
         case Section::Paint: return "paint";
         case Section::Text: return "text";

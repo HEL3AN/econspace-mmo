@@ -217,6 +217,9 @@ add_library(engine STATIC
     src/engine/render/Kit.cpp          # sections, sockets, kits: where modules go (#240 phase 3)
     src/engine/render/Lighting.cpp     # where a system's light comes from, and how much (#119)
     src/engine/render/Silhouette.cpp       # what an object is made of, as data (#122)
+    src/engine/render/Built3DMesh.cpp      # a built object as bevelled solids, from the same composition (#618)
+    src/engine/render/Built3DDetail.cpp    # the structure a composition implies: trusses, plating, ribs, spokes (#618)
+    src/engine/render/Built3D.cpp          # ...lit by the star, shadowed from its own heights (#618)
     src/engine/render/CameraRig.cpp        # the player's camera, not the ship's (#158)
     src/engine/render/Material.cpp         # a shader plus what feeds it -- the data half (#121)
     src/engine/render/MaterialLibrary.cpp  # ...and the half that compiles and binds
@@ -557,6 +560,7 @@ add_executable(tests
     tests/render_tests.cpp
     tests/lighting_tests.cpp
     tests/treatment_tests.cpp
+    tests/built3d_mesh_tests.cpp   # a built object as solids: geometry only (#618)
     tests/material_tests.cpp
     tests/load_mistake_tests.cpp   # content mistakes that used to load as something else (#191)
     tests/silhouette_tests.cpp
