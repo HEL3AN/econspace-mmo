@@ -1739,6 +1739,7 @@ bool Simulation::StepPass(MaintainCost* cost, std::chrono::steady_clock::time_po
                 StepContracts();     // what the markets are short of, and the contracts (#343)
                 StepLicences();      // rent due, lapses, and where each player's structure stands
                 StepHangars();       // hangar rent due at the stations (#472)
+                StepOffices();       // corporation offices at NPC stations (#572)
                 StepShipments();     // freight arriving (#472)
                 StepObservations();  // what stands where somebody is, onto their maps (#431)
                 // Last, when no pass over the systems is under way: what it opens adds systems.

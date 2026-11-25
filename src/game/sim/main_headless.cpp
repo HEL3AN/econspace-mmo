@@ -694,6 +694,7 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
         v.docking = Corps::DockingName(c->docking);
         v.holds = sim.HeldBy(c->id);
         v.licences = sim.PartyLicences(c->id);  // (#431 slice 6)
+        v.offices = sim.PartyOffices(c->id);    // (#572)
         // ...and what it pays for police in each (#431 slice 11).
         for (const std::string& id : v.holds)
         {

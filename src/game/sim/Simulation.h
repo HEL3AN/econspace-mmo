@@ -1452,7 +1452,22 @@ public:
     // Docked at a station: its hangar's rent owed paid from the pilot's money, if it can be.
     void SettleHangar(ClientSession& s);
     // Rent fallen due, from the macro pass: paid, or owed and the hangar closed.
-    void              StepHangars();
+    void StepHangars();
+    // A corporation's offices at NPC stations (#572, slice 12): rent due, locked when unpaid.
+    void                           StepOffices();
+    std::vector<Proto::OfficeView> PartyOffices(const std::string& corpId) const;
+    // The verb `office` (name: the station; system; value: close), by a CEO or a director.
+    Corps::Outcome ApplyOfficeAct(const std::string& account, const Corps::Act& act);
+    // The pilot's corporation's office at the station they are docked at, or null; `key` is
+    // its place in the corporation's offices.
+    const Corps::Office* OfficeHere(const ClientSession& s, std::string* key = nullptr) const;
+    // Whether an office is locked: its rent is more than the grace past due.
+    bool OfficeLocked(const Corps::Office& o) const;
+    // A division of the pilot's office here as a container (ContainerOf's `storage`,
+    // `storage:stock`, `storage:command`), by the divisions' role rules.
+    bool OfficeContainer(ClientSession& s, const std::string& id, Container& out, std::string& why);
+    // The station an office is at, found again from its key; null when it is gone.
+    const Entity*     OfficeStation(const std::string& key, const SystemState** in = nullptr) const;
     bool              RentsHangar(const std::string& account) const;
     Proto::HangarView HangarViewFor(const ClientSession& s) const;
     const std::map<std::string, std::map<std::string, Hangar>>& Hangars() const { return hangars_; }

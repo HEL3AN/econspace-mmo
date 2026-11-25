@@ -312,6 +312,7 @@ private:
     // What building in this system takes (#431 slice 6), and the button that buys or renews
     // the licence: in the station window and the corporation window alike.
     void DrawLicenceOffer(Ui::Layout& L);  // a station's: bought where it is granted (#509)
+    void DrawOfficesHeld(Ui::Layout& L);   // the corporation window's offices (#572)
     void DrawLicencesHeld(Ui::Layout& L, bool mayPay);  // the corporation window's
     void DrawTreasuryTab(Ui::Layout& L, bool leads, std::vector<Proto::CorpAct>& acts);
     // Handing the docked structure over (#468): to a pilot or a corporation's [TICKER], for its

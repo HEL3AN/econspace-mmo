@@ -221,6 +221,43 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
             }
         }
 
+        // ...or, docked at an NPC station, the corporation's office there (#572): the same
+        // divisions by the same role rules; locked, goods come out and none go in.
+        std::string officeKey;
+        if (p.divisions.empty())
+            if (const Corps::Office* office = OfficeHere(s, &officeKey))
+            {
+                const Corps::Corp* corp = corps_.Of(s.accountName);
+                const std::string  owner = "corp:" + corp->id;
+                const int          units = WorldRules::OfficeRules().units;
+                int                used = 0;
+                for (const auto& d : office->goods)
+                    used += d.second.Used();
+                p.storageCap = units;
+                p.storageUsed = used;
+                for (const char* div : Corps::DIVISION_IDS)
+                {
+                    if (!corps_.MayDivision(owner, s.accountName, div, "view"))
+                        continue;
+                    const auto          at = office->goods.find(div);
+                    const Inventory     none;
+                    const Inventory&    inv = at != office->goods.end() ? at->second : none;
+                    Proto::DivisionView v;
+                    v.id = div;
+                    v.name =
+                        corps_.DivisionLabel(owner, div) + " in the office at " + office->station;
+                    v.capacity = inv.Used() + std::max(0, units - used);
+                    v.canPut = !OfficeLocked(*office) &&
+                               corps_.MayDivision(owner, s.accountName, div, "put");
+                    v.canTake = corps_.MayDivision(owner, s.accountName, div, "take");
+                    for (ResourceType rt : AllResourceTypes())
+                        v.goods.push_back(inv.Amount(rt));
+                    if (v.id == "shared")
+                        p.storedByType = v.goods;
+                    p.divisions.push_back(std::move(v));
+                }
+            }
+
         p.hangar = HangarViewFor(s);  // the pilot's hangar at a station (#472)
         p.locked = LockedHangarsFor(s);
         if (s.assetsDue)  // asked for, once (#472 slice 9)

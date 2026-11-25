@@ -412,6 +412,19 @@ struct Hangars
     double periodDays = 30.0;
 };
 
+// A corporation's office at an NPC station (#572, slice 12): a shared store with the divisions
+// of a corporation structure's storage, rented from the corporation's treasury. `units` is its
+// room, `rent` a credits every `periodDays` of world time, paid to the station's faction; unpaid
+// a `graceHours` after it falls due, the office is locked -- goods may be taken out, none put
+// in -- until it is paid. It is not part of `licences`: nothing is built, and no holder is asked.
+struct Offices
+{
+    int    units = 6000;  // volume: the room a unit of Iron takes is 10
+    double rent = 2500.0;
+    double periodDays = 7.0;
+    double graceHours = 24.0;
+};
+
 // What a lost player ship's wreck holds of the modules it carried beyond its hull's own fit
 // (#472 slice 10): this share of each kind, rounded down. NPC ships drop none until fleets buy
 // their modules from markets.
@@ -594,6 +607,7 @@ const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
 const Hangars&     HangarRules();
+const Offices&     OfficeRules();
 const Wrecks&      WreckRules();
 const Deliveries&  DeliveryRules();
 const Security&    SecurityRules();
@@ -616,6 +630,7 @@ void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
 void SetHangarRules(const Hangars& h);
+void SetOfficeRules(const Offices& o);
 void SetWreckRules(const Wrecks& w);
 void SetDeliveryRules(const Deliveries& d);
 void SetSecurityRules(const Security& s);

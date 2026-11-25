@@ -214,6 +214,18 @@ bool Game::CorpCommand(const std::string& text)
         act.pilot = Word(rest, &act.role);
     else if (verb == "tax" || verb == "docking" || verb == "deposit" || verb == "withdraw")
         act.value = Word(rest);
+    else if (verb == "office")
+    {
+        // An office at the station the pilot is docked at (#572): `/corp office`, or
+        // `/corp office close`; another station by name with `/corp office <system> <name>`.
+        act.value = Lower(rest) == "close" ? "close" : "";
+        if (act.value.empty() && !Trim(rest).empty())
+        {
+            std::string name;
+            act.system = Word(rest, &name);
+            act.name = Trim(name);
+        }
+    }
     else if (verb == "division")
     {
         // The storage's divisions (#472 slice 5): `/corp division stock take director` moves a
@@ -544,6 +556,7 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                 // The licences it holds, in others' space (#431 slice 6, #509): bought where
                 // they are granted, so here they are listed and renewed, not offered.
                 DrawLicencesHeld(L, leads);
+                DrawOfficesHeld(L);
                 int online = 0;
                 for (const Proto::CorpMember& m : corpView_.members)
                     online += m.online ? 1 : 0;
@@ -791,6 +804,35 @@ void Game::DrawLicencesHeld(Ui::Layout& L, bool mayPay)
                       (l.where.empty() ? l.holder + "'s station" : l.where) + " in " + name;
         L.Tooltip("renew_" + l.system, tip);
     }
+}
+
+// The corporation's offices at NPC stations (#572): where, what they hold, and whether the
+// rent is paid. Rented and closed with /corp office (or the agent's corp tool), docked there.
+void Game::DrawOfficesHeld(Ui::Layout& L)
+{
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    if (corpView_.offices.empty())
+        return;
+    const double now = worldClock_.Now(GetTime());
+    L.Divider();
+    L.Text("OFFICES", TextStyle::Label());
+    for (const Proto::OfficeView& o : corpView_.offices)
+    {
+        const bool ok = o.state == "paid";
+        L.Field(o.station + ", " + MapSystemName(o.system),
+                o.state == "paid" ? TextFormat("%d / %d, paid until %.1f d from now", o.held,
+                                               o.units, (o.until - now) / 86400.0)
+                : o.state == "unpaid"
+                    ? TextFormat("%d / %d, UNPAID: locks soon", o.held, o.units)
+                    : TextFormat("%d / %d, LOCKED: goods out only", o.held, o.units),
+                ok ? t.colors.text : t.colors.bad);
+    }
+    L.Text("Rent: " +
+               std::string(TextFormat("%.0f cr every %.0f days", corpView_.offices[0].rent,
+                                      corpView_.offices[0].periodDays)) +
+               ", from the treasury. /corp office close gives one up, empty.",
+           TextStyle::Small().Tint(t.colors.dim).Wrap());
 }
 
 // What building in this system takes, offered where it is granted (#509): docked at the
