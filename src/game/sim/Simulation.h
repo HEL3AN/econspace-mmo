@@ -1439,7 +1439,15 @@ public:
         double      due = 0.0;  // world time
         double      fee = 0.0;
         std::string holder;  // who was paid
+        // Goods from a destroyed NPC station (#572): bound for the pilot's home station, wherever
+        // that is when it falls due, with `toSystem` and `toName` empty until it is known; the
+        // fee, a share of the value, is paid on arrival and is a lien on the hangar if the
+        // pilot cannot pay it.
+        bool   home = false;
+        double value = 0.0;
     };
+    // The goods of every pilot's hangar at a station that is gone, bound for their homes.
+    void HangarsLost(SystemState& st, const Entity& station);
     // The station a hangar key names, or null; whether its faction now refuses this pilot.
     const Entity* HangarStation(const std::string& key) const;
     bool          HangarOutOfReach(const ClientSession& s, const std::string& key) const;

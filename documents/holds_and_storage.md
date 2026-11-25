@@ -312,6 +312,12 @@ offline, in the journal (#431 slice 13). An abandoned structure (#468) drops eve
 **A destroyed NPC station (decided, as drafted):** the pilot's hangar there moves to their home
 station after a day of world time, for a fee of 10 % of its value at the home market, paid on
 arrival; until paid, the moved goods sit in the home hangar under the same lien as unpaid rent.
+*As built (#572):* `Simulation::HangarsLost`, called when a station is removed, makes a shipment
+per pilot (`Shipment::home`) due `deliveries.lostHours` (24) later; it goes into the hangar at
+the home station the pilot has while they are playing, and waits for that while they are not. The
+fee is `deliveries.lostFee` (10 %) of the goods' value at base prices (not the home market's: no
+pilot's market is consulted), paid to the holder of the lost hangar on arrival, else owed on the
+hangar it arrived in, which is closed until it is paid.
 
 #### Delivery out of a hostile station
 

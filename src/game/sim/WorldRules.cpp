@@ -432,7 +432,9 @@ bool Load(const std::string& path)
                                                    { "minHours", &dl.minHours },
                                                    { "sameSystemHours", &dl.sameSystemHours },
                                                    { "riskWeight", &dl.riskWeight },
-                                                   { "hostileSurcharge", &dl.hostileSurcharge } },
+                                                   { "hostileSurcharge", &dl.hostileSurcharge },
+                                                   { "lostHours", &dl.lostHours },
+                                                   { "lostFee", &dl.lostFee } },
                                                  {}, {}, g_error))
         return false;
     if (dl.hostileSurcharge < 1.0)

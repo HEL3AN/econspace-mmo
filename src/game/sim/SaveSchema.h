@@ -100,7 +100,11 @@ namespace Save
 //    garrison's fire is read against. A version 20 build would fight the besiegers' ships
 //    untyped and write the plan back without them. A plan from an older file reads them as
 //    its faction's doctrine.
-inline constexpr int WORLD_VERSION = 21;
+// 22: a shipment may be bound for its pilot's home (`home`, `value`): what was kept at an NPC
+//    station that was destroyed (#572). A version 21 build would read it as a delivery to a place
+//    with no name, leave it waiting for ever, and write it back without saying where it was
+//    going.
+inline constexpr int WORLD_VERSION = 22;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
