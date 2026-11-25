@@ -178,7 +178,7 @@ someone who decides things for themselves, not scenery), and NPCs by role — `t
 
 ## What a bot can do
 
-Forty-nine tools, in these groups. **Their exact arguments are in [reference.md](reference.md)**,
+Fifty tools, in these groups. **Their exact arguments are in [reference.md](reference.md)**,
 which is generated from the server itself and checked by CI, so it cannot disagree with what the
 server actually accepts.
 
@@ -193,6 +193,7 @@ server actually accepts.
 | build | `blueprints`, `deploy`, `build`, `dismantle`, `set_defence`, `buy_licence` |
 | explore | `scan`, `name_system`, `sell_charts` |
 | talk and organise | `chat_send`, `chat`, `corp`, `corp_act` |
+| exchange | `deal_act` |
 
 A few that are worth knowing before reading the reference:
 
@@ -223,6 +224,10 @@ A few that are worth knowing before reading the reference:
   tool's description in the reference says exactly when.
 - `corp_act` is every corporation verb -- invite, roles, rules of engagement, police budgets,
   patrols -- the way the client's corporation window gives them.
+- `deal_act` trades with another pilot docked at the same station: open (both ask), put and
+  withdraw goods, credits and charts, confirm at the revision `observe` shows on its `TRADE`
+  line. Any change clears both confirmations; a chart is a copy, shown to the buyer only as
+  what is new to them until the trade is done (#473).
 - `pay_bounty` pays the station owner's bounty unless you name another faction.
 - The station verbs are not orders: they need you docked, they say why when they cannot
   happen, and they report what the server actually did -- the money paid, the job taken.

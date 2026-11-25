@@ -231,6 +231,9 @@ struct Doer
         if (a.id != 0)
             sim.SetDefence(s, a.id, a.defence);
     }
+    // A direct trade with a pilot docked here (#473): not a docked verb either, so that a
+    // cancel still reaches a pilot who has just left and a refusal says why.
+    void operator()(const Proto::Act::Deal& a) { sim.ApplyDeal(s, a); }
 };
 }  // namespace
 

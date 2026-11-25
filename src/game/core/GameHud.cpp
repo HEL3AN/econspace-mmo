@@ -316,6 +316,16 @@ void Game::SetupWindows()
     corp.minSize = { 280.0f, 220.0f };
     corp.reopen = false;  // as the missions: opened for a task (#427)
     desk_.AddWindow(corp, "CORPORATION", false, [this](Ui::Frame& f) { DrawCorpContent(f); });
+    // A direct trade with a pilot docked at the same station (#473): opened for the task and
+    // not reopened at the next login.
+    WindowSpec trade =
+        panel(WIN_TRADE, "Trade", "Trade: swap goods, credits and charts with a pilot",
+              Anchor::TopLeft, { 344.0f, 96.0f, 400.0f, 440.0f });
+    trade.resizable = true;
+    trade.minSize = { 300.0f, 260.0f };
+    trade.context = CTX_DOCKED;
+    trade.reopen = false;
+    desk_.AddWindow(trade, "TRADE", false, [this](Ui::Frame& f) { DrawTradeContent(f); });
     // The inventory (#472): the hold and whatever else holds goods here. In space and docked
     // alike, in the bottom right corner, which nothing else takes in either: beside the
     // station's stack docked, so a good can be dragged from it onto the market. It is opened

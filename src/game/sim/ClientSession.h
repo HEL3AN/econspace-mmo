@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sim/Events.h"
+#include "sim/Exchange.h"
 #include "sim/Orders.h"
 
 #include "core/WorldLoader.h"
@@ -210,6 +211,18 @@ struct ClientSession
     // (world time; 0 -- none) in `scanSystem`.
     std::set<std::string> known;
     long long             knownRev = 0;
+    // A chart bought from a pilot is a copy, and it says so (#473): the system, who it came from,
+    // when, and how many copies lie between it and a finder. It is the buyer's to read and to
+    // resell to a pilot, never to sell to a faction; a visit of their own makes it theirs. Saved
+    // with the account (`secondHand`), as `chartSales` -- how often they sold each system.
+    struct Provenance
+    {
+        std::string from;
+        double      at = 0.0;
+        int         hops = 1;
+    };
+    std::map<std::string, Provenance> secondHand;
+    std::map<std::string, int>        chartSales;
     // ...and, of each system they have looked at, what stood there and when (#431 slice 14):
     // the observed layer of the same record, saved with the account (`observed`), one bounded
     // summary per system (Simulation::StepObservations). A value per system rather than a key
@@ -226,6 +239,20 @@ struct ClientSession
     std::vector<int> revealPending;
     // The holes this pilot knows changed (#342 S9).
     bool routesChanged = false;
+
+    // A direct trade with another pilot docked at the same station (#473). It is live and
+    // never saved: `with` is the other session (set on both sides when it is open, on one when
+    // it is only an invitation), `offer` what this side puts in, and `version` counts every
+    // change to it, so a confirm carrying the sum of both is a confirm of what was seen.
+    struct Trade
+    {
+        int              with = 0;
+        Exchange::Bundle offer;
+        bool             confirmed = false;
+        int              version = 0;
+        std::string      note;  // why the last confirm was refused, until the offer changes
+    };
+    Trade trade;
 
     // What happened to this player, in order. Per session rather than per world: one
     // player docking is not news to another, and a shared journal would leak both ways.

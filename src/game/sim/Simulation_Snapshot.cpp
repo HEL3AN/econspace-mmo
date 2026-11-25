@@ -267,6 +267,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
             s.assetsDue = false;
         }
         p.shipments = ShipmentsFor(s.accountName);
+        p.trade = TradeViewFor(s);  // (#473)
 
         // Player account (server-authoritative, M4f): the client shows it as a mirror.
         p.money = s.account.GetMoney();

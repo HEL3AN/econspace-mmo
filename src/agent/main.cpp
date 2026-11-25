@@ -32,6 +32,7 @@
 #include "missions/MissionSystem.h"
 #include "sim/Chat.h"
 #include "sim/Corporation.h"
+#include "sim/Exchange.h"
 #include "sim/InventoryList.h"
 #include "sim/Names.h"
 #include "sim/Orders.h"
@@ -2246,6 +2247,91 @@ std::vector<Tool> BuildTools()
           } });
 
     tools.push_back(
+        { "deal_act",
+          "A direct trade with another pilot docked at the same station (#473): goods, "
+          "credits and charts swapped in one step, the server standing between you so that "
+          "neither can cheat. Steps: 'open' with a pilot's name -- they open one with you to "
+          "accept; observe shows TRADE lines for both sides' offers and invitations. 'put' "
+          "adds to your side (resource and amount, from a container if not the hold; credits; "
+          "chart: a system you charted yourself), 'withdraw' takes the same back out. Any "
+          "change by either side clears both confirmations and moves the revision. 'confirm' "
+          "needs the revision observe showed (rev) and is refused if the offer has moved; when "
+          "both have confirmed, everything moves at once or nothing does. 'cancel' ends it; "
+          "undocking, or either pilot leaving the station, ends it too. The market's fee is "
+          "split between you and goes to the station's owner; nothing else is taken. A chart "
+          "is a copy: you keep yours, and the buyer is shown only what is new to them until "
+          "the trade is done. A chart you buy is second-hand, may be resold to a pilot, and is "
+          "never bought by a faction. What goods and modules a hold has no room for goes to "
+          "your hangar there.",
+          Obj({ { "action", Str("open, put, withdraw, confirm or cancel") },
+                { "with", Str("open: the pilot's name") },
+                { "resource", Str("put/withdraw: a good by name, e.g. 'Iron'") },
+                { "amount", Num("put/withdraw: how many of it") },
+                { "from", Str("put: the container the goods are in (default 'hold')") },
+                { "credits", Num("put/withdraw: whole credits") },
+                { "chart", Str("put/withdraw: a system's id or name from your own charts") },
+                { "rev", Num("confirm: the revision observe showed for the trade") } },
+              { "action" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              if (!args["action"].is_string())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is one of open, put, withdraw, "
+                                                         "confirm, cancel" };
+              Proto::Act::Deal c;
+              c.action = args["action"].get<std::string>();
+              if (c.action != "open" && c.action != "put" && c.action != "withdraw" &&
+                  c.action != "confirm" && c.action != "cancel")
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is one of open, put, withdraw, "
+                                                         "confirm, cancel" };
+              if (c.action == "open")
+              {
+                  if (!args.contains("with") || !args["with"].is_string())
+                      throw Rpc::Error{ Rpc::INVALID_PARAMS, "open needs with: the pilot's name" };
+                  c.with = args["with"].get<std::string>();
+              }
+              if (c.action == "confirm")
+              {
+                  if (!args.contains("rev") || !args["rev"].is_number())
+                      throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                        "confirm needs rev, the revision observe shows on the "
+                                        "TRADE line: it is a confirm of what you saw" };
+                  c.rev = (int)args["rev"].get<double>();
+              }
+              if (c.action == "put" || c.action == "withdraw")
+              {
+                  if (args.contains("resource"))
+                  {
+                      Exchange::GoodLine g;
+                      g.type = ResourceArg(args);
+                      g.amount = (int)NumberOr(args, "amount", 0);
+                      if (g.amount <= 0)
+                          throw Rpc::Error{ Rpc::INVALID_PARAMS, "amount is how many, at least 1" };
+                      g.from = args.value("from", std::string());
+                      c.bundle.goods.push_back(std::move(g));
+                  }
+                  c.bundle.credits = (long long)NumberOr(args, "credits", 0);
+                  if (args.contains("chart") && args["chart"].is_string())
+                      c.bundle.charts.push_back(args["chart"].get<std::string>());
+                  if (c.bundle.Empty())
+                      throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                        "give a resource and amount, credits, or a chart" };
+              }
+              const int         seq = g_session.LastEventSeq();
+              const std::string before = Obs::DescribeTrade(g_session.Snapshot().player.trade);
+              std::string       why;
+              if (!Confirm(c, why))
+                  return "deal_act: " + why;
+              std::string said;
+              for (const Ev::Event& e : g_session.EventsSince(seq))
+                  if (e.kind == Ev::Kind::Notice)
+                      said += (said.empty() ? "" : "\n") + e.text;
+              const std::string now = Obs::DescribeTrade(g_session.Snapshot().player.trade);
+              return "deal_act " + c.action + ": " + (said.empty() ? "sent" : said) + "\n" +
+                     (now.empty() ? "no trade open" : now);
+          } });
+
+    tools.push_back(
         { "name_system",
           "Name a system you discovered -- from anywhere, you need not be there (pass system; "
           "without it, the one you are in). Beyond the wormhole a system has only a designation "
@@ -3072,6 +3158,14 @@ int Selftest(const std::vector<Tool>& tools)
         RunTool(tools, "corp_act", Rpc::Json{ { "action", "leave" } }).find("no corporation") !=
             std::string::npos;
     note("corp and corp_act", corp);
+    // ...and a trade (#473) is asked of nobody, and a confirm without the revision it saw is
+    // refused before anything is sent.
+    const std::string noPilot =
+        RunTool(tools, "deal_act", Rpc::Json{ { "action", "open" }, { "with", "nobody-here" } });
+    const std::string noRev = RunTool(tools, "deal_act", Rpc::Json{ { "action", "confirm" } });
+    note("deal_act", (noPilot.find("no pilot of that name") != std::string::npos ||
+                      noPilot.find("dock at a station first") != std::string::npos) &&
+                         noRev.find("rev") != std::string::npos);
 
     // 7) Salvage (#297): a wreck that is not there is named as such, and one that is gets
     // searched or approached -- whichever its distance calls for. Which wrecks a system has

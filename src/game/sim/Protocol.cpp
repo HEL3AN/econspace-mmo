@@ -637,6 +637,107 @@ std::string EncodeCommand(const Command& c)
 
 namespace
 {
+// A bundle (#473) on the wire: goods as [type, amount, from], credits, charts as systems.
+json BundleJson(const Exchange::Bundle& b)
+{
+    json j = json::object();
+    if (!b.goods.empty())
+    {
+        json gs = json::array();
+        for (const Exchange::GoodLine& g : b.goods)
+            gs.push_back(g.from.empty() ? json::array({ g.type, g.amount })
+                                        : json::array({ g.type, g.amount, g.from }));
+        j["goods"] = gs;
+    }
+    if (b.credits > 0)
+        j["cr"] = b.credits;
+    if (!b.charts.empty())
+        j["charts"] = b.charts;
+    return j;
+}
+
+json GoodLinesJson(const std::vector<Exchange::GoodLine>& lines)
+{
+    json gs = json::array();
+    for (const Exchange::GoodLine& g : lines)
+        gs.push_back({ g.type, g.amount, g.from });
+    return gs;
+}
+
+json TradeSideJson(const Proto::TradeSideView& v)
+{
+    json charts = json::array();
+    for (const Exchange::ChartLine& c : v.charts)
+        charts.push_back({ c.system, c.text });
+    return { { "name", v.name },
+             { "goods", GoodLinesJson(v.goods) },
+             { "cr", v.credits },
+             { "charts", charts },
+             { "ok", v.confirmed } };
+}
+
+json TradeJson(const Proto::TradeView& t)
+{
+    json j = { { "with", t.with },
+               { "ask", t.asking },
+               { "rev", t.rev },
+               { "fee", t.fee },
+               { "inv", t.invites } };
+    if (!t.with.empty())
+    {
+        j["mine"] = TradeSideJson(t.mine);
+        j["theirs"] = TradeSideJson(t.theirs);
+    }
+    if (!t.problem.empty())
+        j["why"] = t.problem;
+    return j;
+}
+
+void ReadTradeSide(const json& j, Proto::TradeSideView& v)
+{
+    v = Proto::TradeSideView{};
+    if (!j.is_object())
+        return;
+    v.name = j.value("name", std::string());
+    v.credits = j.value("cr", 0LL);
+    v.confirmed = j.value("ok", false);
+    const auto gs = j.find("goods");
+    if (gs != j.end() && gs->is_array())
+        for (const json& g : *gs)
+            if (g.is_array() && g.size() == 3 && g[0].is_number_integer() &&
+                g[1].is_number_integer() && g[2].is_string())
+                v.goods.push_back({ g[0].get<int>(), g[1].get<int>(), g[2].get<std::string>() });
+    const auto cs = j.find("charts");
+    if (cs != j.end() && cs->is_array())
+        for (const json& c : *cs)
+            if (c.is_array() && c.size() == 2 && c[0].is_string() && c[1].is_string())
+                v.charts.push_back({ c[0].get<std::string>(), c[1].get<std::string>() });
+}
+
+void ReadTrade(const json& j, Proto::TradeView& t)
+{
+    t = Proto::TradeView{};
+    if (!j.is_object())
+        return;
+    t.with = j.value("with", std::string());
+    t.asking = j.value("ask", std::string());
+    t.rev = j.value("rev", 0);
+    t.fee = j.value("fee", 0.0);
+    t.problem = j.value("why", std::string());
+    const auto inv = j.find("inv");
+    if (inv != j.end() && inv->is_array())
+        for (const json& n : *inv)
+            if (n.is_string())
+                t.invites.push_back(n.get<std::string>());
+    if (j.contains("mine"))
+        ReadTradeSide(j["mine"], t.mine);
+    if (j.contains("theirs"))
+        ReadTradeSide(j["theirs"], t.theirs);
+}
+}  // namespace
+
+namespace
+{
 json FitJson(const std::vector<Ships::FitLine>& lines)
 {
     json fit = json::array();
@@ -826,6 +927,16 @@ struct ActionWriter
         j["id"] = a.id;
         j["def"] = DefenceJson(a.defence);
     }
+    void operator()(const Act::Deal& a) const
+    {
+        Verb("deal");
+        j["do"] = a.action;
+        Text("with", a.with);
+        if (!a.bundle.Empty())
+            j["bundle"] = BundleJson(a.bundle);
+        if (a.rev != 0)
+            j["rev"] = a.rev;
+    }
 };
 }  // namespace
 
@@ -970,6 +1081,55 @@ bool ReadFit(const json& j, const char* key, bool& present, std::vector<Ships::F
         out.push_back(std::move(line));
     }
     return true;
+}
+
+// A bundle (#473): at most MAX_LINES goods lines, each a good that exists, an amount and a
+// container's id; credits within what a double holds exactly; charts as short texts.
+bool ReadBundle(const json& j, const char* key, Exchange::Bundle& out)
+{
+    out = Exchange::Bundle{};
+    const auto it = j.find(key);
+    if (it == j.end())
+        return true;
+    if (!it->is_object())
+        return false;
+    const auto gs = it->find("goods");
+    if (gs != it->end())
+    {
+        if (!gs->is_array() || gs->size() > Exchange::MAX_LINES)
+            return false;
+        const int resources = (int)AllResourceTypes().size();
+        for (const json& g : *gs)
+        {
+            if (!g.is_array() || g.size() < 2 || g.size() > 3 || !g[0].is_number_integer() ||
+                !g[1].is_number_integer())
+                return false;
+            Exchange::GoodLine line;
+            const long long    type = g[0].get<long long>(), amount = g[1].get<long long>();
+            if (type < 0 || type >= resources || amount < 0 || amount > ID_MAX)
+                return false;
+            line.type = (int)type;
+            line.amount = (int)amount;
+            if (g.size() == 3)
+            {
+                if (!g[2].is_string() || g[2].get_ref<const std::string&>().size() > TEXT_LIMIT)
+                    return false;
+                line.from = g[2].get<std::string>();
+            }
+            out.goods.push_back(std::move(line));
+        }
+    }
+    const auto cr = it->find("cr");
+    if (cr != it->end())
+    {
+        if (!cr->is_number_integer())
+            return false;
+        const long long c = cr->get<long long>();
+        if (c < 0 || c > Exchange::MAX_CREDITS)
+            return false;
+        out.credits = c;
+    }
+    return ReadTextList(*it, "charts", Exchange::MAX_LINES, out.charts);
 }
 
 bool ReadCommand(const json& j, Proto::Command& out)
@@ -1192,6 +1352,13 @@ bool ReadAction(const json& j, Proto::Action& out)
         ok = ReadInt(j, "id", 0, 0, ID_MAX, a.id);
         if (ok && j.contains("def"))
             ok = DefenceFrom(j["def"], a.defence);
+        out = std::move(a);
+    }
+    else if (verb == "deal")
+    {
+        Proto::Act::Deal a;
+        ok = text("do", a.action) && text("with", a.with) && ReadBundle(j, "bundle", a.bundle) &&
+             ReadInt(j, "rev", 0, 0, ID_MAX, a.rev);
         out = std::move(a);
     }
     else
@@ -1514,6 +1681,8 @@ json PlayerJson(const Proto::PlayerView& p)
                 { { "from", s.from }, { "to", s.to }, { "h", s.hours }, { "t", s.goods } });
         j["freight"] = sh;  // not "ship": that is the flown hull (#554)
     }
+    if (!p.trade.Empty())  // a direct trade, or who asks for one (#473)
+        j["trade"] = Proto::TradeJson(p.trade);
     if (p.hangar.capacity > 0)  // (#472)
         j["hgr"] = { { "cap", p.hangar.capacity },     { "free", p.hangar.free },
                      { "rent", p.hangar.rented },      { "most", p.hangar.most },
@@ -1709,6 +1878,10 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
         p.hangar.owed = hgr->value("owed", 0.0);
         p.hangar.goods = hgr->value("t", std::vector<int>{});
     }
+    p.trade = Proto::TradeView{};
+    const auto trade = pj.find("trade");
+    if (trade != pj.end())
+        Proto::ReadTrade(*trade, p.trade);
     p.licence = Proto::LicenceView{};
     const auto lic = pj.find("lic");
     if (lic != pj.end() && lic->is_object())

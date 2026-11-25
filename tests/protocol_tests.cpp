@@ -104,6 +104,14 @@ TEST_CASE("every verb round-trips as an action (#354)")
     Proto::Act::SetDefence def;
     def.id = 9;
     all.emplace_back(def);
+    Proto::Act::Deal deal;
+    deal.action = "put";
+    deal.with = "bob";
+    deal.bundle.goods.push_back({ 1, 12, "hangar" });
+    deal.bundle.credits = 500;
+    deal.bundle.charts = { "r7-1-2" };
+    deal.rev = 4;
+    all.emplace_back(deal);
 
     // One of every alternative, so a verb added to the variant and not here fails this.
     REQUIRE(all.size() == std::variant_size_v<Proto::Action>);
@@ -117,6 +125,15 @@ TEST_CASE("every verb round-trips as an action (#354)")
 
     // And the fields that matter come through.
     Proto::Action r;
+    REQUIRE(RoundTrip(deal, r));
+    CHECK(As<Proto::Act::Deal>(r).action == "put");
+    CHECK(As<Proto::Act::Deal>(r).with == "bob");
+    REQUIRE(As<Proto::Act::Deal>(r).bundle.goods.size() == 1);
+    CHECK(As<Proto::Act::Deal>(r).bundle.goods[0].amount == 12);
+    CHECK(As<Proto::Act::Deal>(r).bundle.goods[0].from == "hangar");
+    CHECK(As<Proto::Act::Deal>(r).bundle.credits == 500);
+    CHECK(As<Proto::Act::Deal>(r).bundle.charts == std::vector<std::string>{ "r7-1-2" });
+    CHECK(As<Proto::Act::Deal>(r).rev == 4);
     REQUIRE(RoundTrip(all[3], r));
     CHECK(As<Proto::Act::NameSystem>(r).name == "Haven");
     CHECK(As<Proto::Act::NameSystem>(r).systemId == "r1-1-1");
@@ -205,6 +222,30 @@ TEST_CASE("an action a client made up is refused or read as none (#354)")
         CHECK_FALSE(decode(j, out));
         j = wire(Proto::Act::PayBounty{ "TradersGuild" });
         j["faction"] = 3;  // a faction is named, never numbered (#355)
+        CHECK_FALSE(decode(j, out));
+    }
+    SUBCASE("a bundle of the wrong shape refuses the action (#473)")
+    {
+        Proto::Act::Deal d;
+        d.action = "put";
+        d.bundle.goods.push_back({ 1, 5, "" });
+        nlohmann::json j = wire(d);
+        REQUIRE(decode(j, out));
+        j["bundle"]["goods"][0][0] = 99;  // no such good
+        CHECK_FALSE(decode(j, out));
+        j = wire(d);
+        j["bundle"]["goods"][0][1] = -3;
+        CHECK_FALSE(decode(j, out));
+        j = wire(d);
+        j["bundle"]["cr"] = "lots";
+        CHECK_FALSE(decode(j, out));
+        j = wire(d);
+        j["bundle"]["cr"] = 1000000000000000LL;  // more than a double holds exactly
+        CHECK_FALSE(decode(j, out));
+        j = wire(d);
+        j["bundle"]["goods"] = nlohmann::json::array();
+        for (int i = 0; i < 40; ++i)
+            j["bundle"]["goods"].push_back({ 1, 1 });
         CHECK_FALSE(decode(j, out));
     }
     SUBCASE("a resource index past the end of the list is no resource")

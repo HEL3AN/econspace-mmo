@@ -305,6 +305,10 @@ private:
     void DrawChatContent(const Ui::Frame& f);
     // The scanner (#346), in GameScan.cpp: a pass, and the signatures it has found.
     void DrawScannerContent(const Ui::Frame& f);
+    // The Trade window (#473), in GameTrade.cpp.
+    void DrawTradeContent(const Ui::Frame& f);
+    void SendDeal(const std::string& action, const std::string& with = std::string(),
+                  const Exchange::Bundle& bundle = Exchange::Bundle(), int rev = 0);
     // Corporations (#347), in GameCorp.cpp: the window, a verb sent, and what the client knows
     // of who is in which.
     void DrawCorpContent(const Ui::Frame& f);
@@ -600,6 +604,7 @@ private:
     static constexpr const char* WIN_CHAT_DOCKED = "chat_docked";  // ...where it is docked
     static constexpr const char* WIN_CORP = "corp";                // the corporation (#347)
     static constexpr const char* WIN_INVENTORY = "inventory";      // holds and storage (#472)
+    static constexpr const char* WIN_TRADE = "trade";              // a trade with a pilot (#473)
     const char*                  ChatWindow() const
     {
         return mode_ == GameMode::Docked ? WIN_CHAT_DOCKED : WIN_CHAT;
@@ -623,8 +628,15 @@ private:
     Ui::Layout hangarLayout_;
     Ui::Layout lossLayout_;
     Ui::Layout scannerLayout_;  // (#346)
-    int        lossSeen_ = 0;   // the last loss (Proto::LossView::seq) already shown (#344)
-    Ui::Layout hallLayout_;
+    // The Trade window (#473): its layout, the name typed, the good, amount, credits and chart
+    // being put in, and when the offer last moved (a confirm waits a moment after it).
+    Ui::Layout  tradeLayout_;
+    std::string tradeWith_, tradeChart_, tradeWithSeen_;
+    float       tradeAmount_ = 1.0f, tradeCredits_ = 0.0f;
+    int         tradeGood_ = 0, tradeRevSeen_ = -1;
+    double      tradeChangedAt_ = 0.0;
+    int         lossSeen_ = 0;  // the last loss (Proto::LossView::seq) already shown (#344)
+    Ui::Layout  hallLayout_;
     // The inventory window (#472): the container shown, the good chosen in it, how many of it a
     // move carries (a new choice starts at all of it), and the filter typed.
     Ui::Layout  inventoryLayout_;

@@ -12,6 +12,7 @@
 #include "entities/Defence.h"
 #include "entities/EntityKind.h"
 #include "sim/Events.h"
+#include "sim/Exchange.h"
 #include "sim/Orders.h"
 #include "sim/SystemState.h"  // FireEvent
 
@@ -37,11 +38,12 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    87;  // 87: a ship is named by its id (#356) -- `ship` of the buy, switch and insure verbs and
-         // the view's `ships` and `ship` -- the hull's stock design, `<design>#<n>` for the n-th
-         // more, never a catalog index;
-         // 86: one-shot verbs leave the per-tick Command for their own message, an Action (#354):
-         // `act` with a `verb` tag, applied in order with the commands and never a tick;
+    88;  // 88: a direct trade between two docked pilots (#473): the action `deal` and a
+         // PlayerView's `trade`, each side's bundle as the server describes it; 87: a ship is named
+         // by its id (#356) -- `ship` of the buy, switch and insure verbs and the view's `ships`
+         // and `ship` -- the hull's stock design, `<design>#<n>` for the n-th more, never a catalog
+         // index; 86: one-shot verbs leave the per-tick Command for their own message, an Action
+         // (#354): `act` with a `verb` tag, applied in order with the commands and never a tick;
          // 85: a CorpView lists the corporation's `offices` at NPC stations (#572);
          // 84: the player view carries `oreCap`, the ore hold inside the hold (#572, slice 12);
          // 83: a livery is a spec (#552): an id, or `id/` and a pilot's paint;
@@ -475,6 +477,17 @@ struct SetDefence
     int     id = 0;
     Defence defence;
 };
+// A direct trade with another pilot docked at the same station (#473): `action` is "open"
+// (with the named pilot; both opening toward each other starts it), "put" or "withdraw" (this
+// bundle, in or out of the pilot's side of it), "confirm" (at the revision `rev` it was seen
+// at) or "cancel". Any change by either side un-confirms both.
+struct Deal
+{
+    std::string      action;
+    std::string      with;
+    Exchange::Bundle bundle;
+    int              rev = 0;
+};
 }  // namespace Act
 
 using Action =
@@ -484,7 +497,7 @@ using Action =
                  Act::RequestAssets, Act::Deliver, Act::SwitchShip, Act::BuyShip, Act::InsureShip,
                  Act::PayBounty, Act::AcceptOffer, Act::CompleteMission, Act::GiveOrder,
                  Act::AbortOrder, Act::Jump, Act::Loot, Act::Scan, Act::Deploy, Act::Dismantle,
-                 Act::SetDefence>;
+                 Act::SetDefence, Act::Deal>;
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
 // no translation between "what the world says an object is" and "what the snapshot says",
@@ -656,6 +669,31 @@ struct AssetView
     bool             locked = false;
 };
 
+// One side of a direct trade, as the server describes it (#473). On the receiving side a chart
+// carries what is new to the reader instead of a system.
+struct TradeSideView
+{
+    std::string                      name;
+    std::vector<Exchange::GoodLine>  goods;
+    long long                        credits = 0;
+    std::vector<Exchange::ChartLine> charts;
+    bool                             confirmed = false;
+};
+// The direct trade the pilot is in, or the pilots asking to start one (#473). `rev` is what a
+// confirm must carry back; `fee` is what each side pays the station's holder.
+struct TradeView
+{
+    std::string              with;    // empty: no trade yet
+    std::string              asking;  // a pilot this one has asked to trade, who has not answered
+    int                      rev = 0;
+    TradeSideView            mine, theirs;
+    double                   fee = 0.0;
+    std::string              problem;  // why it cannot be confirmed as it stands, if so
+    std::vector<std::string> invites;  // docked here, asking to trade with this pilot
+
+    bool Empty() const { return with.empty() && asking.empty() && invites.empty(); }
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -730,6 +768,7 @@ struct PlayerView
     std::vector<DivisionView>     divisions;  // the divisions this pilot may see (#472 slice 5)
     std::vector<LockedHangarView> locked;     // hangars out of reach, with the price to fetch them
     std::vector<ShipmentView>     shipments;  // goods on their way (#472 slice 6)
+    TradeView                     trade;      // a direct trade, or the invitations to one (#473)
     // Everything the pilot owns, by place, in the one snapshot that follows a request for it
     // (#472 slice 9): `hasAssets` says this is that one.
     bool                   hasAssets = false;
