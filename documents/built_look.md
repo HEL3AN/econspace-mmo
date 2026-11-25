@@ -169,6 +169,20 @@ part cannot read the framebuffer without a copy pass. The stars inside it are fe
 to pass; a true lens (read the backdrop texture) needs the treatment chain's target as an input,
 which is slice W3 below and an owner call on cost.
 
+**Landed (W1).** Tuned after the owner's review: the throat is small and dark with only a thin,
+uneven rim of light (no bright window, so no eye); one to three arms, wound tight and torn by a
+warp, drifting inward along their own spiral on a 32 s loop instead of turning like a wheel; the
+seed picks arm count, winding, handedness and turbulence. Life is `Item::endsAt` (set by
+`JumpGate::Describe` from `closesAt`, which was already in the layout) turned into `intensity` by
+`Present` on the world clock -- `Render::MouthLife`, one from 12 h out to nothing at the end -- so
+no wire field was added. A drifted mouth's gate is removed by `DressCrossings` as before.
+
+**W2 not done, and why.** A lens that reads the real backdrop needs the frame behind the hole as a
+texture: a copy of the target (or a second render of the starfield) every frame a hole is on
+screen, a full-screen bandwidth cost on exactly the weak GPUs the game must keep playable, and the
+stars are drawn on the CPU per pixel, not in a pass a shader could be given. The hole keeps its
+own few lensed stars; it stays an owner call on cost.
+
 ### F. What this means for gates
 
 Gates stay structures, as the owner said, and get A, B and C: a jump gate that is a mass (a

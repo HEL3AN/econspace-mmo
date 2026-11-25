@@ -23,6 +23,8 @@ public:
     void   SetClosesAt(double t) { closesAt_ = t; }
     bool   IsUnstable() const { return closesAt_ > 0.0; }
 
+    Render::Item Describe() const override;
+
 private:
     std::string name_;
     std::string destination_;

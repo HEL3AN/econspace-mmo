@@ -7,3 +7,11 @@ JumpGate::JumpGate(Vector2 pos, float size, std::string name, std::string destin
 {
     SetArchetype("gate.jump");
 }
+
+Render::Item JumpGate::Describe() const
+{
+    // What is left of a mouth or a hole is its look (#618); `Present` reads it on the clock.
+    Render::Item it = Entity::Describe();
+    it.endsAt = closesAt_;
+    return it;
+}
